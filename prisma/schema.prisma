@@ -1,0 +1,141 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  passwordHash  String
+  role          Role      @default(USER)
+  plan          Plan      @default(FREE)
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastStudyAt   DateTime?
+  streak        Int       @default(0)
+
+  answers       Answer[]
+  studyPlans    StudyPlan[]
+  sessions      Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Question {
+  id           String       @id @default(cuid())
+  banca        String
+  area         String
+  subtopic     String?
+  cargo        String?
+  education    String?
+  difficulty   String
+  type         QuestionType @default(MULTIPLE_CHOICE)
+  format       String
+  enunciado    String
+  options      Json
+  correctIndex Int
+  comentario   String
+  isOriginal   Boolean      @default(false)
+  fromEdital   Boolean      @default(false)
+  aiProvider   String       @default("claude")
+  aiModel      String?
+  createdAt    DateTime     @default(now())
+
+  answers Answer[]
+
+  @@map("questions")
+}
+
+model Answer {
+  id           String   @id @default(cuid())
+  userId       String
+  questionId   String
+  selectedIdx  Int
+  isCorrect    Boolean
+  timeSpentMs  Int?
+  createdAt    DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("answers")
+}
+
+model StudyPlan {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  banca       String?
+  cargo       String?
+  examDate    DateTime?
+  hoursPerDay String
+  level       String
+  editalText  String?
+  planJson    Json
+  flashcards  Json
+  daysCompleted Json   @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("study_plans")
+}
+
+model AdminConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("admin_config")
+}
+
+model ApiKey {
+  id         String   @id @default(cuid())
+  provider   String   @unique
+  keyHash    String
+  model      String
+  isEnabled  Boolean  @default(true)
+  lastTested DateTime?
+  testStatus String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("api_keys")
+}

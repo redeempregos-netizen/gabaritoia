@@ -1,0 +1,160 @@
+import Anthropic from '@anthropic-ai/sdk'
+import { prisma } from './prisma'
+
+export type AIProvider = 'claude' | 'openai' | 'gemini' | 'grok' | 'openrouter'
+
+interface AICallOptions {
+  prompt: string
+  provider?: AIProvider
+  maxTokens?: number
+  systemPrompt?: string
+}
+
+// Busca a chave de API do banco (configurada pelo admin)
+async function getApiKey(provider: AIProvider): Promise<{ key: string; model: string } | null> {
+  const record = await prisma.apiKey.findUnique({
+    where: { provider, isEnabled: true },
+  })
+  if (!record) return null
+  // Na produção a chave estaria criptografada — aqui guardamos diretamente
+  // Use um serviço como AWS Secrets Manager ou Vault em produção enterprise
+  return { key: record.keyHash, model: record.model }
+}
+
+export async function callAI({ prompt, provider = 'claude', maxTokens = 2000, systemPrompt }: AICallOptions): Promise<string> {
+  const config = await getApiKey(provider)
+  const apiKey = config?.key || getEnvKey(provider)
+  const model = config?.model || getDefaultModel(provider)
+
+  if (!apiKey && provider !== 'claude') {
+    throw new Error(`Chave de API para ${provider} não configurada. Configure no painel Admin.`)
+  }
+
+  switch (provider) {
+    case 'claude':
+      return callClaude(prompt, systemPrompt, maxTokens, apiKey, model)
+    case 'openai':
+      return callOpenAI(prompt, systemPrompt, maxTokens, apiKey!, model)
+    case 'gemini':
+      return callGemini(prompt, maxTokens, apiKey!, model)
+    case 'grok':
+      return callOpenAICompatible(prompt, systemPrompt, maxTokens, apiKey!, model, 'https://api.x.ai/v1')
+    case 'openrouter':
+      return callOpenRouter(prompt, systemPrompt, maxTokens, apiKey!, model)
+    default:
+      throw new Error(`Provedor desconhecido: ${provider}`)
+  }
+}
+
+async function callClaude(prompt: string, system: string | undefined, maxTokens: number, apiKey?: string | null, model?: string): Promise<string> {
+  const client = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY })
+  const msg = await client.messages.create({
+    model: model || 'claude-sonnet-4-20250514',
+    max_tokens: maxTokens,
+    ...(system && { system }),
+    messages: [{ role: 'user', content: prompt }],
+  })
+  return msg.content.map(b => b.type === 'text' ? b.text : '').join('')
+}
+
+async function callOpenAI(prompt: string, system: string | undefined, maxTokens: number, apiKey: string, model: string): Promise<string> {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model, max_tokens: maxTokens,
+      messages: [
+        ...(system ? [{ role: 'system', content: system }] : []),
+        { role: 'user', content: prompt },
+      ],
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error?.message || `OpenAI error ${res.status}`)
+  return data.choices[0]?.message?.content || ''
+}
+
+async function callGemini(prompt: string, maxTokens: number, apiKey: string, model: string): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: maxTokens } }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error?.message || `Gemini error ${res.status}`)
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+}
+
+async function callOpenAICompatible(prompt: string, system: string | undefined, maxTokens: number, apiKey: string, model: string, baseUrl: string): Promise<string> {
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model, max_tokens: maxTokens,
+      messages: [
+        ...(system ? [{ role: 'system', content: system }] : []),
+        { role: 'user', content: prompt },
+      ],
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error?.message || `Error ${res.status}`)
+  return data.choices[0]?.message?.content || ''
+}
+
+async function callOpenRouter(prompt: string, system: string | undefined, maxTokens: number, apiKey: string, model: string): Promise<string> {
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://gabaritoia.com',
+      'X-Title': 'GabaritoIA',
+    },
+    body: JSON.stringify({
+      model, max_tokens: maxTokens,
+      messages: [
+        ...(system ? [{ role: 'system', content: system }] : []),
+        { role: 'user', content: prompt },
+      ],
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error?.message || `OpenRouter error ${res.status}`)
+  return data.choices[0]?.message?.content || ''
+}
+
+function getEnvKey(provider: AIProvider): string | undefined {
+  const map: Record<AIProvider, string | undefined> = {
+    claude: process.env.ANTHROPIC_API_KEY,
+    openai: process.env.OPENAI_API_KEY,
+    gemini: process.env.GEMINI_API_KEY,
+    grok: process.env.GROK_API_KEY,
+    openrouter: process.env.OPENROUTER_API_KEY,
+  }
+  return map[provider]
+}
+
+function getDefaultModel(provider: AIProvider): string {
+  const map: Record<AIProvider, string> = {
+    claude: 'claude-sonnet-4-20250514',
+    openai: 'gpt-4o',
+    gemini: 'gemini-2.0-flash',
+    grok: 'grok-2',
+    openrouter: 'google/gemini-2.0-flash-001',
+  }
+  return map[provider]
+}
+
+// Parser robusto de JSON retornado pela IA
+export function parseAIJson<T = unknown>(raw: string): T {
+  let s = raw.trim()
+  s = s.split('```json').join('').split('```').join('').trim()
+  try { return JSON.parse(s) as T } catch {}
+  const ia = s.indexOf('['), iz = s.lastIndexOf(']')
+  if (ia !== -1 && iz > ia) { try { return JSON.parse(s.slice(ia, iz + 1)) as T } catch {} }
+  const oa = s.indexOf('{'), oz = s.lastIndexOf('}')
+  if (oa !== -1 && oz > oa) { try { return JSON.parse(s.slice(oa, oz + 1)) as T } catch {} }
+  throw new Error('A IA não retornou JSON válido. Tente novamente.')
+}

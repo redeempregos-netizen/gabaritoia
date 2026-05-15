@@ -1,0 +1,135 @@
+import { getSession } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { redirect } from 'next/navigation'
+import { BarChart3, Target, Zap, Flame } from 'lucide-react'
+import Link from 'next/link'
+
+export default async function DashboardPage() {
+  const session = await getSession()
+  if (!session) redirect('/login')
+
+  const [user, answers] = await Promise.all([
+    prisma.user.findUnique({ where: { id: session.userId } }),
+    prisma.answer.findMany({
+      where: { userId: session.userId },
+      include: { question: { select: { area: true, banca: true, difficulty: true } } },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ])
+  if (!user) redirect('/login')
+
+  const total = answers.length
+  const correct = answers.filter(a => a.isCorrect).length
+  const pct = total ? Math.round(correct / total * 100) : 0
+  const today = new Date().toISOString().split('T')[0]
+  const todayAns = answers.filter(a => a.createdAt.toISOString().startsWith(today)).length
+
+  // Desempenho por área
+  const areaMap: Record<string, { total: number; correct: number }> = {}
+  answers.forEach(a => {
+    const area = a.question.area
+    if (!areaMap[area]) areaMap[area] = { total: 0, correct: 0 }
+    areaMap[area].total++
+    if (a.isCorrect) areaMap[area].correct++
+  })
+  const topAreas = Object.entries(areaMap)
+    .map(([area, d]) => ({ area, pct: Math.round(d.correct / d.total * 100) }))
+    .sort((a, b) => b.pct - a.pct)
+    .slice(0, 5)
+
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
+  const firstName = user.name.split(' ')[0]
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
+      <div className="mb-8">
+        <h1 className="font-heading text-2xl font-bold">{greeting}, {firstName}! 👋</h1>
+        <p className="text-zinc-400 text-sm mt-1">Veja seu progresso e continue estudando</p>
+      </div>
+
+      {/* Métricas */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {[
+          { label: 'Total respondidas', value: total, icon: BarChart3, color: 'text-brand-400', bg: 'bg-brand-500/10', bar: pct, barColor: 'bg-brand-500' },
+          { label: 'Taxa de acerto', value: `${pct}%`, icon: Target, color: 'text-green-400', bg: 'bg-green-500/10', bar: pct, barColor: 'bg-green-500' },
+          { label: 'Questões hoje', value: todayAns, icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/10', bar: Math.min(todayAns / 10 * 100, 100), barColor: 'bg-amber-500' },
+          { label: 'Dias seguidos', value: user.streak, icon: Flame, color: 'text-orange-400', bg: 'bg-orange-500/10', bar: Math.min(user.streak / 30 * 100, 100), barColor: 'bg-orange-500' },
+        ].map(m => {
+          const Icon = m.icon
+          return (
+            <div key={m.label} className="card p-5 relative overflow-hidden">
+              <div className={`inline-flex p-2 rounded-lg ${m.bg} mb-3`}>
+                <Icon size={16} className={m.color} />
+              </div>
+              <div className="font-heading text-2xl font-bold">{m.value}</div>
+              <div className="text-xs text-zinc-500 mt-0.5">{m.label}</div>
+              <div className="h-1 bg-zinc-800 rounded-full mt-3 overflow-hidden">
+                <div className={`h-full rounded-full ${m.barColor} transition-all duration-700`} style={{ width: `${m.bar}%` }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Desempenho por área */}
+        <div className="card p-5">
+          <h2 className="font-heading text-sm font-semibold text-brand-300 mb-4">Desempenho por área</h2>
+          {topAreas.length === 0 ? (
+            <p className="text-sm text-zinc-500">Responda questões para ver seu desempenho por área.</p>
+          ) : topAreas.map(a => (
+            <div key={a.area} className="flex items-center gap-3 mb-3">
+              <div className="text-xs text-zinc-300 w-28 truncate flex-shrink-0">{a.area}</div>
+              <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${a.pct >= 70 ? 'bg-green-500' : a.pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                  style={{ width: `${a.pct}%` }}
+                />
+              </div>
+              <div className="text-xs text-zinc-500 w-8 text-right">{a.pct}%</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Últimas questões */}
+        <div className="card p-5">
+          <h2 className="font-heading text-sm font-semibold text-brand-300 mb-4">Últimas questões</h2>
+          {answers.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-sm text-zinc-500 mb-3">Nenhuma questão respondida ainda.</p>
+              <Link href="/gerar" className="btn-primary text-sm px-4 py-2 inline-flex">Gerar primeira questão</Link>
+            </div>
+          ) : answers.slice(0, 6).map(a => (
+            <div key={a.id} className="flex items-center gap-3 py-2 border-b border-white/[0.05] last:border-0">
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${a.isCorrect ? 'bg-green-500' : 'bg-red-500'}`} />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium truncate">{a.question.area}</div>
+                <div className="text-[10px] text-zinc-500">{a.question.banca} · {a.createdAt.toLocaleDateString('pt-BR')}</div>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full ${a.isCorrect ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                {a.isCorrect ? 'Certa' : 'Errada'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+        {[
+          { href: '/gerar', label: 'Gerar questão', emoji: '✦', desc: 'Nova questão agora' },
+          { href: '/edital-pro', label: 'Edital Pro', emoji: '🚀', desc: 'Plano de estudos IA' },
+          { href: '/edital', label: 'Edital', emoji: '📄', desc: 'Questões do edital' },
+          { href: '/historico', label: 'Histórico', emoji: '◷', desc: 'Ver progresso completo' },
+        ].map(item => (
+          <Link key={item.href} href={item.href} className="card p-4 hover:border-brand-500/30 transition-colors group">
+            <div className="text-2xl mb-2">{item.emoji}</div>
+            <div className="text-sm font-semibold text-zinc-100 group-hover:text-brand-300 transition-colors">{item.label}</div>
+            <div className="text-xs text-zinc-500 mt-0.5">{item.desc}</div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}
