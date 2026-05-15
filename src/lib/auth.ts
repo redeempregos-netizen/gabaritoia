@@ -11,16 +11,16 @@ export interface SessionPayload {
   email: string
   role: string
   plan: string
+  [key: string]: unknown
 }
 
 export async function createSession(payload: SessionPayload): Promise<string> {
-  const token = await new SignJWT(payload)
+  const token = await new SignJWT(payload as Record<string, unknown>)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('30d')
     .sign(JWT_SECRET)
 
-  // Salvar sessão no banco
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
   await prisma.session.create({
     data: { userId: payload.userId, token, expiresAt },
