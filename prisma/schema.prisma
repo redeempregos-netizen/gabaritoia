@@ -32,6 +32,8 @@ model User {
   role          Role      @default(USER)
   plan          Plan      @default(FREE)
   avatarUrl     String?
+  credits       Int       @default(10)
+  creditsUsed   Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastStudyAt   DateTime?
@@ -40,6 +42,7 @@ model User {
   answers       Answer[]
   studyPlans    StudyPlan[]
   sessions      Session[]
+  creditLogs    CreditLog[]
 
   @@map("users")
 }
@@ -74,10 +77,12 @@ model Question {
   fromEdital   Boolean      @default(false)
   aiProvider   String       @default("claude")
   aiModel      String?
+  promptHash   String?      // Para cache
   createdAt    DateTime     @default(now())
 
   answers Answer[]
 
+  @@index([promptHash])
   @@map("questions")
 }
 
@@ -97,26 +102,72 @@ model Answer {
 }
 
 model StudyPlan {
-  id          String   @id @default(cuid())
-  userId      String
-  title       String
-  banca       String?
-  cargo       String?
-  examDate    DateTime?
-  hoursPerDay String
-  level       String
-  editalText  String?
-  planJson    Json
-  flashcards  Json
-  daysCompleted Json   @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(cuid())
+  userId        String
+  title         String
+  banca         String?
+  cargo         String?
+  examDate      DateTime?
+  hoursPerDay   String
+  level         String
+  editalText    String?
+  planJson      Json
+  flashcards    Json
+  daysCompleted Json      @default("{}")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("study_plans")
 }
 
+// ── CACHE DE IA ──────────────────────────────
+model AICache {
+  id         String   @id @default(cuid())
+  promptHash String   @unique
+  prompt     String
+  response   String
+  provider   String
+  model      String?
+  hits       Int      @default(0)
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([promptHash])
+  @@index([expiresAt])
+  @@map("ai_cache")
+}
+
+// ── CRÉDITOS ─────────────────────────────────
+model CreditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Int      // positivo = ganhou, negativo = gastou
+  action    String   // "generate_question", "generate_plan", "purchase", etc
+  details   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("credit_logs")
+}
+
+// ── RATE LIMIT ───────────────────────────────
+model RateLimit {
+  id        String   @id @default(cuid())
+  key       String   @unique // ip:action ou userId:action
+  count     Int      @default(0)
+  resetAt   DateTime
+  createdAt DateTime @default(now())
+
+  @@index([key])
+  @@index([resetAt])
+  @@map("rate_limits")
+}
+
+// ── CONFIG ADMIN ─────────────────────────────
 model AdminConfig {
   id        String   @id @default(cuid())
   key       String   @unique
@@ -127,15 +178,15 @@ model AdminConfig {
 }
 
 model ApiKey {
-  id         String   @id @default(cuid())
-  provider   String   @unique
+  id         String    @id @default(cuid())
+  provider   String    @unique
   keyHash    String
   model      String
-  isEnabled  Boolean  @default(true)
+  isEnabled  Boolean   @default(true)
   lastTested DateTime?
   testStatus String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@map("api_keys")
 }

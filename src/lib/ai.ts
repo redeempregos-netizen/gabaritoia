@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from './prisma'
+import { hashPrompt, getCached, setCache } from './cache'
 
 export type AIProvider = 'claude' | 'openai' | 'gemini' | 'grok' | 'openrouter'
 
@@ -8,24 +9,62 @@ interface AICallOptions {
   provider?: AIProvider
   maxTokens?: number
   systemPrompt?: string
+  useCache?: boolean      // padrão: true
+  cacheTTL?: number       // ms — padrão 7 dias
 }
 
-// Busca a chave de API do banco (configurada pelo admin)
 async function getApiKey(provider: AIProvider): Promise<{ key: string; model: string } | null> {
-  const record = await prisma.apiKey.findUnique({
-    where: { provider, isEnabled: true },
-  })
-  if (!record) return null
-  // Na produção a chave estaria criptografada — aqui guardamos diretamente
-  // Use um serviço como AWS Secrets Manager ou Vault em produção enterprise
-  return { key: record.keyHash, model: record.model }
+  try {
+    const record = await prisma.apiKey.findUnique({
+      where: { provider, isEnabled: true },
+    })
+    if (!record) return null
+    return { key: record.keyHash, model: record.model }
+  } catch {
+    return null
+  }
 }
 
-export async function callAI({ prompt, provider = 'claude', maxTokens = 2000, systemPrompt }: AICallOptions): Promise<string> {
+export async function callAI({
+  prompt,
+  provider = 'claude',
+  maxTokens = 2000,
+  systemPrompt,
+  useCache = true,
+  cacheTTL,
+}: AICallOptions): Promise<string> {
   const config = await getApiKey(provider)
   const apiKey = config?.key || getEnvKey(provider)
   const model = config?.model || getDefaultModel(provider)
 
+  // Verificar cache primeiro
+  if (useCache) {
+    const cacheKey = hashPrompt(prompt + (systemPrompt || ''), provider)
+    const cached = await getCached(cacheKey)
+    if (cached) {
+      console.log(`[AI Cache HIT] provider=${provider} hash=${cacheKey.slice(0, 8)}`)
+      return cached
+    }
+
+    // Chamar IA e salvar no cache
+    const response = await callProvider({ provider, prompt, systemPrompt, maxTokens, apiKey, model })
+    await setCache(cacheKey, prompt, response, provider, model, cacheTTL)
+    return response
+  }
+
+  return callProvider({ provider, prompt, systemPrompt, maxTokens, apiKey, model })
+}
+
+interface CallProviderOptions {
+  provider: AIProvider
+  prompt: string
+  systemPrompt?: string
+  maxTokens: number
+  apiKey?: string | null
+  model: string
+}
+
+async function callProvider({ provider, prompt, systemPrompt, maxTokens, apiKey, model }: CallProviderOptions): Promise<string> {
   if (!apiKey && provider !== 'claude') {
     throw new Error(`Chave de API para ${provider} não configurada. Configure no painel Admin.`)
   }
@@ -38,7 +77,7 @@ export async function callAI({ prompt, provider = 'claude', maxTokens = 2000, sy
     case 'gemini':
       return callGemini(prompt, maxTokens, apiKey!, model)
     case 'grok':
-      return callOpenAICompatible(prompt, systemPrompt, maxTokens, apiKey!, model, 'https://api.x.ai/v1')
+      return callOpenAICompat(prompt, systemPrompt, maxTokens, apiKey!, model, 'https://api.x.ai/v1')
     case 'openrouter':
       return callOpenRouter(prompt, systemPrompt, maxTokens, apiKey!, model)
     default:
@@ -86,7 +125,7 @@ async function callGemini(prompt: string, maxTokens: number, apiKey: string, mod
   return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 }
 
-async function callOpenAICompatible(prompt: string, system: string | undefined, maxTokens: number, apiKey: string, model: string, baseUrl: string): Promise<string> {
+async function callOpenAICompat(prompt: string, system: string | undefined, maxTokens: number, apiKey: string, model: string, baseUrl: string): Promise<string> {
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -147,7 +186,6 @@ function getDefaultModel(provider: AIProvider): string {
   return map[provider]
 }
 
-// Parser robusto de JSON retornado pela IA
 export function parseAIJson<T = unknown>(raw: string): T {
   let s = raw.trim()
   s = s.split('```json').join('').split('```').join('').trim()
