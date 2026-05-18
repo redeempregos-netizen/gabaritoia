@@ -17,6 +17,7 @@ enum Role {
 enum Plan {
   FREE
   PRO
+  ENTERPRISE
 }
 
 enum QuestionType {
@@ -32,12 +33,14 @@ model User {
   role          Role      @default(USER)
   plan          Plan      @default(FREE)
   avatarUrl     String?
-  credits       Int       @default(10)
+  credits       Int       @default(30)
   creditsUsed   Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastStudyAt   DateTime?
   streak        Int       @default(0)
+  ownApiKey     String?   // Chave de IA própria do usuário
+  ownApiProvider String?  // Provedor da chave própria
 
   answers       Answer[]
   studyPlans    StudyPlan[]

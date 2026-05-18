@@ -11,8 +11,9 @@ export const CREDIT_COSTS = {
 
 // Créditos gratuitos por plano
 export const PLAN_CREDITS = {
-  FREE: 10,  // 10 créditos ao cadastrar
-  PRO:  200, // 200 créditos/mês
+  FREE: 30,  // 30 créditos ao cadastrar
+  PRO:  500, // 500 créditos/mês
+  ENTERPRISE: 9999, // Ilimitado (própria chave)
 } as const
 
 export function getQuestionCost(quantity: number): number {
