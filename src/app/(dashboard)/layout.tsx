@@ -13,6 +13,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   })
   if (!user) redirect('/login')
 
+  const mobileNav = [
+    { href: '/dashboard', label: 'Painel', emoji: '⊞' },
+    { href: '/gerar', label: 'Gerar', emoji: '✦' },
+    { href: '/edital-pro', label: 'Pro', emoji: '🚀' },
+    { href: '/historico', label: 'Histórico', emoji: '◷' },
+    ...(user.role === 'ADMIN' ? [{ href: '/admin', label: 'Admin', emoji: '⚙' }] : [{ href: '/planos', label: 'Planos', emoji: '💳' }]),
+  ]
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar desktop */}
@@ -21,20 +29,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </div>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto bg-zinc-950">
+      <main className="flex-1 overflow-y-auto bg-zinc-950 pb-20 md:pb-0">
         {children}
       </main>
 
       {/* Bottom nav mobile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-white/[0.07] z-50 px-1 pb-safe">
         <div className="flex">
-          {[
-            { href: '/dashboard', label: 'Painel', emoji: '⊞' },
-            { href: '/gerar', label: 'Gerar', emoji: '✦' },
-            { href: '/edital', label: 'Edital', emoji: '📄' },
-            { href: '/edital-pro', label: 'Pro', emoji: '🚀' },
-            { href: '/historico', label: 'Histórico', emoji: '◷' },
-          ].map(item => (
+          {mobileNav.map(item => (
             <a
               key={item.href}
               href={item.href}
