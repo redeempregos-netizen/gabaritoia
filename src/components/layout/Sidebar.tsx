@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
-  History, Settings, LogOut, CreditCard, Zap
+  History, Settings, LogOut, CreditCard, Zap, DollarSign
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -45,7 +45,6 @@ export function Sidebar({ user }: SidebarProps) {
       const data = await res.json()
       if (res.ok) {
         setCredits(data.credits)
-        // toast não disponível aqui, usar alert simples
         alert(`+${data.amount} créditos! Bônus diário resgatado 🎉`)
       } else {
         alert(data.error)
@@ -139,10 +138,17 @@ export function Sidebar({ user }: SidebarProps) {
             <div className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-3 mt-3 mb-2">Admin</div>
             <Link
               href="/admin"
-              className={cn('sidebar-item', pathname.startsWith('/admin') && 'sidebar-item-active')}
+              className={cn('sidebar-item', pathname === '/admin' && 'sidebar-item-active')}
             >
               <Settings size={15} />
               <span className="text-xs">Administração</span>
+            </Link>
+            <Link
+              href="/admin/custos"
+              className={cn('sidebar-item', pathname.startsWith('/admin/custos') && 'sidebar-item-active')}
+            >
+              <DollarSign size={15} />
+              <span className="text-xs">Custos IA</span>
             </Link>
           </>
         )}
