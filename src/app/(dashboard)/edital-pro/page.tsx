@@ -41,6 +41,36 @@ export default function EditalProPage() {
     }).catch(() => {})
   }, [])
 
+  function normalizarCargos(valor: any): CargoDetectado[] {
+    if (!valor) return []
+
+    const itens = Array.isArray(valor)
+      ? valor
+      : typeof valor === 'string'
+        ? valor.split(/\n|;|,/).map(v => v.trim()).filter(Boolean)
+        : []
+
+    const cargos = itens.map((item: any) => {
+      if (typeof item === 'string') {
+        return { nome: item, vagas: 'Não informado', requisitos: 'Não informado', remuneracao: 'Não informado' }
+      }
+      return {
+        nome: String(item?.nome || item?.cargo || item?.funcao || item?.função || '').trim(),
+        vagas: String(item?.vagas || item?.cadastroReserva || item?.cadastro_reserva || 'Não informado'),
+        requisitos: String(item?.requisitos || item?.escolaridade || 'Não informado'),
+        remuneracao: String(item?.remuneracao || item?.remuneração || item?.salario || item?.salário || 'Não informado'),
+      }
+    }).filter((c: CargoDetectado) => c.nome && c.nome !== 'Não informado')
+
+    const vistos = new Set<string>()
+    return cargos.filter(c => {
+      const key = c.nome.toLowerCase()
+      if (vistos.has(key)) return false
+      vistos.add(key)
+      return true
+    })
+  }
+
   async function analisarEdital(text: string) {
     if (!text || text.length < 10) return
     setAnalyzingEdital(true)
@@ -54,11 +84,17 @@ export default function EditalProPage() {
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || 'Não foi possível analisar o edital'); return }
-      const detected: EditalAnalysis = data.analysis
+      const raw = data.analysis || {}
+      const detected: EditalAnalysis = {
+        banca: raw.banca || 'Não informado',
+        orgao: raw.orgao || raw.orgão || 'Não informado',
+        cargos: normalizarCargos(raw.cargos),
+      }
       setAnalysis(detected)
-      if (detected.cargos?.length === 1) setCargo(detected.cargos[0].nome)
-      if (detected.cargos?.length > 1) toast.success(`${detected.cargos.length} cargos encontrados. Selecione o seu cargo.`)
-      else toast.success('Edital analisado com sucesso!')
+      if (detected.cargos.length === 1) setCargo(detected.cargos[0].nome)
+      if (detected.cargos.length > 1) toast.success(`${detected.cargos.length} cargos encontrados. Selecione o seu cargo.`)
+      else if (detected.cargos.length === 1) toast.success('Cargo reconhecido automaticamente!')
+      else toast.success('Edital analisado. Informe o cargo manualmente.')
     } catch { toast.error('Erro ao reconhecer banca e cargos') }
     finally { setAnalyzingEdital(false) }
   }
@@ -184,23 +220,46 @@ export default function EditalProPage() {
             <div className="card p-5 space-y-4">
               {analysis && (
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-                  <div className="text-xs font-bold text-brand-300">Dados reconhecidos no edital</div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-bold text-brand-300">Dados reconhecidos no edital</div>
+                    {analysis.cargos.length > 0 && <div className="text-[10px] text-zinc-500">{analysis.cargos.length} cargo(s)</div>}
+                  </div>
                   <div className="grid sm:grid-cols-2 gap-2 text-xs text-zinc-400">
                     <div><span className="text-zinc-500">Banca:</span> <span className="text-zinc-200">{analysis.banca || 'Não informado'}</span></div>
                     <div><span className="text-zinc-500">Órgão:</span> <span className="text-zinc-200">{analysis.orgao || 'Não informado'}</span></div>
                   </div>
-                  {analysis.cargos?.length > 0 && (
-                    <div>
+                  {analysis.cargos.length > 0 && (
+                    <div className="space-y-3">
                       <label className="label">Selecione o cargo</label>
                       <select className="input" value={cargo} onChange={e => setCargo(e.target.value)} style={{ colorScheme: 'dark' }}>
                         <option value="">Escolha um cargo encontrado no edital</option>
                         {analysis.cargos.map((c, i) => <option key={`${c.nome}-${i}`} value={c.nome}>{c.nome}</option>)}
                       </select>
+
+                      <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                        {analysis.cargos.map((c, i) => {
+                          const active = cargo === c.nome
+                          return (
+                            <button
+                              key={`${c.nome}-card-${i}`}
+                              type="button"
+                              onClick={() => setCargo(c.nome)}
+                              className={`w-full text-left rounded-xl border p-3 transition-all ${active ? 'border-brand-500 bg-brand-500/10' : 'border-white/10 bg-black/20 hover:border-white/25 hover:bg-white/[0.03]'}`}
+                            >
+                              <div className="text-sm font-semibold text-zinc-100">{c.nome}</div>
+                              <div className="mt-1 grid sm:grid-cols-3 gap-1 text-[11px] text-zinc-500">
+                                <div><span className="text-zinc-400">Vagas:</span> {c.vagas || 'Não informado'}</div>
+                                <div><span className="text-zinc-400">Remuneração:</span> {c.remuneracao || 'Não informado'}</div>
+                                <div><span className="text-zinc-400">Requisitos:</span> {c.requisitos || 'Não informado'}</div>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+
                       {selectedCargo && (
-                        <div className="mt-3 text-xs text-zinc-400 space-y-1">
-                          <div><strong className="text-zinc-300">Vagas:</strong> {selectedCargo.vagas || 'Não informado'}</div>
-                          <div><strong className="text-zinc-300">Requisitos:</strong> {selectedCargo.requisitos || 'Não informado'}</div>
-                          <div><strong className="text-zinc-300">Remuneração:</strong> {selectedCargo.remuneracao || 'Não informado'}</div>
+                        <div className="rounded-lg border border-brand-500/20 bg-brand-500/5 p-3 text-xs text-zinc-300">
+                          Cargo selecionado: <strong>{selectedCargo.nome}</strong>
                         </div>
                       )}
                     </div>
@@ -208,7 +267,7 @@ export default function EditalProPage() {
                 </div>
               )}
 
-              {(!analysis || !analysis.cargos?.length) && (
+              {(!analysis || !analysis.cargos.length) && (
                 <div><label className="label">Cargo / vaga pretendida</label><input className="input" placeholder="Ex: Agente Administrativo..." value={cargo} onChange={e => setCargo(e.target.value)} /></div>
               )}
 
@@ -255,7 +314,6 @@ export default function EditalProPage() {
         </div>
       ) : (
         <div>
-          {/* Alerta banca */}
           <div className="bg-amber-500/6 border border-amber-500/20 rounded-xl p-4 mb-6">
             <div className="text-xs font-bold text-amber-400 mb-1">🎯 Alerta da banca — {plan.banca?.nome}</div>
             <div className="text-sm text-zinc-300"><strong>Estilo:</strong> {plan.banca?.estilo}</div>
@@ -263,7 +321,6 @@ export default function EditalProPage() {
             <div className="text-sm text-zinc-300"><strong>Foco:</strong> {plan.banca?.foco}</div>
           </div>
 
-          {/* Progresso */}
           <div className="card p-4 mb-6">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium">Progresso do plano</span>
@@ -274,7 +331,6 @@ export default function EditalProPage() {
             </div>
           </div>
 
-          {/* Cronograma */}
           <h2 className="font-heading font-bold mb-3">📅 Cronograma semanal</h2>
           <div className="card overflow-hidden mb-6">
             {plan.semanas.map((sem, si) => (
@@ -316,7 +372,6 @@ export default function EditalProPage() {
             ))}
           </div>
 
-          {/* Flashcards */}
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <h2 className="font-heading font-bold">⚡ Flashcards de revisão</h2>
             <div className="flex flex-wrap gap-2">
