@@ -32,44 +32,116 @@ export async function POST(req: NextRequest) {
     }
 
     const today = new Date().toISOString().split('T')[0]
-    let weeks = 8
+    let weeks = 12
     if (params.examDate) {
       const diff = Math.ceil((new Date(params.examDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-      weeks = Math.max(1, Math.min(20, Math.ceil(diff / 7)))
+      weeks = Math.max(10, Math.min(16, Math.ceil(diff / 7)))
     }
 
-    const systemPrompt = `Você é especialista em concursos públicos brasileiros e elaboração de planos de estudos personalizados.
+    const systemPrompt = `Você é um especialista em concursos públicos brasileiros, com profundo conhecimento de bancas (Cebraspe, FGV, FCC, Cesgranrio, Vunesp, Quadrix, IBFC, IDECAN, etc.), estilos de prova, jurisprudência e doutrina cobradas.
 Responda SEMPRE com JSON válido, sem texto antes ou depois, sem backticks markdown.`
 
-    const prompt = `Com base no edital/conteúdo abaixo, gere um plano de estudos COMPLETO em JSON.
+    const prompt = `Sua tarefa é fazer uma ANÁLISE COMPLETA e VERTICALIZADA do edital enviado. Vá MUITO além de copiar tópicos: extraia tudo, organize hierarquicamente e adicione inteligência prática para o candidato.
+
+Use a ferramenta return_verticalized_edital conceitualmente, mas responda SOMENTE com JSON válido no formato abaixo, porque o sistema consumirá esse JSON.
 
 CONTEÚDO DO EDITAL:
-${params.editalText.substring(0, 4000)}
+${params.editalText.substring(0, 12000)}
 
-CONFIGURAÇÕES:
-- Cargo/vaga: ${params.cargo || 'não especificado'}
+CONFIGURAÇÕES DO CANDIDATO:
+- Cargo/vaga pretendida: ${params.cargo || 'Não informado'}
 - Horas por dia: ${params.hoursPerDay}
 - Nível do candidato: ${params.level}
-- Semanas disponíveis: ${weeks}
+- Semanas sugeridas: ${weeks}
 - Data de hoje: ${today}
 
-Responda SOMENTE com este JSON (${weeks} semanas, 7 dias cada, mínimo 15 flashcards):
+O que entregar:
+1. Identificação completa: cargo, banca, órgão, vagas (incluindo cadastro reserva e PCD), remuneração detalhada, benefícios, requisitos, atribuições do cargo.
+2. Cronograma do certame: datas importantes (publicação, inscrições, prova objetiva, discursiva, TAF, resultado, etc.) na ordem cronológica.
+3. Etapas do concurso: cada fase (objetiva, discursiva, TAF, psicotécnico, investigação social, curso de formação) com caráter (eliminatório/classificatório) e descrição.
+4. Provas detalhadas: para cada prova, liste disciplinas com nº de questões e peso, duração, total de questões e nota mínima.
+5. Conteúdo programático verticalizado em árvore (matéria > tópico > subtópicos). EXTRAIA TODOS OS TÓPICOS sem omitir nenhum. Quebre em subtópicos sempre que possível (1.1.1, 1.1.2). Para cada matéria, indique nº de questões e peso quando informados.
+6. Para cada matéria, adicione "estrategia" (1-2 frases sobre como estudar essa matéria nesta banca) e "topicosQuentes" (3-6 assuntos historicamente mais cobrados pela banca nesse cargo/área).
+7. Análise da banca: estilo de questões, pegadinhas comuns, % de letra de lei vs jurisprudência vs doutrina, fontes preferidas.
+8. Cronograma de estudos sugerido (10-16 semanas) equilibrado por peso das matérias.
+9. Bibliografia recomendada por matéria (autores e títulos consagrados; só cite obras realmente usadas para concurso, sem inventar).
+10. Observações estratégicas finais (de 3 a 6 dicas práticas).
+
+Responda SOMENTE com este JSON:
 {
-  "banca": {"nome":"nome identificado","estilo":"como cobra as matérias","pegadinhas":"armadilhas típicas","foco":"o que mais cai"},
+  "identificacao": {
+    "cargo": "string",
+    "banca": "string",
+    "orgao": "string",
+    "vagas": "string",
+    "cadastroReserva": "string",
+    "pcd": "string",
+    "remuneracao": "string",
+    "beneficios": ["string"],
+    "requisitos": ["string"],
+    "atribuicoes": ["string"]
+  },
+  "cronogramaCertame": [
+    {"evento":"string","data":"string","observacao":"string"}
+  ],
+  "etapasConcurso": [
+    {"nome":"string","carater":"string","descricao":"string"}
+  ],
+  "provasDetalhadas": [
+    {
+      "nome":"string",
+      "duracao":"string",
+      "totalQuestoes":"string",
+      "notaMinima":"string",
+      "disciplinas":[{"nome":"string","questoes":"string","peso":"string"}]
+    }
+  ],
+  "conteudoVerticalizado": [
+    {
+      "materia":"string",
+      "questoes":"string",
+      "peso":"string",
+      "estrategia":"string",
+      "topicosQuentes":["string"],
+      "topicos":[
+        {"codigo":"1","nome":"string","subtopicos":[{"codigo":"1.1","nome":"string","subtopicos":[{"codigo":"1.1.1","nome":"string"}]}]}
+      ]
+    }
+  ],
+  "analiseBanca": {
+    "nome":"string",
+    "estiloQuestoes":"string",
+    "pegadinhasComuns":["string"],
+    "percentuais":{"leiSeca":"string","jurisprudencia":"string","doutrina":"string"},
+    "fontesPreferidas":["string"]
+  },
+  "cronogramaEstudos": [
+    {"semana":1,"titulo":"string","foco":"string","materias":[{"materia":"string","atividades":["string"],"horasSugeridas":"string","metaQuestoes":"string"}]}
+  ],
+  "bibliografia": [
+    {"materia":"string","obras":[{"titulo":"string","autor":"string","observacao":"string"}]}
+  ],
+  "observacoesEstrategicas":["string"],
+
+  "banca": {"nome":"string","estilo":"string","pegadinhas":"string","foco":"string"},
   "materias": [{"nome":"matéria","peso":1,"horas_sugeridas":10}],
-  "semanas": [{"semana":1,"titulo":"Semana 1 — Fundamentos","dias":[{"dia":"Seg","date":"${today}","materia":"nome","subtema":"subtema específico","tipo":"Teoria","horas":2,"meta_questoes":20,"descanso":false}]}],
-  "flashcards": [{"topico":"tópico","pergunta":"pergunta objetiva","resposta":"resposta completa e didática","fonte":"base legal ou doutrinária","armadilha":"pegadinha típica da banca"}]
+  "semanas": [{"semana":1,"titulo":"Semana 1","dias":[{"dia":"Seg","date":"${today}","materia":"nome","subtema":"subtema específico","tipo":"Teoria","horas":2,"meta_questoes":20,"descanso":false}]}],
+  "flashcards": [{"topico":"tópico","pergunta":"pergunta objetiva","resposta":"resposta completa e didática","fonte":"base legal, doutrinária ou editalícia","armadilha":"pegadinha típica da banca"}]
 }
 
 REGRAS:
-- Exatamente ${weeks} semanas com 7 dias cada
-- Domingo sempre descanso
-- Use datas reais sequenciais a partir de hoje
-- Priorize matérias pelo peso no edital
-- Alterne: Teoria → Questões → Revisão
-- Mínimo 15 flashcards`
+- Seja FIEL ao texto do edital nas informações factuais (vagas, datas, requisitos, conteúdo programático). NÃO invente tópicos.
+- Para análise de banca, estratégia, tópicos quentes e bibliografia, use seu conhecimento de mercado de concursos — mas seja conservador e realista.
+- Use linguagem objetiva, técnica, sem floreio.
+- Se alguma informação não estiver no edital, escreva "Não informado" em campos string ou retorne array vazio.
+- Português do Brasil.
+- Extraia TODOS os tópicos do conteúdo programático sem omitir nenhum.
+- O cronograma de estudos deve ter entre 10 e 16 semanas, equilibrado por peso das matérias.
+- No campo "semanas", mantenha exatamente ${weeks} semanas com 7 dias cada para compatibilidade com a tela atual; domingo sempre descanso.
+- Use datas reais sequenciais a partir de hoje no campo "semanas".
+- Inclua no mínimo 15 flashcards.`
 
-    const raw = await callAI({ prompt, systemPrompt, provider, maxTokens: 4000 })
+    const raw = await callAI({ prompt, systemPrompt, provider, maxTokens: 8000 })
     const planData = parseAIJson<StudyPlanData>(raw)
 
     const plan = await prisma.studyPlan.create({
