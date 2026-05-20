@@ -11,6 +11,7 @@ interface AICallOptions {
   systemPrompt?: string
   useCache?: boolean      // padrão: true
   cacheTTL?: number       // ms — padrão 7 dias
+  action?: string
 }
 
 async function getApiKey(provider: AIProvider): Promise<{ key: string; model: string } | null> {
@@ -25,6 +26,58 @@ async function getApiKey(provider: AIProvider): Promise<{ key: string; model: st
   }
 }
 
+function estimateTokens(text: string): number {
+  return Math.max(1, Math.ceil((text || '').length / 4))
+}
+
+function estimateCostUsd(provider: string, model: string, inputTokens: number, outputTokens: number): number {
+  const key = `${provider}:${model}`.toLowerCase()
+  let inPerM = 3
+  let outPerM = 15
+
+  if (key.includes('haiku')) { inPerM = 1; outPerM = 5 }
+  else if (key.includes('opus')) { inPerM = 15; outPerM = 75 }
+  else if (key.includes('gpt-4o-mini')) { inPerM = 0.15; outPerM = 0.6 }
+  else if (key.includes('gpt-4o')) { inPerM = 2.5; outPerM = 10 }
+  else if (key.includes('gemini') || provider === 'gemini') { inPerM = 0.35; outPerM = 1.05 }
+  else if (key.includes('grok')) { inPerM = 2; outPerM = 10 }
+  else if (provider === 'openrouter') { inPerM = 1; outPerM = 3 }
+
+  return Number(((inputTokens / 1_000_000) * inPerM + (outputTokens / 1_000_000) * outPerM).toFixed(6))
+}
+
+async function logAIUsage(opts: { provider: string; model: string; prompt: string; systemPrompt?: string; response: string; action?: string; cached?: boolean }) {
+  try {
+    const inputTokens = estimateTokens((opts.systemPrompt || '') + '\n' + opts.prompt)
+    const outputTokens = estimateTokens(opts.response)
+    const totalTokens = inputTokens + outputTokens
+    const costUsd = opts.cached ? 0 : estimateCostUsd(opts.provider, opts.model, inputTokens, outputTokens)
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS ai_usage (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        model TEXT,
+        action TEXT,
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+        cached BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO ai_usage (id, provider, model, action, prompt_tokens, completion_tokens, total_tokens, cost_usd, cached, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)`,
+      crypto.randomUUID(), opts.provider, opts.model, opts.action || 'unknown', inputTokens, outputTokens, totalTokens, costUsd, !!opts.cached
+    )
+  } catch (e) {
+    console.error('[AI usage log error]', e)
+  }
+}
+
 export async function callAI({
   prompt,
   provider = 'claude',
@@ -32,27 +85,30 @@ export async function callAI({
   systemPrompt,
   useCache = true,
   cacheTTL,
+  action = 'unknown',
 }: AICallOptions): Promise<string> {
   const config = await getApiKey(provider)
   const apiKey = config?.key || getEnvKey(provider)
   const model = config?.model || getDefaultModel(provider)
 
-  // Verificar cache primeiro
   if (useCache) {
     const cacheKey = hashPrompt(prompt + (systemPrompt || ''), provider)
     const cached = await getCached(cacheKey)
     if (cached) {
       console.log(`[AI Cache HIT] provider=${provider} hash=${cacheKey.slice(0, 8)}`)
+      void logAIUsage({ provider, model, prompt, systemPrompt, response: cached, action, cached: true })
       return cached
     }
 
-    // Chamar IA e salvar no cache
     const response = await callProvider({ provider, prompt, systemPrompt, maxTokens, apiKey, model })
     await setCache(cacheKey, prompt, response, provider, model, cacheTTL)
+    void logAIUsage({ provider, model, prompt, systemPrompt, response, action, cached: false })
     return response
   }
 
-  return callProvider({ provider, prompt, systemPrompt, maxTokens, apiKey, model })
+  const response = await callProvider({ provider, prompt, systemPrompt, maxTokens, apiKey, model })
+  void logAIUsage({ provider, model, prompt, systemPrompt, response, action, cached: false })
+  return response
 }
 
 interface CallProviderOptions {
