@@ -1,7 +1,8 @@
 'use client'
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, CheckCircle, XCircle, RefreshCw, Save, Users, BarChart3, Zap, Settings } from 'lucide-react'
+import { Loader2, CheckCircle, XCircle, RefreshCw, Save, Users, BarChart3, Zap, Settings, DollarSign } from 'lucide-react'
 
 const PROVIDERS = [
   { id: 'claude',      name: 'Claude (Anthropic)', icon: '🟠', models: ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001', 'claude-opus-4-6'] },
@@ -154,10 +155,24 @@ export default function AdminPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="font-heading text-2xl font-bold">⚙ Administração</h1>
         <p className="text-zinc-400 text-sm mt-1">Gerencie APIs, limites e usuários da plataforma</p>
       </div>
+
+      <Link
+        href="/admin/custos"
+        className="card p-4 mb-6 flex items-center gap-3 border border-green-500/20 bg-green-500/5 hover:bg-green-500/10 transition-colors"
+      >
+        <div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400">
+          <DollarSign size={20} />
+        </div>
+        <div className="flex-1">
+          <div className="font-heading font-bold text-sm text-zinc-100">Gráficos de gastos da IA</div>
+          <div className="text-xs text-zinc-500 mt-0.5">Veja custos, tokens, chamadas por provedor e últimos 7 dias</div>
+        </div>
+        <div className="text-zinc-500 text-lg">›</div>
+      </Link>
 
       {/* Stats */}
       {stats && (
@@ -181,7 +196,7 @@ export default function AdminPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-white/[0.07] mb-6">
+      <div className="flex gap-0 border-b border-white/[0.07] mb-6 overflow-x-auto">
         {[
           { id: 'apis', label: '🔑 APIs de IA' },
           { id: 'limites', label: '⚙ Limites' },
@@ -191,7 +206,7 @@ export default function AdminPage() {
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id as any)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
               activeTab === t.id
                 ? 'border-brand-500 text-brand-300'
                 : 'border-transparent text-zinc-500 hover:text-zinc-300'
