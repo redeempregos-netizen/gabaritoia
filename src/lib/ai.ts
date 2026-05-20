@@ -37,6 +37,10 @@ function estimateCostUsd(provider: string, model: string, inputTokens: number, o
 
   if (key.includes('haiku')) { inPerM = 1; outPerM = 5 }
   else if (key.includes('opus')) { inPerM = 15; outPerM = 75 }
+  else if (key.includes('gpt-5.5')) { inPerM = 3; outPerM = 15 }
+  else if (key.includes('gpt-5.4-mini')) { inPerM = 0.25; outPerM = 2 }
+  else if (key.includes('gpt-5.4-nano')) { inPerM = 0.05; outPerM = 0.4 }
+  else if (key.includes('gpt-5.4')) { inPerM = 2; outPerM = 8 }
   else if (key.includes('gpt-4o-mini')) { inPerM = 0.15; outPerM = 0.6 }
   else if (key.includes('gpt-4o')) { inPerM = 2.5; outPerM = 10 }
   else if (key.includes('gemini') || provider === 'gemini') { inPerM = 0.35; outPerM = 1.05 }
@@ -152,7 +156,31 @@ async function callClaude(prompt: string, system: string | undefined, maxTokens:
   return msg.content.map(b => b.type === 'text' ? b.text : '').join('')
 }
 
+function isGPT5Model(model: string): boolean {
+  return model.toLowerCase().startsWith('gpt-5')
+}
+
 async function callOpenAI(prompt: string, system: string | undefined, maxTokens: number, apiKey: string, model: string): Promise<string> {
+  if (isGPT5Model(model)) {
+    const res = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        max_output_tokens: maxTokens,
+        input: [
+          ...(system ? [{ role: 'system', content: [{ type: 'input_text', text: system }] }] : []),
+          { role: 'user', content: [{ type: 'input_text', text: prompt }] },
+        ],
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error?.message || `OpenAI error ${res.status}`)
+    if (typeof data.output_text === 'string') return data.output_text
+    const text = data.output?.flatMap((item: any) => item.content || [])?.map((c: any) => c.text || '').join('')
+    return text || ''
+  }
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -234,7 +262,7 @@ function getEnvKey(provider: AIProvider): string | undefined {
 function getDefaultModel(provider: AIProvider): string {
   const map: Record<AIProvider, string> = {
     claude: 'claude-sonnet-4-20250514',
-    openai: 'gpt-4o',
+    openai: 'gpt-5.5',
     gemini: 'gemini-2.0-flash',
     grok: 'grok-2',
     openrouter: 'google/gemini-2.0-flash-001',
