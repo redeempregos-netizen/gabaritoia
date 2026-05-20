@@ -65,20 +65,38 @@ export async function POST(req: NextRequest) {
 
     const isTF = params.type === 'TRUE_FALSE'
     const isOriginal = params.format === 'Questão inédita'
-    const isEdital = !!params.editalText
+    const isEdital = !!params.editalText?.trim()
 
-    const systemPrompt = 'Você é especialista em concursos públicos brasileiros. Responda SEMPRE com JSON válido, sem texto antes ou depois, sem backticks.'
+    const systemPrompt = 'Você é especialista em concursos públicos brasileiros. Responda SOMENTE JSON válido, sem texto antes ou depois, sem markdown e sem backticks.'
 
-    let prompt: string
-    if (isEdital) {
-      prompt = `Com base no edital abaixo crie EXATAMENTE ${params.quantity} questao nivel ${params.difficulty}. EDITAL: ${params.editalText!.substring(0, 3000)}. JSON: [{"enunciado":"texto","options":["A","B","C","D","E"],"correctIndex":0,"comentario":"explicacao","area":"materia","subtopic":"subtopico"}]`
-    } else if (isTF) {
-      prompt = `Banca ${params.banca}. Crie EXATAMENTE ${params.quantity} afirmacao CERTO ou ERRADO. Area: ${params.area}. Dificuldade: ${params.difficulty}. Formato: ${isOriginal ? 'inedita' : 'estilo ' + params.banca}. JSON: [{"enunciado":"afirmacao","options":["Certo","Errado"],"correctIndex":0,"comentario":"explicacao com fundamentos","subtopic":"subtopico"}]`
-    } else {
-      prompt = `Banca ${params.banca}. Crie EXATAMENTE ${params.quantity} questao multipla escolha 5 alternativas. Area: ${params.area}. Dificuldade: ${params.difficulty}. Formato: ${isOriginal ? 'inedita' : 'estilo ' + params.banca}. JSON: [{"enunciado":"texto completo","options":["A","B","C","D","E"],"correctIndex":0,"comentario":"explicacao detalhada com fundamentos legais","subtopic":"subtopico"}]`
-    }
+    const contextoBase = `
+BANCA: ${params.banca}
+ÁREA: ${params.area}
+CARGO: ${params.cargo || 'Não informado'}
+ESCOLARIDADE: ${params.education || 'Não informado'}
+DIFICULDADE: ${params.difficulty}
+FORMATO: ${isOriginal ? 'questão inédita' : 'estilo da banca ' + params.banca}
+TIPO: ${isTF ? 'Certo ou Errado' : 'Múltipla escolha com 5 alternativas'}
+${isEdital ? `\nCONTEXTO DO EDITAL/CONCURSO:\n${params.editalText!.substring(0, 8000)}` : ''}`
 
-    const raw = await callAI({ prompt, systemPrompt, provider, maxTokens: 2500 })
+    const schemaJson = isTF
+      ? '[{"enunciado":"afirmacao completa","options":["Certo","Errado"],"correctIndex":0,"comentario":"explicacao objetiva com fundamento","subtopic":"subtopico","area":"materia"}]'
+      : '[{"enunciado":"texto completo da questao","options":["alternativa A","alternativa B","alternativa C","alternativa D","alternativa E"],"correctIndex":0,"comentario":"explicacao detalhada com fundamento","subtopic":"subtopico","area":"materia"}]'
+
+    const prompt = `Crie EXATAMENTE ${params.quantity} questão(ões) para concurso público brasileiro.
+
+${contextoBase}
+
+REGRAS:
+- Use o contexto do edital quando fornecido para escolher temas, subtemas, cargo, órgão, banca e nível de cobrança.
+- Se o usuário informou apenas uma referência do edital/concurso sem texto completo, use isso apenas como orientação e não invente dados factuais específicos.
+- As questões devem ser plausíveis para a banca ${params.banca}, com pegadinhas e linguagem compatíveis.
+- Não copie questões reais literalmente.
+- Não mencione que usou IA.
+- Cada comentário deve explicar por que a resposta está correta e, quando possível, o fundamento legal, técnico ou conceitual.
+- Responda SOMENTE com JSON válido no formato: ${schemaJson}`
+
+    const raw = await callAI({ prompt, systemPrompt, provider, maxTokens: 3500, useCache: false })
     const parsed = parseAIJson<Array<{
       enunciado: string
       options: string[]
