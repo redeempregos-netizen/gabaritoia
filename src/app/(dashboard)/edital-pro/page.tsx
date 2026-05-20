@@ -30,6 +30,7 @@ export default function EditalProPage() {
   const [provider, setProvider] = useState('claude')
   const [analyzingEdital, setAnalyzingEdital] = useState(false)
   const [analysis, setAnalysis] = useState<EditalAnalysis | null>(null)
+  const [extractingPdf, setExtractingPdf] = useState(false)
 
   useEffect(() => {
     fetch('/api/admin/stats').then(r => r.json()).then(data => {
@@ -100,24 +101,58 @@ export default function EditalProPage() {
   }
 
   function setExtractedText(text: string) {
-    const cleaned = text.replace(/\s{3,}/g, ' ').substring(0, 12000)
+    const cleaned = text
+      .replace(/\u0000/g, ' ')
+      .replace(/\s{3,}/g, ' ')
+      .replace(/([a-záéíóúâêôãõç])([A-ZÁÉÍÓÚÂÊÔÃÕÇ])/g, '$1 $2')
+      .substring(0, 30000)
     setEditalText(cleaned)
+    if (cleaned.length < 800) {
+      toast.warning('Pouco texto foi extraído. O PDF pode ser escaneado ou conter imagem. Tente enviar um PDF pesquisável ou TXT.')
+    }
     void analisarEdital(cleaned)
+  }
+
+  async function extractPdfText(file: File) {
+    setExtractingPdf(true)
+    try {
+      const pdfjs = await import('pdfjs-dist')
+      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
+      const buffer = await file.arrayBuffer()
+      const pdf = await pdfjs.getDocument({ data: buffer }).promise
+      const chunks: string[] = []
+      const maxPages = Math.min(pdf.numPages, 80)
+
+      for (let pageNumber = 1; pageNumber <= maxPages; pageNumber++) {
+        const page = await pdf.getPage(pageNumber)
+        const content = await page.getTextContent()
+        const pageText = content.items
+          .map((item: any) => item.str || '')
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+        if (pageText) chunks.push(`\n--- PÁGINA ${pageNumber} ---\n${pageText}`)
+      }
+
+      const text = chunks.join('\n')
+      if (!text.trim()) throw new Error('PDF sem texto pesquisável')
+      setExtractedText(text)
+    } catch (e) {
+      console.error(e)
+      toast.error('Não consegui extrair texto real do PDF. Ele pode estar escaneado. Tente enviar o edital em TXT ou um PDF pesquisável.')
+      setEditalText('')
+    } finally {
+      setExtractingPdf(false)
+    }
   }
 
   function processFile(file: File) {
     setFileName(file.name)
     setAnalysis(null)
     setCargo('')
-    if (file.type === 'application/pdf') {
-      const reader = new FileReader()
-      reader.onload = e => {
-        const arr = new Uint8Array(e.target?.result as ArrayBuffer)
-        let text = ''
-        for (let i = 0; i < arr.length; i++) { if (arr[i] > 31 && arr[i] < 127) text += String.fromCharCode(arr[i]) }
-        setExtractedText(text.replace(/[^\x20-\x7E\n]/g, ' '))
-      }
-      reader.readAsArrayBuffer(file)
+    setEditalText('')
+    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      void extractPdfText(file)
     } else {
       const reader = new FileReader()
       reader.onload = e => setExtractedText(e.target?.result as string)
@@ -211,9 +246,10 @@ export default function EditalProPage() {
             >
               <Upload size={32} className="mx-auto mb-3 text-zinc-500" />
               <div className="font-heading font-semibold mb-1">{fileName || 'Arraste o edital aqui'}</div>
-              <div className="text-sm text-zinc-500">{editalText ? `${Math.round(editalText.length / 100) / 10}kb extraídos` : 'PDF, TXT — ou clique para selecionar'}</div>
-              {analyzingEdital && <div className="mt-2 text-xs text-brand-300 flex items-center justify-center gap-1"><Loader2 size={12} className="animate-spin" /> Reconhecendo banca e cargos...</div>}
-              {!analyzingEdital && editalText && <div className="mt-2 text-xs text-green-400">✓ Edital carregado</div>}
+              <div className="text-sm text-zinc-500">{editalText ? `${Math.round(editalText.length / 100) / 10}kb extraídos` : 'PDF pesquisável ou TXT — clique para selecionar'}</div>
+              {extractingPdf && <div className="mt-2 text-xs text-brand-300 flex items-center justify-center gap-1"><Loader2 size={12} className="animate-spin" /> Extraindo texto real do PDF...</div>}
+              {analyzingEdital && !extractingPdf && <div className="mt-2 text-xs text-brand-300 flex items-center justify-center gap-1"><Loader2 size={12} className="animate-spin" /> Reconhecendo banca e cargos...</div>}
+              {!analyzingEdital && !extractingPdf && editalText && <div className="mt-2 text-xs text-green-400">✓ Edital carregado</div>}
             </div>
             <input type="file" id="ep-file" accept=".pdf,.txt,.doc,.docx" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f) }} />
 
@@ -290,9 +326,9 @@ export default function EditalProPage() {
               </div>
             </div>
 
-            <button onClick={gerarPlano} disabled={loading || analyzingEdital || !editalText || (Boolean(analysis?.cargos?.length) && !cargo)}
+            <button onClick={gerarPlano} disabled={loading || analyzingEdital || extractingPdf || !editalText || (Boolean(analysis?.cargos?.length) && !cargo)}
               className="w-full mt-4 bg-gradient-to-r from-brand-600 to-purple-600 text-white font-bold rounded-xl px-6 py-3.5 flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-40">
-              {loading ? <><Loader2 size={16} className="animate-spin" />Gerando plano...</> : analyzingEdital ? <><Loader2 size={16} className="animate-spin" />Analisando edital...</> : '🚀 Gerar plano completo com IA'}
+              {loading ? <><Loader2 size={16} className="animate-spin" />Gerando plano...</> : extractingPdf ? <><Loader2 size={16} className="animate-spin" />Extraindo PDF...</> : analyzingEdital ? <><Loader2 size={16} className="animate-spin" />Analisando edital...</> : '🚀 Gerar plano completo com IA'}
             </button>
           </div>
 
