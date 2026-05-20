@@ -22,7 +22,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const params = schema.parse(body)
 
-    // Usar provider enviado ou buscar padrão do admin
     let provider: AIProvider = (params.provider as AIProvider) || 'claude'
     if (!params.provider) {
       try {
@@ -38,36 +37,21 @@ export async function POST(req: NextRequest) {
       weeks = Math.max(10, Math.min(16, Math.ceil(diff / 7)))
     }
 
-    const systemPrompt = `Você é um especialista em concursos públicos brasileiros, com profundo conhecimento de bancas (Cebraspe, FGV, FCC, Cesgranrio, Vunesp, Quadrix, IBFC, IDECAN, etc.), estilos de prova, jurisprudência e doutrina cobradas.
-Responda SEMPRE com JSON válido, sem texto antes ou depois, sem backticks markdown.`
+    const systemPrompt = `Você é um especialista em concursos públicos brasileiros, com profundo conhecimento de bancas, estilos de prova, jurisprudência e doutrina cobradas. Responda SOMENTE JSON válido. Não escreva explicações, markdown, comentários, texto antes ou depois.`
 
-    const prompt = `Sua tarefa é fazer uma ANÁLISE COMPLETA e VERTICALIZADA do edital enviado. Vá MUITO além de copiar tópicos: extraia tudo, organize hierarquicamente e adicione inteligência prática para o candidato.
-
-Use a ferramenta return_verticalized_edital conceitualmente, mas responda SOMENTE com JSON válido no formato abaixo, porque o sistema consumirá esse JSON.
+    const prompt = `Faça uma análise completa e verticalizada do edital enviado.
 
 CONTEÚDO DO EDITAL:
 ${params.editalText.substring(0, 12000)}
 
-CONFIGURAÇÕES DO CANDIDATO:
+CONFIGURAÇÕES:
 - Cargo/vaga pretendida: ${params.cargo || 'Não informado'}
 - Horas por dia: ${params.hoursPerDay}
 - Nível do candidato: ${params.level}
 - Semanas sugeridas: ${weeks}
 - Data de hoje: ${today}
 
-O que entregar:
-1. Identificação completa: cargo, banca, órgão, vagas (incluindo cadastro reserva e PCD), remuneração detalhada, benefícios, requisitos, atribuições do cargo.
-2. Cronograma do certame: datas importantes (publicação, inscrições, prova objetiva, discursiva, TAF, resultado, etc.) na ordem cronológica.
-3. Etapas do concurso: cada fase (objetiva, discursiva, TAF, psicotécnico, investigação social, curso de formação) com caráter (eliminatório/classificatório) e descrição.
-4. Provas detalhadas: para cada prova, liste disciplinas com nº de questões e peso, duração, total de questões e nota mínima.
-5. Conteúdo programático verticalizado em árvore (matéria > tópico > subtópicos). EXTRAIA TODOS OS TÓPICOS sem omitir nenhum. Quebre em subtópicos sempre que possível (1.1.1, 1.1.2). Para cada matéria, indique nº de questões e peso quando informados.
-6. Para cada matéria, adicione "estrategia" (1-2 frases sobre como estudar essa matéria nesta banca) e "topicosQuentes" (3-6 assuntos historicamente mais cobrados pela banca nesse cargo/área).
-7. Análise da banca: estilo de questões, pegadinhas comuns, % de letra de lei vs jurisprudência vs doutrina, fontes preferidas.
-8. Cronograma de estudos sugerido (10-16 semanas) equilibrado por peso das matérias.
-9. Bibliografia recomendada por matéria (autores e títulos consagrados; só cite obras realmente usadas para concurso, sem inventar).
-10. Observações estratégicas finais (de 3 a 6 dicas práticas).
-
-Responda SOMENTE com este JSON:
+Responda SOMENTE com JSON válido neste formato:
 {
   "identificacao": {
     "cargo": "string",
@@ -81,48 +65,14 @@ Responda SOMENTE com este JSON:
     "requisitos": ["string"],
     "atribuicoes": ["string"]
   },
-  "cronogramaCertame": [
-    {"evento":"string","data":"string","observacao":"string"}
-  ],
-  "etapasConcurso": [
-    {"nome":"string","carater":"string","descricao":"string"}
-  ],
-  "provasDetalhadas": [
-    {
-      "nome":"string",
-      "duracao":"string",
-      "totalQuestoes":"string",
-      "notaMinima":"string",
-      "disciplinas":[{"nome":"string","questoes":"string","peso":"string"}]
-    }
-  ],
-  "conteudoVerticalizado": [
-    {
-      "materia":"string",
-      "questoes":"string",
-      "peso":"string",
-      "estrategia":"string",
-      "topicosQuentes":["string"],
-      "topicos":[
-        {"codigo":"1","nome":"string","subtopicos":[{"codigo":"1.1","nome":"string","subtopicos":[{"codigo":"1.1.1","nome":"string"}]}]}
-      ]
-    }
-  ],
-  "analiseBanca": {
-    "nome":"string",
-    "estiloQuestoes":"string",
-    "pegadinhasComuns":["string"],
-    "percentuais":{"leiSeca":"string","jurisprudencia":"string","doutrina":"string"},
-    "fontesPreferidas":["string"]
-  },
-  "cronogramaEstudos": [
-    {"semana":1,"titulo":"string","foco":"string","materias":[{"materia":"string","atividades":["string"],"horasSugeridas":"string","metaQuestoes":"string"}]}
-  ],
-  "bibliografia": [
-    {"materia":"string","obras":[{"titulo":"string","autor":"string","observacao":"string"}]}
-  ],
+  "cronogramaCertame": [{"evento":"string","data":"string","observacao":"string"}],
+  "etapasConcurso": [{"nome":"string","carater":"string","descricao":"string"}],
+  "provasDetalhadas": [{"nome":"string","duracao":"string","totalQuestoes":"string","notaMinima":"string","disciplinas":[{"nome":"string","questoes":"string","peso":"string"}]}],
+  "conteudoVerticalizado": [{"materia":"string","questoes":"string","peso":"string","estrategia":"string","topicosQuentes":["string"],"topicos":[{"codigo":"1","nome":"string","subtopicos":[{"codigo":"1.1","nome":"string","subtopicos":[{"codigo":"1.1.1","nome":"string"}]}]}]}],
+  "analiseBanca": {"nome":"string","estiloQuestoes":"string","pegadinhasComuns":["string"],"percentuais":{"leiSeca":"string","jurisprudencia":"string","doutrina":"string"},"fontesPreferidas":["string"]},
+  "cronogramaEstudos": [{"semana":1,"titulo":"string","foco":"string","materias":[{"materia":"string","atividades":["string"],"horasSugeridas":"string","metaQuestoes":"string"}]}],
+  "bibliografia": [{"materia":"string","obras":[{"titulo":"string","autor":"string","observacao":"string"}]}],
   "observacoesEstrategicas":["string"],
-
   "banca": {"nome":"string","estilo":"string","pegadinhas":"string","foco":"string"},
   "materias": [{"nome":"matéria","peso":1,"horas_sugeridas":10}],
   "semanas": [{"semana":1,"titulo":"Semana 1","dias":[{"dia":"Seg","date":"${today}","materia":"nome","subtema":"subtema específico","tipo":"Teoria","horas":2,"meta_questoes":20,"descanso":false}]}],
@@ -130,18 +80,15 @@ Responda SOMENTE com este JSON:
 }
 
 REGRAS:
-- Seja FIEL ao texto do edital nas informações factuais (vagas, datas, requisitos, conteúdo programático). NÃO invente tópicos.
-- Para análise de banca, estratégia, tópicos quentes e bibliografia, use seu conhecimento de mercado de concursos — mas seja conservador e realista.
-- Use linguagem objetiva, técnica, sem floreio.
-- Se alguma informação não estiver no edital, escreva "Não informado" em campos string ou retorne array vazio.
-- Português do Brasil.
-- Extraia TODOS os tópicos do conteúdo programático sem omitir nenhum.
-- O cronograma de estudos deve ter entre 10 e 16 semanas, equilibrado por peso das matérias.
-- No campo "semanas", mantenha exatamente ${weeks} semanas com 7 dias cada para compatibilidade com a tela atual; domingo sempre descanso.
-- Use datas reais sequenciais a partir de hoje no campo "semanas".
-- Inclua no mínimo 15 flashcards.`
+- Seja fiel ao edital em vagas, datas, requisitos e conteúdo programático. Não invente tópicos factuais.
+- Se algo não estiver no edital, use "Não informado" ou array vazio.
+- Extraia todos os tópicos do conteúdo programático sem omitir nenhum.
+- Para estratégia, tópicos quentes, análise de banca e bibliografia, use conhecimento de concursos de forma conservadora.
+- Campo "semanas": exatamente ${weeks} semanas com 7 dias cada; domingo sempre descanso; datas reais sequenciais a partir de hoje.
+- Inclua no mínimo 10 flashcards.
+- JSON não permite comentários, aspas curvas, vírgula sobrando no final, nem texto fora do objeto.`
 
-    const raw = await callAI({ prompt, systemPrompt, provider, maxTokens: 8000 })
+    const raw = await callAI({ prompt, systemPrompt, provider, maxTokens: 8000, useCache: false })
     const planData = parseAIJson<StudyPlanData>(raw)
 
     const plan = await prisma.studyPlan.create({
