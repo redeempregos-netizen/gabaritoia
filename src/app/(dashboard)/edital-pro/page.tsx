@@ -8,6 +8,8 @@ interface StudyWeek { semana: number; titulo: string; dias: StudyDay[] }
 interface Flashcard { topico: string; pergunta: string; resposta: string; fonte: string; armadilha: string }
 interface BancaInfo { nome: string; estilo: string; pegadinhas: string; foco: string }
 interface PlanData { banca: BancaInfo; materias: Array<{ nome: string; peso: number }>; semanas: StudyWeek[]; flashcards: Flashcard[] }
+interface CargoDetectado { nome: string; vagas?: string; requisitos?: string; remuneracao?: string }
+interface EditalAnalysis { banca: string; orgao: string; cargos: CargoDetectado[] }
 
 export default function EditalProPage() {
   const [editalText, setEditalText] = useState('')
@@ -26,6 +28,8 @@ export default function EditalProPage() {
   const [dragging, setDragging] = useState(false)
   const [loadingMoreFlash, setLoadingMoreFlash] = useState(false)
   const [provider, setProvider] = useState('claude')
+  const [analyzingEdital, setAnalyzingEdital] = useState(false)
+  const [analysis, setAnalysis] = useState<EditalAnalysis | null>(null)
 
   useEffect(() => {
     fetch('/api/admin/stats').then(r => r.json()).then(data => {
@@ -37,33 +41,69 @@ export default function EditalProPage() {
     }).catch(() => {})
   }, [])
 
+  async function analisarEdital(text: string) {
+    if (!text || text.length < 10) return
+    setAnalyzingEdital(true)
+    setAnalysis(null)
+    setCargo('')
+    try {
+      const res = await fetch('/api/ai/analyze-edital', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ editalText: text, provider }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error || 'Não foi possível analisar o edital'); return }
+      const detected: EditalAnalysis = data.analysis
+      setAnalysis(detected)
+      if (detected.cargos?.length === 1) setCargo(detected.cargos[0].nome)
+      if (detected.cargos?.length > 1) toast.success(`${detected.cargos.length} cargos encontrados. Selecione o seu cargo.`)
+      else toast.success('Edital analisado com sucesso!')
+    } catch { toast.error('Erro ao reconhecer banca e cargos') }
+    finally { setAnalyzingEdital(false) }
+  }
+
+  function setExtractedText(text: string) {
+    const cleaned = text.replace(/\s{3,}/g, ' ').substring(0, 12000)
+    setEditalText(cleaned)
+    void analisarEdital(cleaned)
+  }
+
   function processFile(file: File) {
     setFileName(file.name)
+    setAnalysis(null)
+    setCargo('')
     if (file.type === 'application/pdf') {
       const reader = new FileReader()
       reader.onload = e => {
         const arr = new Uint8Array(e.target?.result as ArrayBuffer)
         let text = ''
         for (let i = 0; i < arr.length; i++) { if (arr[i] > 31 && arr[i] < 127) text += String.fromCharCode(arr[i]) }
-        setEditalText(text.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s{3,}/g, ' ').substring(0, 5000))
+        setExtractedText(text.replace(/[^\x20-\x7E\n]/g, ' '))
       }
       reader.readAsArrayBuffer(file)
     } else {
       const reader = new FileReader()
-      reader.onload = e => setEditalText((e.target?.result as string).substring(0, 5000))
+      reader.onload = e => setExtractedText(e.target?.result as string)
       reader.readAsText(file, 'utf-8')
     }
   }
 
   async function gerarPlano() {
     if (!editalText) { toast.error('Faça upload do edital primeiro'); return }
+    if (analysis?.cargos?.length && !cargo) { toast.error('Selecione o cargo antes de gerar o plano'); return }
     setLoading(true)
     setPlan(null)
     try {
+      const cargoSelecionado = analysis?.cargos?.find(c => c.nome === cargo)
+      const cargoContexto = cargoSelecionado
+        ? `${cargoSelecionado.nome} | Vagas: ${cargoSelecionado.vagas || 'Não informado'} | Requisitos: ${cargoSelecionado.requisitos || 'Não informado'} | Remuneração: ${cargoSelecionado.remuneracao || 'Não informado'}`
+        : cargo
+
       const res = await fetch('/api/ai/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ editalText, cargo, examDate, hoursPerDay, level, provider }),
+        body: JSON.stringify({ editalText, cargo: cargoContexto, examDate, hoursPerDay, level, provider }),
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || 'Erro ao gerar plano'); return }
@@ -113,6 +153,7 @@ export default function EditalProPage() {
 
   const topicos = plan ? ['todos', ...Array.from(new Set(plan.flashcards.map(f => f.topico)))] : []
   const filteredCards = plan?.flashcards.filter(f => fcFilter === 'todos' || f.topico === fcFilter) || []
+  const selectedCargo = analysis?.cargos?.find(c => c.nome === cargo)
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -135,12 +176,42 @@ export default function EditalProPage() {
               <Upload size={32} className="mx-auto mb-3 text-zinc-500" />
               <div className="font-heading font-semibold mb-1">{fileName || 'Arraste o edital aqui'}</div>
               <div className="text-sm text-zinc-500">{editalText ? `${Math.round(editalText.length / 100) / 10}kb extraídos` : 'PDF, TXT — ou clique para selecionar'}</div>
-              {editalText && <div className="mt-2 text-xs text-green-400">✓ Edital carregado</div>}
+              {analyzingEdital && <div className="mt-2 text-xs text-brand-300 flex items-center justify-center gap-1"><Loader2 size={12} className="animate-spin" /> Reconhecendo banca e cargos...</div>}
+              {!analyzingEdital && editalText && <div className="mt-2 text-xs text-green-400">✓ Edital carregado</div>}
             </div>
             <input type="file" id="ep-file" accept=".pdf,.txt,.doc,.docx" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f) }} />
 
             <div className="card p-5 space-y-4">
-              <div><label className="label">Cargo / vaga pretendida</label><input className="input" placeholder="Ex: Agente Administrativo..." value={cargo} onChange={e => setCargo(e.target.value)} /></div>
+              {analysis && (
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                  <div className="text-xs font-bold text-brand-300">Dados reconhecidos no edital</div>
+                  <div className="grid sm:grid-cols-2 gap-2 text-xs text-zinc-400">
+                    <div><span className="text-zinc-500">Banca:</span> <span className="text-zinc-200">{analysis.banca || 'Não informado'}</span></div>
+                    <div><span className="text-zinc-500">Órgão:</span> <span className="text-zinc-200">{analysis.orgao || 'Não informado'}</span></div>
+                  </div>
+                  {analysis.cargos?.length > 0 && (
+                    <div>
+                      <label className="label">Selecione o cargo</label>
+                      <select className="input" value={cargo} onChange={e => setCargo(e.target.value)} style={{ colorScheme: 'dark' }}>
+                        <option value="">Escolha um cargo encontrado no edital</option>
+                        {analysis.cargos.map((c, i) => <option key={`${c.nome}-${i}`} value={c.nome}>{c.nome}</option>)}
+                      </select>
+                      {selectedCargo && (
+                        <div className="mt-3 text-xs text-zinc-400 space-y-1">
+                          <div><strong className="text-zinc-300">Vagas:</strong> {selectedCargo.vagas || 'Não informado'}</div>
+                          <div><strong className="text-zinc-300">Requisitos:</strong> {selectedCargo.requisitos || 'Não informado'}</div>
+                          <div><strong className="text-zinc-300">Remuneração:</strong> {selectedCargo.remuneracao || 'Não informado'}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(!analysis || !analysis.cargos?.length) && (
+                <div><label className="label">Cargo / vaga pretendida</label><input className="input" placeholder="Ex: Agente Administrativo..." value={cargo} onChange={e => setCargo(e.target.value)} /></div>
+              )}
+
               <div><label className="label">Data da prova (opcional)</label><input type="date" className="input" value={examDate} onChange={e => setExamDate(e.target.value)} style={{ colorScheme: 'dark' }} /></div>
               <div>
                 <label className="label">Horas por dia</label>
@@ -160,14 +231,15 @@ export default function EditalProPage() {
               </div>
             </div>
 
-            <button onClick={gerarPlano} disabled={loading || !editalText}
+            <button onClick={gerarPlano} disabled={loading || analyzingEdital || !editalText || (Boolean(analysis?.cargos?.length) && !cargo)}
               className="w-full mt-4 bg-gradient-to-r from-brand-600 to-purple-600 text-white font-bold rounded-xl px-6 py-3.5 flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-40">
-              {loading ? <><Loader2 size={16} className="animate-spin" />Gerando plano...</> : '🚀 Gerar plano completo com IA'}
+              {loading ? <><Loader2 size={16} className="animate-spin" />Gerando plano...</> : analyzingEdital ? <><Loader2 size={16} className="animate-spin" />Analisando edital...</> : '🚀 Gerar plano completo com IA'}
             </button>
           </div>
 
           <div className="space-y-2">
             {[
+              { icon: '🔎', t: 'Reconhece banca e cargos', d: 'Após o upload, a IA identifica a banca, o órgão e os cargos disponíveis' },
               { icon: '⚡', t: 'Flashcards por tópico', d: '10+ flashcards com pergunta, resposta, fonte legal e armadilha da banca' },
               { icon: '⚖️', t: 'Matérias por peso', d: 'A IA prioriza pelo edital — estude o que mais cai' },
               { icon: '🎯', t: 'Alerta da banca', d: 'Estilo, pegadinhas e foco específico da banca' },
@@ -273,7 +345,7 @@ export default function EditalProPage() {
           </div>
 
           <div className="flex gap-3 flex-wrap">
-            <button onClick={() => { setPlan(null); setEditalText(''); setFileName('') }}
+            <button onClick={() => { setPlan(null); setEditalText(''); setFileName(''); setAnalysis(null); setCargo('') }}
               className="btn-secondary">↩ Novo plano</button>
             <button onClick={gerarMaisFlash} disabled={loadingMoreFlash} className="btn-secondary flex items-center gap-2">
               {loadingMoreFlash ? <Loader2 size={14} className="animate-spin" /> : '⚡'} Mais flashcards
