@@ -6,7 +6,7 @@ import { Loader2, CheckCircle, XCircle, RefreshCw, Save, Users, BarChart3, Zap, 
 
 const PROVIDERS = [
   { id: 'claude',      name: 'Claude (Anthropic)', icon: '🟠', models: ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001', 'claude-opus-4-6'] },
-  { id: 'openai',      name: 'ChatGPT (OpenAI)',   icon: '🟢', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
+  { id: 'openai',      name: 'ChatGPT (OpenAI)',   icon: '🟢', models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
   { id: 'gemini',      name: 'Gemini (Google)',    icon: '🔵', models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
   { id: 'grok',        name: 'Grok (xAI)',         icon: '⚡', models: ['grok-2', 'grok-2-mini', 'grok-beta'] },
   { id: 'openrouter',  name: 'OpenRouter',         icon: '🔶', models: ['google/gemini-2.0-flash-001', 'meta-llama/llama-3.3-70b-instruct', 'anthropic/claude-3.5-sonnet', 'openai/gpt-4o'] },
@@ -174,7 +174,6 @@ export default function AdminPage() {
         <div className="text-zinc-500 text-lg">›</div>
       </Link>
 
-      {/* Stats */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {[
@@ -195,7 +194,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Tabs */}
       <div className="flex gap-0 border-b border-white/[0.07] mb-6 overflow-x-auto">
         {[
           { id: 'apis', label: '🔑 APIs de IA' },
@@ -217,7 +215,6 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {/* APIs */}
       {activeTab === 'apis' && (
         <div>
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-300 mb-4">
@@ -283,6 +280,9 @@ export default function AdminPage() {
                     >
                       {p.models.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
+                    {p.id === 'openai' && (
+                      <p className="text-[11px] text-zinc-500 mt-2">Modelos GPT-5.x usam a Responses API. GPT-4o e antigos continuam compatíveis com Chat Completions.</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -315,7 +315,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Limites */}
       {activeTab === 'limites' && (
         <div className="card p-6">
           <h2 className="font-heading font-semibold text-sm text-brand-300 mb-4">Máximo de questões por geração</h2>
@@ -342,7 +341,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Usuários */}
       {activeTab === 'usuarios' && (
         <div className="card overflow-hidden">
           <div className="p-4 border-b border-white/[0.07]">
@@ -393,7 +391,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Segurança */}
       {activeTab === 'seguranca' && (
         <div className="card p-6">
           <h2 className="font-heading font-semibold text-sm text-brand-300 mb-4">Senha de administrador</h2>
