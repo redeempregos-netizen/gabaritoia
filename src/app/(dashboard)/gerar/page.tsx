@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Upload } from 'lucide-react'
 
 const DIFS = ['Fácil', 'Média', 'Difícil']
 const TIPOS = ['MULTIPLE_CHOICE', 'TRUE_FALSE']
@@ -39,6 +39,10 @@ export default function GerarPage() {
   const [loading, setLoading] = useState(false)
   const [questions, setQuestions] = useState<Question[]>([])
   const [answered, setAnswered] = useState<Record<string, number>>({})
+  const [editalRef, setEditalRef] = useState('')
+  const [editalText, setEditalText] = useState('')
+  const [editalFileName, setEditalFileName] = useState('')
+  const [dragging, setDragging] = useState(false)
 
   useEffect(() => {
     fetch('/api/admin/stats').then(r => r.json()).then(data => {
@@ -53,6 +57,31 @@ export default function GerarPage() {
     }).catch(() => {})
   }, [])
 
+  function processEditalFile(file: File) {
+    setEditalFileName(file.name)
+    if (file.type === 'application/pdf') {
+      const reader = new FileReader()
+      reader.onload = e => {
+        const arr = new Uint8Array(e.target?.result as ArrayBuffer)
+        let text = ''
+        for (let i = 0; i < arr.length; i++) {
+          if (arr[i] > 31 && arr[i] < 127) text += String.fromCharCode(arr[i])
+        }
+        const cleaned = text.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s{3,}/g, ' ').substring(0, 8000)
+        setEditalText(cleaned)
+        toast.success('Edital carregado para contexto das questões')
+      }
+      reader.readAsArrayBuffer(file)
+    } else {
+      const reader = new FileReader()
+      reader.onload = e => {
+        setEditalText(String(e.target?.result || '').replace(/\s{3,}/g, ' ').substring(0, 8000))
+        toast.success('Edital carregado para contexto das questões')
+      }
+      reader.readAsText(file, 'utf-8')
+    }
+  }
+
   async function gerar() {
     if (!banca.trim()) { toast.error('Informe o nome da banca'); return }
     if (!area.trim()) { toast.error('Informe a área do conhecimento'); return }
@@ -60,10 +89,15 @@ export default function GerarPage() {
     setQuestions([])
     setAnswered({})
     try {
+      const contextoEdital = [
+        editalRef.trim() ? `REFERÊNCIA DO EDITAL/CONCURSO: ${editalRef.trim()}` : '',
+        editalText.trim() ? `TRECHO EXTRAÍDO DO EDITAL ORIGINAL: ${editalText.trim()}` : '',
+      ].filter(Boolean).join('\n\n')
+
       const res = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ banca, area, cargo, education, difficulty, type, format, quantity, provider }),
+        body: JSON.stringify({ banca, area, cargo, education, difficulty, type, format, quantity, provider, editalText: contextoEdital || undefined }),
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || 'Erro ao gerar'); return }
@@ -120,7 +154,40 @@ export default function GerarPage() {
           </div>
 
           <div className="card p-5 space-y-4">
-            <div className="font-heading text-sm font-semibold text-brand-300">3. Configurações</div>
+            <div className="font-heading text-sm font-semibold text-brand-300">3. Contexto do edital</div>
+            <div>
+              <label className="label">Referência do edital/concurso</label>
+              <input
+                className="input"
+                placeholder="Ex: Prefeitura de Florianópolis 2023 FEPESE — Professor"
+                value={editalRef}
+                onChange={e => setEditalRef(e.target.value)}
+              />
+              <p className="text-xs text-zinc-600 mt-2">Use para orientar a IA sobre órgão, ano, cidade ou cargo. Busca automática na web pode ser adicionada depois.</p>
+            </div>
+
+            <div
+              className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${dragging ? 'border-brand-500 bg-brand-500/5' : 'border-white/10 hover:border-white/20'}`}
+              onClick={() => document.getElementById('gerar-edital-file')?.click()}
+              onDragOver={e => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) processEditalFile(f) }}
+            >
+              <Upload size={24} className="mx-auto mb-2 text-zinc-500" />
+              <div className="font-heading font-semibold text-sm mb-1">{editalFileName || 'Enviar edital original'}</div>
+              <div className="text-xs text-zinc-500">PDF ou TXT — aumenta a precisão das questões</div>
+              {editalText && <div className="mt-2 text-xs text-green-400">✓ {Math.round(editalText.length / 100) / 10}kb de contexto carregado</div>}
+            </div>
+            <input type="file" id="gerar-edital-file" accept=".pdf,.txt,.doc,.docx" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) processEditalFile(f) }} />
+            {editalText && (
+              <button type="button" className="btn-secondary text-xs" onClick={() => { setEditalText(''); setEditalFileName('') }}>
+                Remover edital carregado
+              </button>
+            )}
+          </div>
+
+          <div className="card p-5 space-y-4">
+            <div className="font-heading text-sm font-semibold text-brand-300">4. Configurações</div>
 
             <div>
               <label className="label">Cargo pretendido</label>
