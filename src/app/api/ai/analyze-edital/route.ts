@@ -10,6 +10,8 @@ const schema = z.object({
   provider: z.enum(['claude', 'openai', 'gemini', 'grok', 'openrouter']).optional(),
 })
 
+const PROVIDERS: AIProvider[] = ['claude', 'openai', 'gemini', 'openrouter', 'grok']
+
 type CargoDetectado = {
   nome: string
   vagas?: string
@@ -70,6 +72,25 @@ function normalizarCargos(cargos: any): CargoDetectado[] {
     })
 }
 
+function isAuthKeyError(e: unknown) {
+  const msg = String((e as Error)?.message || e || '').toLowerCase()
+  return msg.includes('x-api-key') || msg.includes('api key') || msg.includes('authentication') || msg.includes('401') || msg.includes('unauthorized')
+}
+
+async function getEnabledProviders(preferred: AIProvider): Promise<AIProvider[]> {
+  try {
+    const keys = await prisma.apiKey.findMany({
+      where: { isEnabled: true },
+      select: { provider: true, keyHash: true },
+    })
+    const enabled = keys.filter(k => !!k.keyHash).map(k => k.provider as AIProvider).filter(p => PROVIDERS.includes(p))
+    const ordered = [preferred, ...enabled, ...PROVIDERS]
+    return Array.from(new Set(ordered))
+  } catch {
+    return [preferred, ...PROVIDERS.filter(p => p !== preferred)]
+  }
+}
+
 export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
@@ -91,7 +112,7 @@ export async function POST(req: NextRequest) {
     const prompt = `Analise o edital abaixo e identifique apenas as informações necessárias para configurar a geração do Edital Pro.
 
 EDITAL:
-${params.editalText.substring(0, 20000)}
+${params.editalText.substring(0, 25000)}
 
 Retorne SOMENTE este JSON:
 {
@@ -108,7 +129,9 @@ Retorne SOMENTE este JSON:
 }
 
 REGRAS IMPORTANTES:
-- Extraia os cargos INDIVIDUAIS do quadro de vagas, tabela de cargos, anexo de cargos ou seção de inscrições.
+- Procure banca em termos como organizadora, execução técnico-administrativa, FAU, FGV, Cebraspe, FEPESE, Instituto AOCP, banca examinadora.
+- Procure órgão no cabeçalho, prefeitura, câmara, autarquia, secretaria ou entidade contratante.
+- Extraia cargos INDIVIDUAIS do quadro de vagas, tabela de cargos, anexo de cargos, seção de inscrições ou conteúdo programático.
 - NÃO use agrupamentos genéricos como cargo. Exemplos proibidos: "diversos cargos de Nível Superior", "diversos cargos de Nível Médio", "cargos de nível fundamental", "quadro de vagas", "nível superior".
 - Se o edital agrupar por escolaridade, entre dentro do grupo e liste cada cargo real separadamente.
 - Exemplos de cargos válidos: Advogado, Contador, Engenheiro Civil, Professor de Educação Infantil, Agente Administrativo, Motorista, Técnico em Enfermagem.
@@ -118,18 +141,36 @@ REGRAS IMPORTANTES:
 - Use exatamente os nomes dos cargos do edital quando possível.
 - Português do Brasil.`
 
-    const raw = await callAI({ prompt, systemPrompt, provider, maxTokens: 3500 })
-    const analysis = parseAIJson<EditalAnalysis>(raw)
-    const cargos = normalizarCargos(analysis.cargos)
+    const providersToTry = await getEnabledProviders(provider)
+    let lastError: unknown = null
 
-    return NextResponse.json({
-      ok: true,
-      analysis: {
-        banca: analysis.banca || 'Não informado',
-        orgao: analysis.orgao || 'Não informado',
-        cargos,
-      },
-    })
+    for (const currentProvider of providersToTry) {
+      try {
+        const raw = await callAI({ prompt, systemPrompt, provider: currentProvider, maxTokens: 3500, useCache: false, action: 'analyze_edital' })
+        const analysis = parseAIJson<EditalAnalysis>(raw)
+        const cargos = normalizarCargos(analysis.cargos)
+
+        return NextResponse.json({
+          ok: true,
+          provider: currentProvider,
+          analysis: {
+            banca: analysis.banca || 'Não informado',
+            orgao: analysis.orgao || 'Não informado',
+            cargos,
+          },
+        })
+      } catch (e) {
+        lastError = e
+        console.error(`[analyze-edital] provider ${currentProvider} failed:`, e)
+        if (!isAuthKeyError(e)) break
+      }
+    }
+
+    if (isAuthKeyError(lastError)) {
+      return NextResponse.json({ error: 'A chave de API do provedor de IA está inválida ou expirada. Verifique as chaves no painel Admin > APIs de IA.' }, { status: 401 })
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Erro ao analisar edital.')
   } catch (e) {
     if (e instanceof z.ZodError) {
       return NextResponse.json({ error: e.errors[0].message }, { status: 400 })
