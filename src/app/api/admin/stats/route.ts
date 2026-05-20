@@ -4,11 +4,89 @@ import { prisma } from '@/lib/prisma'
 import { callAI } from '@/lib/ai'
 import type { AIProvider } from '@/types'
 
+async function getAIUsageSummary() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS ai_usage (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        model TEXT,
+        action TEXT,
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+        cached BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+
+    const totals = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT
+        COALESCE(SUM(prompt_tokens), 0)::int AS "promptTokens",
+        COALESCE(SUM(completion_tokens), 0)::int AS "completionTokens",
+        COALESCE(SUM(total_tokens), 0)::int AS "totalTokens",
+        COALESCE(SUM(cost_usd), 0)::float AS "totalCostUsd",
+        COUNT(*)::int AS "totalCalls"
+      FROM ai_usage;
+    `)
+
+    const last7Days = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT
+        TO_CHAR(DATE(created_at), 'DD/MM') AS day,
+        COALESCE(SUM(total_tokens), 0)::int AS tokens,
+        COALESCE(SUM(cost_usd), 0)::float AS cost,
+        COUNT(*)::int AS calls
+      FROM ai_usage
+      WHERE created_at >= NOW() - INTERVAL '7 days'
+      GROUP BY DATE(created_at)
+      ORDER BY DATE(created_at) ASC;
+    `)
+
+    const byProvider = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT
+        provider,
+        COALESCE(SUM(total_tokens), 0)::int AS tokens,
+        COALESCE(SUM(cost_usd), 0)::float AS cost,
+        COUNT(*)::int AS calls
+      FROM ai_usage
+      GROUP BY provider
+      ORDER BY cost DESC;
+    `)
+
+    const byAction = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT
+        COALESCE(action, 'unknown') AS action,
+        COALESCE(SUM(total_tokens), 0)::int AS tokens,
+        COALESCE(SUM(cost_usd), 0)::float AS cost,
+        COUNT(*)::int AS calls
+      FROM ai_usage
+      GROUP BY action
+      ORDER BY cost DESC
+      LIMIT 10;
+    `)
+
+    return {
+      totals: totals[0] || { promptTokens: 0, completionTokens: 0, totalTokens: 0, totalCostUsd: 0, totalCalls: 0 },
+      last7Days,
+      byProvider,
+      byAction,
+    }
+  } catch (e) {
+    console.error('[AI usage summary error]', e)
+    return {
+      totals: { promptTokens: 0, completionTokens: 0, totalTokens: 0, totalCostUsd: 0, totalCalls: 0 },
+      last7Days: [],
+      byProvider: [],
+      byAction: [],
+    }
+  }
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
-  // Usuários comuns podem ver config básica (provedores disponíveis)
   const isAdmin = session.role === 'ADMIN'
 
   const [apiKeys, configs] = await Promise.all([
@@ -27,7 +105,6 @@ export async function GET(req: NextRequest) {
     testStatus: k.testStatus,
   }))
 
-  // Não-admin só vê provedores disponíveis e config básica
   if (!isAdmin) {
     return NextResponse.json({
       apiKeys: apiKeysResponse,
@@ -35,11 +112,11 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  // Admin vê tudo
-  const [totalUsers, totalAnswers, totalPlans] = await Promise.all([
+  const [totalUsers, totalAnswers, totalPlans, aiUsage] = await Promise.all([
     prisma.user.count(),
     prisma.answer.count(),
     prisma.studyPlan.count(),
+    getAIUsageSummary(),
   ])
 
   const today = new Date()
@@ -66,6 +143,7 @@ export async function GET(req: NextRequest) {
       todayAnswers,
       weekAnswers,
     },
+    aiUsage,
     recentUsers,
     apiKeys: apiKeysResponse,
     config: {
@@ -100,7 +178,7 @@ export async function POST(req: NextRequest) {
 
   if (action === 'test_api') {
     try {
-      await callAI({ prompt: 'Responda apenas: OK', provider: provider as AIProvider, maxTokens: 20 })
+      await callAI({ prompt: 'Responda apenas: OK', provider: provider as AIProvider, maxTokens: 20, action: 'test_api' })
       await prisma.apiKey.update({ where: { provider }, data: { lastTested: new Date(), testStatus: 'ok' } })
       return NextResponse.json({ ok: true, status: 'ok' })
     } catch (e) {
