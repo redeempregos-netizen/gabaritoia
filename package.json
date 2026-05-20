@@ -33,6 +33,7 @@
     "tailwind-merge": "^2.4.0",
     "lucide-react": "^0.408.0",
     "recharts": "^2.12.7",
+    "pdfjs-dist": "^4.4.168",
     "sonner": "^1.5.0"
   },
   "devDependencies": {
