@@ -186,13 +186,70 @@ function getDefaultModel(provider: AIProvider): string {
   return map[provider]
 }
 
+function sanitizeJsonLike(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```$/i, '')
+    .replace(/[\u0000-\u001F\u007F]/g, ch => (ch === '\n' || ch === '\r' || ch === '\t' ? ch : ''))
+    .replace(/,\s*([}\]])/g, '$1')
+    .trim()
+}
+
+function extractBalancedJson(text: string): string | null {
+  const startCandidates = [
+    { char: '{', close: '}' },
+    { char: '[', close: ']' },
+  ]
+
+  for (const candidate of startCandidates) {
+    const start = text.indexOf(candidate.char)
+    if (start === -1) continue
+
+    const stack: string[] = []
+    let inString = false
+    let escaped = false
+
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i]
+
+      if (escaped) { escaped = false; continue }
+      if (ch === '\\') { escaped = true; continue }
+      if (ch === '"') { inString = !inString; continue }
+      if (inString) continue
+
+      if (ch === '{') stack.push('}')
+      else if (ch === '[') stack.push(']')
+      else if (ch === '}' || ch === ']') {
+        const expected = stack.pop()
+        if (expected !== ch) return null
+        if (stack.length === 0) return text.slice(start, i + 1)
+      }
+    }
+  }
+
+  return null
+}
+
 export function parseAIJson<T = unknown>(raw: string): T {
-  let s = raw.trim()
-  s = s.split('```json').join('').split('```').join('').trim()
-  try { return JSON.parse(s) as T } catch {}
-  const ia = s.indexOf('['), iz = s.lastIndexOf(']')
-  if (ia !== -1 && iz > ia) { try { return JSON.parse(s.slice(ia, iz + 1)) as T } catch {} }
-  const oa = s.indexOf('{'), oz = s.lastIndexOf('}')
-  if (oa !== -1 && oz > oa) { try { return JSON.parse(s.slice(oa, oz + 1)) as T } catch {} }
+  const cleaned = sanitizeJsonLike(raw)
+
+  const attempts = [cleaned]
+  const balanced = extractBalancedJson(cleaned)
+  if (balanced) attempts.push(balanced)
+
+  const ia = cleaned.indexOf('['), iz = cleaned.lastIndexOf(']')
+  if (ia !== -1 && iz > ia) attempts.push(cleaned.slice(ia, iz + 1))
+
+  const oa = cleaned.indexOf('{'), oz = cleaned.lastIndexOf('}')
+  if (oa !== -1 && oz > oa) attempts.push(cleaned.slice(oa, oz + 1))
+
+  for (const attempt of attempts) {
+    const s = sanitizeJsonLike(attempt)
+    try { return JSON.parse(s) as T } catch {}
+  }
+
+  console.error('[AI JSON parse error] raw response preview:', raw.slice(0, 1000))
   throw new Error('A IA não retornou JSON válido. Tente novamente.')
 }
