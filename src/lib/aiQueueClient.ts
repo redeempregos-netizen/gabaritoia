@@ -6,6 +6,11 @@ export type AIQueueStatus = {
   position: number
   running: number
   maxConcurrent: number
+  processing?: boolean
+  elapsedSeconds?: number
+  createdAt?: string
+  startedAt?: string
+  finishedAt?: string
 }
 
 export async function createAIQueueJob(action: string, provider: string): Promise<AIQueueStatus> {
