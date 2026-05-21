@@ -16,10 +16,7 @@ const postSchema = z.object({
   queueJobId: z.string().optional(),
 })
 
-const patchSchema = z.object({
-  id: z.string(),
-  progress: z.record(z.any()),
-})
+const patchSchema = z.object({ id: z.string(), progress: z.record(z.any()) })
 
 async function ensureTable() {
   await prisma.$executeRawUnsafe(`
@@ -40,16 +37,36 @@ async function ensureTable() {
 }
 
 function sanitizeId(value: string) {
-  return String(value || '')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .substring(0, 80) || crypto.randomUUID()
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 80) || crypto.randomUUID()
+}
+
+function isInvalidCargo(nome: string) {
+  const lower = nome.toLowerCase()
+  return ['diversos cargos', 'nível superior', 'nivel superior', 'nível médio', 'nivel medio', 'quadro de vagas', 'vagas disponíveis', 'cargos de nível', 'cargos de nivel'].some(x => lower.includes(x))
+}
+
+function normalizeCargos(raw: any, fallback?: string) {
+  const list = Array.isArray(raw) ? raw : []
+  const vistos = new Set<string>()
+  const cargos = list.map((c: any) => ({
+    nome: String(c?.nome || c?.cargo || c?.funcao || c?.função || '').trim(),
+    vagas: String(c?.vagas || c?.cadastroReserva || c?.cadastro_reserva || 'Não informado'),
+    requisitos: String(c?.requisitos || c?.escolaridade || 'Não informado'),
+    remuneracao: String(c?.remuneracao || c?.remuneração || c?.salario || c?.salário || 'Não informado'),
+  })).filter(c => {
+    const key = c.nome.toLowerCase()
+    if (!c.nome || c.nome === 'Não informado' || isInvalidCargo(c.nome) || vistos.has(key)) return false
+    vistos.add(key)
+    return true
+  })
+  if (!cargos.length && fallback) return [{ nome: fallback, vagas: 'Não informado', requisitos: 'Não informado', remuneracao: 'Não informado' }]
+  return cargos
 }
 
 function normalizeVerticalized(raw: any, params: z.infer<typeof postSchema>) {
   const identificacao = raw?.identificacao || {}
+  const cargos = normalizeCargos(raw?.cargos || identificacao?.cargos, params.cargo)
+  const cargoPrincipal = params.cargo || identificacao.cargo || cargos[0]?.nome || 'Não informado'
   const materiasRaw = Array.isArray(raw?.materias) ? raw.materias : []
   const materias = materiasRaw.map((m: any, mi: number) => {
     const materiaNome = String(m?.nome || m?.materia || `Matéria ${mi + 1}`)
@@ -85,14 +102,16 @@ function normalizeVerticalized(raw: any, params: z.infer<typeof postSchema>) {
     identificacao: {
       banca: identificacao.banca || raw?.banca || 'Não informado',
       orgao: identificacao.orgao || identificacao.orgão || raw?.orgao || 'Não informado',
-      cargo: identificacao.cargo || params.cargo || 'Não informado',
-      vagas: identificacao.vagas || 'Não informado',
-      remuneracao: identificacao.remuneracao || identificacao.remuneração || 'Não informado',
+      cargo: cargoPrincipal,
+      cargos,
+      vagas: identificacao.vagas || cargos.find((c: any) => c.nome === cargoPrincipal)?.vagas || 'Não informado',
+      remuneracao: identificacao.remuneracao || identificacao.remuneração || cargos.find((c: any) => c.nome === cargoPrincipal)?.remuneracao || 'Não informado',
+      requisitos: identificacao.requisitos || cargos.find((c: any) => c.nome === cargoPrincipal)?.requisitos || 'Não informado',
       prova: identificacao.prova || 'Não informado',
     },
     cronograma: Array.isArray(raw?.cronograma) ? raw.cronograma : [],
     materias: materias.length ? materias : [{ id: 'conhecimentos-gerais', nome: 'Conhecimentos Gerais', questoes: 'Não informado', peso: 'Não informado', prioridade: 'Média', estrategia: 'Revise o conteúdo programático do edital.', topicosQuentes: [], topicos: [] }],
-    analiseBanca: raw?.analiseBanca || { estilo: 'Não informado', pegadinhas: [], foco: 'Não informado' },
+    analiseBanca: raw?.analiseBanca || { estilo: 'Não informado', pegadinhas: [], foco: 'Não informado', leiSeca: 'Não informado', jurisprudencia: 'Não informado', doutrina: 'Não informado' },
     planoEstudos: Array.isArray(raw?.planoEstudos) ? raw.planoEstudos : [],
     revisoes: Array.isArray(raw?.revisoes) ? raw.revisoes : [],
     estatisticasIniciais: raw?.estatisticasIniciais || {},
@@ -113,26 +132,14 @@ DADOS DO ALUNO:
 - Semanas de plano: ${weeks}
 
 EDITAL:
-${params.editalText.substring(0, 25000)}
+${params.editalText.substring(0, 30000)}
 
 Retorne SOMENTE JSON válido neste formato:
 {
-  "identificacao": {"banca":"","orgao":"","cargo":"","vagas":"","remuneracao":"","prova":""},
+  "identificacao": {"banca":"","orgao":"","cargo":"","cargos":[{"nome":"","vagas":"","requisitos":"","remuneracao":""}],"vagas":"","remuneracao":"","requisitos":"","prova":""},
   "cronograma": [{"evento":"","data":"","observacao":""}],
-  "materias": [
-    {
-      "nome":"Português",
-      "questoes":"10",
-      "peso":"1",
-      "prioridade":"Alta|Média|Baixa",
-      "estrategia":"como estudar esta matéria para esta banca em 1 frase",
-      "topicosQuentes":["assunto 1","assunto 2"],
-      "topicos":[
-        {"codigo":"1.1","nome":"Interpretação de texto","prioridade":"Alta|Média|Baixa","dificuldade":"Fácil|Média|Difícil","revisaoSugeridaDias":7,"subtopicos":[{"codigo":"1.1.1","nome":"tipologia textual"}]}
-      ]
-    }
-  ],
-  "analiseBanca": {"estilo":"","pegadinhas":[""],"foco":"","leiSeca":"","jurisprudencia":"","doutrina":""},
+  "materias": [{"nome":"Português","questoes":"10","peso":"1","prioridade":"Alta|Média|Baixa","estrategia":"como estudar esta matéria para esta banca em 1 frase","topicosQuentes":["assunto 1"],"topicos":[{"codigo":"1.1","nome":"Interpretação de texto","prioridade":"Alta|Média|Baixa","dificuldade":"Fácil|Média|Difícil","revisaoSugeridaDias":7,"subtopicos":[{"codigo":"1.1.1","nome":"tipologia textual"}]}]}],
+  "analiseBanca": {"nome":"","estilo":"","pegadinhas":[""],"foco":"","leiSeca":"","jurisprudencia":"","doutrina":"","assuntosMaisCobrados":[""],"perfilQuestoes":""},
   "planoEstudos": [{"semana":1,"foco":"","tarefas":[""],"metaQuestoes":""}],
   "revisoes": [{"tipo":"24h|7d|30d","descricao":""}],
   "estatisticasIniciais": {"totalMaterias":0,"totalTopicos":0,"prioridadeAlta":0},
@@ -140,12 +147,16 @@ Retorne SOMENTE JSON válido neste formato:
   "observacoes": ["dica prática"]
 }
 
-REGRAS:
+REGRAS CRÍTICAS DE IDENTIFICAÇÃO:
+- BANCA: procure em expressões como "banca organizadora", "organizadora", "execução técnico-administrativa", "instituto", "fundação", "comissão organizadora", "realização", "responsável pelo certame", "banca examinadora". Exemplos: FGV, Cebraspe, FCC, Cesgranrio, Vunesp, Quadrix, IBFC, IDECAN, Instituto AOCP, FEPESE, FURB, FAU, Fundatec.
+- ÓRGÃO: procure no cabeçalho e no texto principal: prefeitura, câmara, tribunal, secretaria, autarquia, universidade, conselho, ministério, polícia, fundação pública.
+- CARGOS: extraia cargos individuais do quadro de vagas, tabela de cargos, anexo de cargos, cargos e vagas, escolaridade/requisitos, inscrições, conteúdo programático específico. NÃO retorne agrupamentos como "diversos cargos de nível superior", "nível médio", "quadro de vagas".
+- Se houver vários cargos, retorne todos em identificacao.cargos. Se o usuário informou cargo foco, use esse em identificacao.cargo, mas mantenha a lista completa.
 - Seja fiel ao edital. Não invente datas, vagas, requisitos ou tópicos factuais.
 - Se algo não estiver no edital, use "Não informado".
-- Extraia o conteúdo programático em árvore: matéria > tópicos > subtopicos.
+- Extraia o conteúdo programático em árvore: matéria > tópicos > subtópicos.
 - Cada tópico deve ser executável: prioridade, dificuldade e revisão sugerida.
-- Para análise da banca, tópicos quentes, revisão e reta final, use conhecimento de concursos com conservadorismo.
+- Na aba banca, preencha estilo, pegadinhas, foco, lei seca, jurisprudência, doutrina, assuntos mais cobrados e perfil das questões usando conhecimento conservador da banca.
 - Gere plano de estudos de ${weeks} semanas, equilibrado por peso/prioridade.
 - Português do Brasil.`
 }
@@ -168,7 +179,7 @@ export async function POST(req: NextRequest) {
     const weeks = daysToExam ? Math.max(4, Math.min(16, Math.ceil(daysToExam / 7))) : 10
 
     const prompt = buildPrompt(params, weeks, daysToExam)
-    const raw = await callAI({ prompt, provider, maxTokens: 8000, systemPrompt: 'Responda somente JSON válido, sem markdown.', useCache: false, action: 'verticalized_edital', queueJobId: params.queueJobId })
+    const raw = await callAI({ prompt, provider, maxTokens: 9000, systemPrompt: 'Responda somente JSON válido, sem markdown.', useCache: false, action: 'verticalized_edital', queueJobId: params.queueJobId })
     const parsed = parseAIJson<any>(raw)
     const data = normalizeVerticalized(parsed, params)
     const title = `${data.identificacao.orgao || 'Edital'} — ${data.identificacao.cargo || params.cargo || 'Verticalizado'}`
@@ -177,14 +188,7 @@ export async function POST(req: NextRequest) {
     await prisma.$executeRawUnsafe(
       `INSERT INTO verticalized_edicts (id, user_id, title, banca, orgao, cargo, exam_date, data_json, progress_json, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      id,
-      session.userId,
-      title,
-      data.identificacao.banca,
-      data.identificacao.orgao,
-      data.identificacao.cargo,
-      params.examDate ? new Date(params.examDate) : null,
-      JSON.stringify(data)
+      id, session.userId, title, data.identificacao.banca, data.identificacao.orgao, data.identificacao.cargo, params.examDate ? new Date(params.examDate) : null, JSON.stringify(data)
     )
 
     return NextResponse.json({ ok: true, edital: { id, title, data, progress: {} } })
@@ -214,9 +218,6 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
   await ensureTable()
   const params = patchSchema.parse(await req.json())
-  await prisma.$executeRawUnsafe(
-    `UPDATE verticalized_edicts SET progress_json = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND user_id = $3`,
-    JSON.stringify(params.progress), params.id, session.userId
-  )
+  await prisma.$executeRawUnsafe(`UPDATE verticalized_edicts SET progress_json = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND user_id = $3`, JSON.stringify(params.progress), params.id, session.userId)
   return NextResponse.json({ ok: true })
 }
