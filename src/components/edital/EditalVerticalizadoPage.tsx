@@ -164,20 +164,290 @@ export function EditalVerticalizadoPage() {
   async function exportPDF() {
     if (!active) return
     const { default: jsPDF } = await import('jspdf')
-    const doc = new jsPDF()
-    let y = 14
-    const add = (s: string) => {
-      doc.splitTextToSize(s, 180).forEach((line: string) => {
-        if (y > 280) { doc.addPage(); y = 14 }
-        doc.text(line, 14, y); y += 6
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const data = active.data || {}
+    const ident = data.identificacao || {}
+    const banca = data.analiseBanca || {}
+    const materias = Array.isArray(data.materias) ? data.materias : []
+    const cargos = Array.isArray(ident.cargos) ? ident.cargos : []
+    const plano = Array.isArray(data.planoEstudos) ? data.planoEstudos : []
+    const revisoes = Array.isArray(data.revisoes) ? data.revisoes : []
+    const obs = Array.isArray(data.observacoes) ? data.observacoes : []
+
+    const W = 210
+    const H = 297
+    const M = 14
+    let y = 16
+    let page = 1
+
+    const colors = {
+      dark: [24, 24, 27] as [number, number, number],
+      brand: [124, 58, 237] as [number, number, number],
+      purple: [168, 85, 247] as [number, number, number],
+      text: [39, 39, 42] as [number, number, number],
+      muted: [113, 113, 122] as [number, number, number],
+      line: [228, 228, 231] as [number, number, number],
+      soft: [246, 245, 255] as [number, number, number],
+      green: [22, 163, 74] as [number, number, number],
+      amber: [217, 119, 6] as [number, number, number],
+    }
+
+    const totalTopicos = materias.reduce((acc: number, m: any) => acc + (Array.isArray(m.topicos) ? m.topicos.length : 0), 0)
+    const prioridadeAlta = materias.reduce((acc: number, m: any) => acc + (Array.isArray(m.topicos) ? m.topicos.filter((t: any) => t.prioridade === 'Alta').length : 0), 0)
+
+    function rgb(c: [number, number, number]) { doc.setTextColor(c[0], c[1], c[2]) }
+    function fill(c: [number, number, number]) { doc.setFillColor(c[0], c[1], c[2]) }
+    function stroke(c: [number, number, number]) { doc.setDrawColor(c[0], c[1], c[2]) }
+    function font(size: number, style: 'normal' | 'bold' = 'normal') { doc.setFont('helvetica', style); doc.setFontSize(size) }
+
+    function footer() {
+      stroke(colors.line)
+      doc.line(M, H - 13, W - M, H - 13)
+      font(8)
+      rgb(colors.muted)
+      doc.text('GabaritoIA • Edital Verticalizado', M, H - 7)
+      doc.text(`Página ${page}`, W - M, H - 7, { align: 'right' })
+    }
+
+    function header(title = 'Edital Verticalizado') {
+      fill(colors.dark)
+      doc.rect(0, 0, W, 12, 'F')
+      font(8, 'bold')
+      doc.setTextColor(255, 255, 255)
+      doc.text('GabaritoIA', M, 8)
+      font(8)
+      doc.text(title, W - M, 8, { align: 'right' })
+    }
+
+    function newPage(title?: string) {
+      footer()
+      doc.addPage()
+      page++
+      y = 20
+      header(title)
+    }
+
+    function ensure(space = 16, title?: string) {
+      if (y + space > H - 18) newPage(title)
+    }
+
+    function textLine(txt: string, size = 10, style: 'normal' | 'bold' = 'normal', color = colors.text, indent = 0) {
+      font(size, style)
+      rgb(color)
+      const lines = doc.splitTextToSize(String(txt || ''), W - M * 2 - indent)
+      lines.forEach((line: string) => {
+        ensure(size * 0.55 + 3)
+        doc.text(line, M + indent, y)
+        y += size * 0.42 + 3
       })
     }
-    add(active.title)
-    ;(active.data?.materias || []).forEach((m: any) => {
-      add('\n' + m.nome)
-      ;(m.topicos || []).forEach((t: any) => add(`[ ] ${t.codigo} ${t.nome}`))
+
+    function section(title: string, subtitle?: string) {
+      ensure(18, title)
+      y += 3
+      fill(colors.brand)
+      doc.roundedRect(M, y - 5, 3, 8, 1.5, 1.5, 'F')
+      font(14, 'bold')
+      rgb(colors.dark)
+      doc.text(title, M + 7, y)
+      y += 7
+      if (subtitle) textLine(subtitle, 9, 'normal', colors.muted)
+      y += 2
+    }
+
+    function card(x: number, w: number, title: string, value: string, accent = colors.brand) {
+      fill([250, 250, 250])
+      stroke(colors.line)
+      doc.roundedRect(x, y, w, 23, 3, 3, 'FD')
+      fill(accent)
+      doc.roundedRect(x, y, 3, 23, 2, 2, 'F')
+      font(8, 'bold')
+      rgb(colors.muted)
+      doc.text(title.toUpperCase(), x + 7, y + 8)
+      font(12, 'bold')
+      rgb(colors.text)
+      const valueLines = doc.splitTextToSize(value || 'Não informado', w - 11).slice(0, 2)
+      doc.text(valueLines, x + 7, y + 15)
+    }
+
+    function bullet(txt: string, accent = colors.brand) {
+      ensure(8)
+      fill(accent)
+      doc.circle(M + 1.5, y - 1.5, 1.2, 'F')
+      textLine(txt, 9, 'normal', colors.text, 6)
+    }
+
+    // Capa
+    fill(colors.dark)
+    doc.rect(0, 0, W, H, 'F')
+    fill(colors.brand)
+    doc.circle(W - 22, 28, 34, 'F')
+    fill(colors.purple)
+    doc.circle(W - 6, 8, 26, 'F')
+    doc.setTextColor(255, 255, 255)
+    font(12, 'bold')
+    doc.text('GabaritoIA', M, 26)
+    font(26, 'bold')
+    doc.text('Edital', M, 60)
+    doc.text('Verticalizado', M, 73)
+    font(11)
+    doc.text('Sistema de execução para concurso público', M, 84)
+    stroke([255, 255, 255])
+    doc.setLineWidth(0.4)
+    doc.line(M, 95, W - M, 95)
+    font(16, 'bold')
+    const titleLines = doc.splitTextToSize(active.title || 'Edital Verticalizado', 170)
+    doc.text(titleLines, M, 112)
+    font(10)
+    doc.text(`Banca: ${ident.banca || 'Não informado'}`, M, 146)
+    doc.text(`Órgão: ${ident.orgao || 'Não informado'}`, M, 154)
+    doc.text(`Cargo: ${ident.cargo || 'Não informado'}`, M, 162)
+    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, M, 178)
+    fill(colors.brand)
+    doc.roundedRect(M, 232, W - M * 2, 28, 4, 4, 'F')
+    doc.setTextColor(255, 255, 255)
+    font(11, 'bold')
+    doc.text('Conteúdo organizado por prioridade, tópicos, banca e plano de estudos.', M + 7, 244)
+    font(9)
+    doc.text('Use este PDF como mapa de execução e revisão até a prova.', M + 7, 253)
+
+    doc.addPage()
+    page++
+    y = 20
+    header('Resumo executivo')
+
+    section('Resumo executivo', 'Visão rápida do edital e do plano de execução.')
+    card(M, 42, 'Matérias', String(materias.length), colors.brand)
+    card(M + 46, 42, 'Tópicos', String(totalTopicos), colors.purple)
+    card(M + 92, 42, 'Alta prioridade', String(prioridadeAlta), colors.amber)
+    card(M + 138, 44, 'Cargo', ident.cargo || 'Não informado', colors.green)
+    y += 31
+
+    section('Identificação do edital')
+    const left = M
+    const right = M + 92
+    card(left, 86, 'Banca', ident.banca || 'Não informado')
+    card(right, 86, 'Órgão', ident.orgao || 'Não informado')
+    y += 28
+    card(left, 86, 'Vagas', ident.vagas || 'Não informado', colors.green)
+    card(right, 86, 'Remuneração', ident.remuneracao || 'Não informado', colors.amber)
+    y += 31
+    if (ident.requisitos) {
+      textLine(`Requisitos: ${ident.requisitos}`, 9, 'normal', colors.text)
+    }
+
+    if (cargos.length) {
+      section('Cargos detectados')
+      cargos.slice(0, 20).forEach((c: any) => {
+        ensure(18)
+        fill([250, 250, 250])
+        stroke(colors.line)
+        doc.roundedRect(M, y, W - M * 2, 16, 2, 2, 'FD')
+        font(9, 'bold')
+        rgb(colors.text)
+        doc.text(c.nome || 'Cargo', M + 4, y + 6)
+        font(8)
+        rgb(colors.muted)
+        doc.text(`Vagas: ${c.vagas || 'Não informado'}  •  Remuneração: ${c.remuneracao || 'Não informado'}`, M + 4, y + 12)
+        y += 19
+      })
+    }
+
+    section('Análise da banca')
+    textLine(`Nome: ${banca.nome || ident.banca || 'Não informado'}`, 10, 'bold')
+    textLine(`Estilo: ${banca.estilo || banca.estiloQuestoes || 'Não informado'}`, 9)
+    textLine(`Foco: ${banca.foco || 'Não informado'}`, 9)
+    textLine(`Lei seca: ${banca.leiSeca || 'Não informado'}  •  Jurisprudência: ${banca.jurisprudencia || 'Não informado'}  •  Doutrina: ${banca.doutrina || 'Não informado'}`, 8, 'normal', colors.muted)
+    if (Array.isArray(banca.pegadinhas) && banca.pegadinhas.length) {
+      y += 2
+      textLine('Pegadinhas comuns', 10, 'bold')
+      banca.pegadinhas.slice(0, 8).forEach((p: string) => bullet(p, colors.amber))
+    }
+    if (Array.isArray(banca.assuntosMaisCobrados) && banca.assuntosMaisCobrados.length) {
+      y += 2
+      textLine('Assuntos mais cobrados', 10, 'bold')
+      banca.assuntosMaisCobrados.slice(0, 10).forEach((p: string) => bullet(p, colors.green))
+    }
+
+    newPage('Conteúdo verticalizado')
+    section('Conteúdo verticalizado', 'Estrutura em árvore com prioridade, peso, dificuldade e tópicos executáveis.')
+    materias.forEach((m: any, mi: number) => {
+      ensure(25, 'Conteúdo verticalizado')
+      fill(colors.soft)
+      stroke([221, 214, 254])
+      doc.roundedRect(M, y, W - M * 2, 18, 3, 3, 'FD')
+      font(12, 'bold')
+      rgb(colors.dark)
+      doc.text(`${mi + 1}. ${m.nome || 'Matéria'}`, M + 5, y + 7)
+      font(8)
+      rgb(colors.muted)
+      doc.text(`Peso: ${m.peso || 'Não informado'}  •  Questões: ${m.questoes || 'Não informado'}  •  Prioridade: ${m.prioridade || 'Média'}`, M + 5, y + 13)
+      y += 22
+      if (m.estrategia) textLine(`Estratégia: ${m.estrategia}`, 8, 'normal', colors.muted)
+      if (Array.isArray(m.topicosQuentes) && m.topicosQuentes.length) {
+        textLine(`Tópicos quentes: ${m.topicosQuentes.slice(0, 6).join(' • ')}`, 8, 'normal', colors.amber)
+      }
+      ;(Array.isArray(m.topicos) ? m.topicos : []).forEach((t: any) => {
+        ensure(13, 'Conteúdo verticalizado')
+        const accent = t.prioridade === 'Alta' ? colors.amber : t.prioridade === 'Baixa' ? colors.muted : colors.brand
+        fill(accent)
+        doc.rect(M + 2, y - 4, 2, 8, 'F')
+        font(9, 'bold')
+        rgb(colors.text)
+        const line = `${t.codigo || ''} ${t.nome || 'Tópico'}`.trim()
+        const lines = doc.splitTextToSize(line, 145)
+        doc.text(lines, M + 7, y)
+        font(7)
+        rgb(colors.muted)
+        doc.text(`Prioridade: ${t.prioridade || 'Média'} • Dificuldade: ${t.dificuldade || 'Média'} • Revisão: ${t.revisaoSugeridaDias || 7}d`, W - M, y, { align: 'right' })
+        y += Math.max(7, lines.length * 4 + 3)
+        if (Array.isArray(t.subtopicos) && t.subtopicos.length) {
+          t.subtopicos.slice(0, 8).forEach((s: any) => {
+            ensure(6, 'Conteúdo verticalizado')
+            font(8)
+            rgb(colors.muted)
+            doc.text(`• ${s.codigo || ''} ${s.nome || s}`.trim(), M + 12, y)
+            y += 5
+          })
+        }
+      })
+      y += 5
     })
-    doc.save('edital-verticalizado.pdf')
+
+    newPage('Plano de estudos')
+    section('Plano de estudos', 'Cronograma sugerido com foco semanal e metas de execução.')
+    if (plano.length) {
+      plano.forEach((s: any) => {
+        ensure(22, 'Plano de estudos')
+        fill([250, 250, 250])
+        stroke(colors.line)
+        doc.roundedRect(M, y, W - M * 2, 18, 3, 3, 'FD')
+        font(10, 'bold')
+        rgb(colors.text)
+        doc.text(`Semana ${s.semana || ''}: ${s.foco || 'Foco não informado'}`, M + 5, y + 7)
+        font(8)
+        rgb(colors.muted)
+        doc.text(`Meta de questões: ${s.metaQuestoes || 'Não informado'}`, M + 5, y + 13)
+        y += 22
+        ;(Array.isArray(s.tarefas) ? s.tarefas : []).slice(0, 8).forEach((t: string) => bullet(t))
+      })
+    } else {
+      textLine('Nenhum plano de estudos foi informado pela IA para este edital.', 10, 'normal', colors.muted)
+    }
+
+    if (revisoes.length) {
+      section('Revisões automáticas')
+      revisoes.forEach((r: any) => bullet(`${r.tipo || 'Revisão'}: ${r.descricao || ''}`, colors.green))
+    }
+
+    if (obs.length) {
+      section('Observações estratégicas')
+      obs.slice(0, 8).forEach((o: string) => bullet(o, colors.purple))
+    }
+
+    footer()
+    const safeName = (active.title || 'edital-verticalizado').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()
+    doc.save(`${safeName || 'edital-verticalizado'}-premium.pdf`)
   }
 
   const data = active?.data || {}
@@ -234,7 +504,7 @@ export function EditalVerticalizadoPage() {
         </div>
 
         <div>{!active ? <div className="card p-12 text-center text-zinc-500">Após o upload, os cargos aparecem aqui para seleção antes de gerar.</div> : <div className="space-y-5">
-          <div className="card p-5 flex justify-between gap-3"><div><h2 className="font-heading font-bold">{active.title}</h2><div className="text-xs text-zinc-500 mt-1">{ident.banca} · {ident.cargo}</div></div><button onClick={exportPDF} className="btn-secondary text-xs flex items-center gap-1"><FileDown size={14} /> PDF</button></div>
+          <div className="card p-5 flex justify-between gap-3"><div><h2 className="font-heading font-bold">{active.title}</h2><div className="text-xs text-zinc-500 mt-1">{ident.banca} · {ident.cargo}</div></div><button onClick={exportPDF} className="btn-secondary text-xs flex items-center gap-1"><FileDown size={14} /> PDF Premium</button></div>
           <div className="flex gap-2 overflow-x-auto border-b border-white/[0.07]">{[{ id: 'geral', label: 'Visão geral' }, { id: 'conteudo', label: 'Conteúdo' }, { id: 'banca', label: 'Banca' }, { id: 'plano', label: 'Plano' }].map(t => <button key={t.id} onClick={() => setTab(t.id as any)} className={`px-4 py-2 text-sm border-b-2 ${tab === t.id ? 'border-brand-500 text-brand-300' : 'border-transparent text-zinc-500'}`}>{t.label}</button>)}</div>
           {tab === 'geral' && <div className="space-y-4"><div className="card p-5 grid md:grid-cols-2 gap-3 text-sm"><div>Banca: {ident.banca || 'Não informado'}</div><div>Órgão: {ident.orgao || 'Não informado'}</div><div>Cargo: {ident.cargo || 'Não informado'}</div><div>Vagas: {ident.vagas || 'Não informado'}</div></div><div className="card p-5"><div className="text-xs font-bold text-brand-300 mb-3">Cargos detectados</div>{resultCargos.length ? resultCargos.map((c: any, i: number) => <div key={i} className="text-sm text-zinc-300 mb-1">• {c.nome}</div>) : <div className="text-sm text-zinc-500">Nenhum cargo individual salvo.</div>}</div></div>}
           {tab === 'banca' && <div className="card p-5 text-sm space-y-2"><div><b>Nome:</b> {banca.nome || ident.banca || 'Não informado'}</div><div><b>Estilo:</b> {banca.estilo || 'Não informado'}</div><div><b>Foco:</b> {banca.foco || 'Não informado'}</div></div>}
