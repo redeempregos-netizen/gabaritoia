@@ -77,14 +77,22 @@ export async function getAIQueueStatus(jobId: string, userId?: string) {
     position = pos[0]?.count || 1
   }
 
+  const isRunning = job.status === 'running'
+  const startedAt = job.started_at || job.created_at
+  const elapsedSeconds = startedAt ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)) : 0
+
   return {
     id: job.id,
     action: job.action,
     provider: job.provider,
-    status: job.status,
-    position,
+    // Enquanto a IA está processando, mantemos status visual como queued para evitar a tela parada em
+    // “Sua vez chegou. Gerando...”. A requisição principal continua rodando normalmente no backend.
+    status: isRunning ? 'queued' : job.status,
+    processing: isRunning,
+    position: isRunning ? 1 : position,
     running: running[0]?.count || 0,
     maxConcurrent: AI_MAX_CONCURRENT,
+    elapsedSeconds,
     createdAt: job.created_at,
     startedAt: job.started_at,
     finishedAt: job.finished_at,
