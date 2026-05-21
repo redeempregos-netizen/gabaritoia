@@ -10,6 +10,8 @@ type Materia = { id: string; nome: string; questoes: string; peso: string; prior
 type VerticalizedData = { identificacao: any; materias: Materia[]; analiseBanca: any; planoEstudos: any[]; revisoes: any[]; modoRetaFinal: string[]; observacoes: string[] }
 type Edital = { id: string; title: string; data: VerticalizedData; progress: Record<string, any>; createdAt?: string }
 
+type ViewTab = 'geral' | 'conteudo' | 'banca' | 'plano'
+
 export default function EditalPage() {
   const [editalText, setEditalText] = useState('')
   const [fileName, setFileName] = useState('')
@@ -25,6 +27,7 @@ export default function EditalPage() {
   const [editais, setEditais] = useState<Edital[]>([])
   const [active, setActive] = useState<Edital | null>(null)
   const [progress, setProgress] = useState<Record<string, any>>({})
+  const [tab, setTab] = useState<ViewTab>('geral')
 
   useEffect(() => {
     fetch('/api/admin/stats').then(r => r.json()).then(data => {
@@ -54,6 +57,7 @@ export default function EditalPage() {
   function setCurrent(edital: Edital) {
     setActive(edital)
     setProgress(edital.progress || {})
+    setTab('geral')
   }
 
   const stats = useMemo(() => {
@@ -129,6 +133,7 @@ export default function EditalPage() {
       const edital = data.edital
       setActive(edital)
       setProgress({})
+      setTab('geral')
       await loadEditais()
       toast.success('Edital verticalizado gerado!')
     } catch (e) {
@@ -165,6 +170,10 @@ export default function EditalPage() {
     })
     doc.save(`${active.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`)
   }
+
+  const identificacao = active?.data?.identificacao || {}
+  const analiseBanca = active?.data?.analiseBanca || {}
+  const cargosDetectados = Array.isArray(identificacao.cargos) ? identificacao.cargos : []
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -209,13 +218,28 @@ export default function EditalPage() {
                 <div className="card p-4"><CheckCircle2 size={16} className="text-blue-400 mb-2" /><div className="text-2xl font-bold">{stats.reviewed}</div><div className="text-xs text-zinc-500">Revisados</div></div>
               </div>
 
-              <div className="card p-5"><div className="flex justify-between gap-3 mb-3"><div><h2 className="font-heading font-bold">{active.title}</h2><div className="text-xs text-zinc-500 mt-1">{active.data.identificacao?.banca} · {active.data.identificacao?.cargo}</div></div><button onClick={exportPDF} className="btn-secondary text-xs flex items-center gap-1"><FileDown size={14} /> PDF</button></div><div className="h-2 bg-zinc-800 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-brand-500 to-purple-500" style={{ width: `${stats.pct}%` }} /></div></div>
+              <div className="card p-5">
+                <div className="flex justify-between gap-3 mb-3"><div><h2 className="font-heading font-bold">{active.title}</h2><div className="text-xs text-zinc-500 mt-1">{identificacao.banca} · {identificacao.cargo}</div></div><button onClick={exportPDF} className="btn-secondary text-xs flex items-center gap-1"><FileDown size={14} /> PDF</button></div>
+                <div className="h-2 bg-zinc-800 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-brand-500 to-purple-500" style={{ width: `${stats.pct}%` }} /></div>
+              </div>
 
-              <div className="card p-5"><div className="text-xs font-bold text-brand-300 mb-2">Inteligência da banca</div><div className="text-sm text-zinc-300">{active.data.analiseBanca?.estilo || 'Não informado'}</div>{Array.isArray(active.data.analiseBanca?.pegadinhas) && <div className="flex flex-wrap gap-2 mt-3">{active.data.analiseBanca.pegadinhas.map((p: string, i: number) => <span key={i} className="chip text-xs">⚠ {p}</span>)}</div>}</div>
+              <div className="flex gap-2 overflow-x-auto border-b border-white/[0.07]">
+                {[{ id: 'geral', label: 'Visão geral' }, { id: 'conteudo', label: 'Conteúdo' }, { id: 'banca', label: 'Banca' }, { id: 'plano', label: 'Plano' }].map(t => <button key={t.id} onClick={() => setTab(t.id as ViewTab)} className={`px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${tab === t.id ? 'border-brand-500 text-brand-300' : 'border-transparent text-zinc-500'}`}>{t.label}</button>)}
+              </div>
 
-              <div className="space-y-4">{active.data.materias.map(m => <div key={m.id} className="card p-5"><div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-3"><div><div className="font-heading font-bold">{m.nome}</div><div className="text-xs text-zinc-500">Peso: {m.peso} · Questões: {m.questoes} · Prioridade: {m.prioridade}</div></div><div className="text-xs text-brand-300">{m.topicos?.filter(t => progress[t.id]?.done).length || 0}/{m.topicos?.length || 0}</div></div><div className="text-xs text-zinc-400 mb-3">{m.estrategia}</div>{m.topicosQuentes?.length > 0 && <div className="flex flex-wrap gap-2 mb-3">{m.topicosQuentes.map((t, i) => <span key={i} className="chip text-xs">🔥 {t}</span>)}</div>}<div className="space-y-2">{m.topicos.map(t => <div key={t.id} className="rounded-xl border border-white/10 bg-black/20 p-3"><div className="flex items-start gap-3"><button onClick={() => toggleTopic(t.id, 'done')} className="mt-0.5">{progress[t.id]?.done ? <CheckCircle2 size={18} className="text-green-400" /> : <Circle size={18} className="text-zinc-500" />}</button><div className="flex-1"><div className="text-sm font-medium">{t.codigo} {t.nome}</div><div className="text-[11px] text-zinc-500 mt-1">Prioridade: {t.prioridade} · Dificuldade: {t.dificuldade}</div>{t.subtopicos?.length ? <div className="mt-2 text-[11px] text-zinc-500">{t.subtopicos.map(s => s.nome).join(' · ')}</div> : null}</div><div className="flex items-center gap-2"><input type="number" min={0} value={progress[t.id]?.questoesFeitas || 0} onChange={e => updateQuestions(t.id, Number(e.target.value))} className="w-16 bg-zinc-900 border border-white/10 rounded-lg px-2 py-1 text-xs" /><button onClick={() => toggleTopic(t.id, 'reviewed')} className={`text-[10px] rounded-lg px-2 py-1 border ${progress[t.id]?.reviewed ? 'border-blue-500 text-blue-300 bg-blue-500/10' : 'border-white/10 text-zinc-500'}`}>Revisado</button></div></div></div>)}</div></div>)}</div>
+              {tab === 'geral' && <div className="space-y-4">
+                <div className="card p-5"><div className="text-xs font-bold text-brand-300 mb-3">Identificação do edital</div><div className="grid md:grid-cols-2 gap-3 text-sm"><div><span className="text-zinc-500">Banca:</span> {identificacao.banca || 'Não informado'}</div><div><span className="text-zinc-500">Órgão:</span> {identificacao.orgao || 'Não informado'}</div><div><span className="text-zinc-500">Cargo foco:</span> {identificacao.cargo || 'Não informado'}</div><div><span className="text-zinc-500">Vagas:</span> {identificacao.vagas || 'Não informado'}</div><div><span className="text-zinc-500">Remuneração:</span> {identificacao.remuneracao || 'Não informado'}</div><div><span className="text-zinc-500">Requisitos:</span> {identificacao.requisitos || 'Não informado'}</div></div></div>
+                <div className="card p-5"><div className="text-xs font-bold text-brand-300 mb-3">Cargos detectados</div>{cargosDetectados.length ? <div className="grid md:grid-cols-2 gap-2">{cargosDetectados.map((c: any, i: number) => <div key={i} className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs"><div className="font-semibold text-zinc-100">{c.nome}</div><div className="text-zinc-500 mt-1">Vagas: {c.vagas || 'Não informado'}</div><div className="text-zinc-500">Remuneração: {c.remuneracao || 'Não informado'}</div><div className="text-zinc-500">Requisitos: {c.requisitos || 'Não informado'}</div></div>)}</div> : <div className="text-sm text-zinc-500">Nenhum cargo individual foi detectado. Use o campo Cargo foco antes de gerar novamente.</div>}</div>
+              </div>}
 
-              {active.data.planoEstudos?.length > 0 && <div className="card p-5"><div className="text-xs font-bold text-brand-300 mb-3">Cronograma automático</div><div className="space-y-2">{active.data.planoEstudos.map((s: any, i: number) => <div key={i} className="bg-black/20 rounded-xl p-3 text-xs"><div className="font-semibold text-zinc-200">Semana {s.semana}: {s.foco}</div><div className="text-zinc-500 mt-1">{(s.tarefas || []).join(' · ')}</div></div>)}</div></div>}
+              {tab === 'banca' && <div className="space-y-4">
+                <div className="card p-5"><div className="text-xs font-bold text-brand-300 mb-3">Aba Banca</div><div className="grid md:grid-cols-2 gap-3 text-sm"><div><span className="text-zinc-500">Nome:</span> {analiseBanca.nome || identificacao.banca || 'Não informado'}</div><div><span className="text-zinc-500">Perfil:</span> {analiseBanca.perfilQuestoes || 'Não informado'}</div><div><span className="text-zinc-500">Lei seca:</span> {analiseBanca.leiSeca || 'Não informado'}</div><div><span className="text-zinc-500">Jurisprudência:</span> {analiseBanca.jurisprudencia || 'Não informado'}</div><div><span className="text-zinc-500">Doutrina:</span> {analiseBanca.doutrina || 'Não informado'}</div></div><div className="mt-4 text-sm text-zinc-300"><strong>Estilo:</strong> {analiseBanca.estilo || 'Não informado'}</div><div className="mt-2 text-sm text-zinc-300"><strong>Foco:</strong> {analiseBanca.foco || 'Não informado'}</div></div>
+                <div className="card p-5"><div className="text-xs font-bold text-brand-300 mb-3">Pegadinhas e assuntos cobrados</div>{Array.isArray(analiseBanca.pegadinhas) && <div className="flex flex-wrap gap-2 mb-3">{analiseBanca.pegadinhas.map((p: string, i: number) => <span key={i} className="chip text-xs">⚠ {p}</span>)}</div>}{Array.isArray(analiseBanca.assuntosMaisCobrados) && <div className="flex flex-wrap gap-2">{analiseBanca.assuntosMaisCobrados.map((p: string, i: number) => <span key={i} className="chip text-xs">🔥 {p}</span>)}</div>}</div>
+              </div>}
+
+              {tab === 'conteudo' && <div className="space-y-4">{active.data.materias.map(m => <div key={m.id} className="card p-5"><div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-3"><div><div className="font-heading font-bold">{m.nome}</div><div className="text-xs text-zinc-500">Peso: {m.peso} · Questões: {m.questoes} · Prioridade: {m.prioridade}</div></div><div className="text-xs text-brand-300">{m.topicos?.filter(t => progress[t.id]?.done).length || 0}/{m.topicos?.length || 0}</div></div><div className="text-xs text-zinc-400 mb-3">{m.estrategia}</div>{m.topicosQuentes?.length > 0 && <div className="flex flex-wrap gap-2 mb-3">{m.topicosQuentes.map((t, i) => <span key={i} className="chip text-xs">🔥 {t}</span>)}</div>}<div className="space-y-2">{m.topicos.map(t => <div key={t.id} className="rounded-xl border border-white/10 bg-black/20 p-3"><div className="flex items-start gap-3"><button onClick={() => toggleTopic(t.id, 'done')} className="mt-0.5">{progress[t.id]?.done ? <CheckCircle2 size={18} className="text-green-400" /> : <Circle size={18} className="text-zinc-500" />}</button><div className="flex-1"><div className="text-sm font-medium">{t.codigo} {t.nome}</div><div className="text-[11px] text-zinc-500 mt-1">Prioridade: {t.prioridade} · Dificuldade: {t.dificuldade}</div>{t.subtopicos?.length ? <div className="mt-2 text-[11px] text-zinc-500">{t.subtopicos.map(s => s.nome).join(' · ')}</div> : null}</div><div className="flex items-center gap-2"><input type="number" min={0} value={progress[t.id]?.questoesFeitas || 0} onChange={e => updateQuestions(t.id, Number(e.target.value))} className="w-16 bg-zinc-900 border border-white/10 rounded-lg px-2 py-1 text-xs" /><button onClick={() => toggleTopic(t.id, 'reviewed')} className={`text-[10px] rounded-lg px-2 py-1 border ${progress[t.id]?.reviewed ? 'border-blue-500 text-blue-300 bg-blue-500/10' : 'border-white/10 text-zinc-500'}`}>Revisado</button></div></div></div>)}</div></div>)}</div>}
+
+              {tab === 'plano' && <div className="space-y-4">{active.data.planoEstudos?.length > 0 ? <div className="card p-5"><div className="text-xs font-bold text-brand-300 mb-3">Cronograma automático</div><div className="space-y-2">{active.data.planoEstudos.map((s: any, i: number) => <div key={i} className="bg-black/20 rounded-xl p-3 text-xs"><div className="font-semibold text-zinc-200">Semana {s.semana}: {s.foco}</div><div className="text-zinc-500 mt-1">{(s.tarefas || []).join(' · ')}</div><div className="text-brand-300 mt-1">Meta: {s.metaQuestoes || 'Não informado'}</div></div>)}</div></div> : <div className="card p-8 text-center text-zinc-500">Nenhum plano foi gerado para este edital.</div>}{active.data.revisoes?.length > 0 && <div className="card p-5"><div className="text-xs font-bold text-brand-300 mb-3">Revisões automáticas</div>{active.data.revisoes.map((r: any, i: number) => <div key={i} className="text-sm text-zinc-300 mb-2">{r.tipo}: {r.descricao}</div>)}</div>}</div>}
             </div>
           )}
         </div>
