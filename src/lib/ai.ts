@@ -14,6 +14,73 @@ interface AICallOptions {
   action?: string
 }
 
+const AI_MAX_CONCURRENT = Number(process.env.AI_MAX_CONCURRENT || 3)
+const AI_QUEUE_WAIT_MS = Number(process.env.AI_QUEUE_WAIT_MS || 25000)
+const AI_JOB_STALE_MINUTES = Number(process.env.AI_JOB_STALE_MINUTES || 6)
+
+async function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function ensureAIQueueTable() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS ai_queue_jobs (
+      id TEXT PRIMARY KEY,
+      action TEXT,
+      provider TEXT,
+      status TEXT NOT NULL DEFAULT 'running',
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      started_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finished_at TIMESTAMP(3)
+    );
+  `)
+}
+
+async function acquireAISlot(action: string, provider: string): Promise<string> {
+  await ensureAIQueueTable()
+  const jobId = crypto.randomUUID()
+  const deadline = Date.now() + AI_QUEUE_WAIT_MS
+
+  while (Date.now() < deadline) {
+    await prisma.$executeRawUnsafe(
+      `UPDATE ai_queue_jobs
+       SET status = 'stale', finished_at = CURRENT_TIMESTAMP
+       WHERE status = 'running'
+       AND started_at < NOW() - ($1 || ' minutes')::interval`,
+      String(AI_JOB_STALE_MINUTES)
+    )
+
+    const running = await prisma.$queryRawUnsafe<Array<{ count: number }>>(
+      `SELECT COUNT(*)::int AS count FROM ai_queue_jobs WHERE status = 'running'`
+    )
+
+    if ((running[0]?.count || 0) < AI_MAX_CONCURRENT) {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO ai_queue_jobs (id, action, provider, status, created_at, started_at)
+         VALUES ($1, $2, $3, 'running', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        jobId, action || 'unknown', provider
+      )
+      return jobId
+    }
+
+    await sleep(900)
+  }
+
+  throw new Error('A fila de IA está cheia no momento. Aguarde alguns segundos e tente novamente.')
+}
+
+async function releaseAISlot(jobId?: string, status: 'done' | 'error' = 'done') {
+  if (!jobId) return
+  try {
+    await prisma.$executeRawUnsafe(
+      `UPDATE ai_queue_jobs SET status = $2, finished_at = CURRENT_TIMESTAMP WHERE id = $1`,
+      jobId, status
+    )
+  } catch (e) {
+    console.error('[AI queue release error]', e)
+  }
+}
+
 async function getApiKey(provider: AIProvider): Promise<{ key: string; model: string } | null> {
   try {
     const record = await prisma.apiKey.findUnique({
@@ -103,16 +170,23 @@ export async function callAI({
       void logAIUsage({ provider, model, prompt, systemPrompt, response: cached, action, cached: true })
       return cached
     }
-
-    const response = await callProvider({ provider, prompt, systemPrompt, maxTokens, apiKey, model })
-    await setCache(cacheKey, prompt, response, provider, model, cacheTTL)
-    void logAIUsage({ provider, model, prompt, systemPrompt, response, action, cached: false })
-    return response
   }
 
-  const response = await callProvider({ provider, prompt, systemPrompt, maxTokens, apiKey, model })
-  void logAIUsage({ provider, model, prompt, systemPrompt, response, action, cached: false })
-  return response
+  let jobId: string | undefined
+  try {
+    jobId = await acquireAISlot(action, provider)
+    const response = await callProvider({ provider, prompt, systemPrompt, maxTokens, apiKey, model })
+    if (useCache) {
+      const cacheKey = hashPrompt(prompt + (systemPrompt || ''), provider)
+      await setCache(cacheKey, prompt, response, provider, model, cacheTTL)
+    }
+    void logAIUsage({ provider, model, prompt, systemPrompt, response, action, cached: false })
+    await releaseAISlot(jobId, 'done')
+    return response
+  } catch (e) {
+    await releaseAISlot(jobId, 'error')
+    throw e
+  }
 }
 
 interface CallProviderOptions {
