@@ -91,8 +91,6 @@ export function EditalVerticalizadoSmartPage() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [cargo, setCargo] = useState('')
   const [manualCargo, setManualCargo] = useState('')
-  const [hoursPerDay, setHoursPerDay] = useState('3h')
-  const [level, setLevel] = useState('Iniciante')
   const [provider, setProvider] = useState('claude')
   const [busy, setBusy] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
@@ -207,7 +205,7 @@ export function EditalVerticalizadoSmartPage() {
       const res = await fetch('/api/edital-verticalizado', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ editalText: text, fileName, cargo: cargoContext, hoursPerDay, level, provider, queueJobId: job.id }),
+        body: JSON.stringify({ editalText: text, fileName, cargo: cargoContext, provider, queueJobId: job.id }),
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || 'Erro ao gerar'); return }
@@ -314,11 +312,6 @@ export function EditalVerticalizadoSmartPage() {
               <input className="input mt-3" value={manualCargo} onChange={e => setManualCargo(e.target.value)} placeholder="Ex: Analista Administrativo" />
             </details>
           </div>}
-
-          <div className="card p-4 space-y-3">
-            <div><label className="label">Horas por dia</label><div className="flex flex-wrap gap-2">{['1h','2h','3h','4h','5h','6h+'].map(h => <button key={h} onClick={() => setHoursPerDay(h)} className={`chip ${hoursPerDay === h ? 'chip-active' : ''}`}>{h}</button>)}</div></div>
-            <div><label className="label">Nível</label><div className="flex gap-2">{['Iniciante','Intermediário','Avançado'].map(n => <button key={n} onClick={() => setLevel(n)} className={`chip ${level === n ? 'chip-active' : ''}`}>{n}</button>)}</div></div>
-          </div>
 
           {queue && <div className="rounded-xl border border-brand-500/20 bg-brand-500/10 p-4 text-sm text-brand-100"><Loader2 size={16} className="inline animate-spin" /> {queue.processing ? 'Gerando checklist verticalizado...' : `Você está em ${queue.position}º na fila`}</div>}
           <button disabled={busy || analyzing || !text || (!!analysis?.cargos?.length && !selectedCargo)} onClick={gerar} className="w-full bg-gradient-to-r from-brand-600 to-purple-600 text-white font-bold rounded-xl px-6 py-3.5 disabled:opacity-40">{busy ? 'Processando...' : '🚀 Gerar checklist verticalizado'}</button>
