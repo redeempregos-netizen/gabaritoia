@@ -1,7 +1,7 @@
 'use client'
 
-import { EditalVerticalizadoPage } from '@/components/edital/EditalVerticalizadoPage'
+import { EditalVerticalizadoSmartPage } from '@/components/edital/EditalVerticalizadoSmartPage'
 
 export default function Page() {
-  return <EditalVerticalizadoPage />
+  return <EditalVerticalizadoSmartPage />
 }
