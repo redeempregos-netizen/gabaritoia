@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { CheckCircle2, Circle, Clock, FileDown, Loader2, Upload } from 'lucide-react'
+import { CheckCircle2, Circle, Clock, FileDown, Loader2, Trash2, Upload } from 'lucide-react'
 import { createAIQueueJob, getAIQueueStatus, type AIQueueStatus } from '@/lib/aiQueueClient'
 
 type Cargo = { nome: string; vagas?: string; requisitos?: string; remuneracao?: string }
@@ -99,6 +99,7 @@ export function EditalVerticalizadoSmartPage() {
   const [active, setActive] = useState<Edital | null>(null)
   const [tab, setTab] = useState<Tab>('verticalizado')
   const [savingProgress, setSavingProgress] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/admin/stats').then(r => r.json()).then(d => {
@@ -121,6 +122,27 @@ export function EditalVerticalizadoSmartPage() {
   async function loadSaved() {
     const data = await fetch('/api/edital-verticalizado').then(r => r.json()).catch(() => null)
     if (data?.editais) setEditais(data.editais)
+  }
+
+  async function deleteEdital(id: string) {
+    if (!confirm('Tem certeza que deseja excluir este edital verticalizado?')) return
+    setDeleting(id)
+    try {
+      const res = await fetch('/api/edital-verticalizado', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_item', id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast.error(data.error || 'Erro ao excluir edital'); return }
+      setEditais(prev => prev.filter(e => e.id !== id))
+      if (active?.id === id) setActive(null)
+      toast.success('Edital excluído com sucesso')
+    } catch {
+      toast.error('Erro ao excluir edital')
+    } finally {
+      setDeleting(null)
+    }
   }
 
   async function analyzeEdital(editalText: string) {
@@ -316,14 +338,28 @@ export function EditalVerticalizadoSmartPage() {
           {queue && <div className="rounded-xl border border-brand-500/20 bg-brand-500/10 p-4 text-sm text-brand-100"><Loader2 size={16} className="inline animate-spin" /> {queue.processing ? 'Gerando checklist verticalizado...' : `Você está em ${queue.position}º na fila`}</div>}
           <button disabled={busy || analyzing || !text || (!!analysis?.cargos?.length && !selectedCargo)} onClick={gerar} className="w-full bg-gradient-to-r from-brand-600 to-purple-600 text-white font-bold rounded-xl px-6 py-3.5 disabled:opacity-40">{busy ? 'Processando...' : '🚀 Gerar checklist verticalizado'}</button>
 
-          {editais.length > 0 && <div className="card p-4"><div className="text-xs font-bold text-brand-300 mb-3">Editais salvos</div><div className="space-y-2 max-h-72 overflow-y-auto">{editais.map(e => <button key={e.id} onClick={() => { setActive(e); setTab('verticalizado') }} className="w-full text-left rounded-xl border border-white/10 bg-black/20 p-3 text-xs"><div className="font-semibold text-zinc-100">{e.title}</div><div className="text-zinc-500">{e.data?.identificacao?.banca || 'Edital'}</div></button>)}</div></div>}
+          {editais.length > 0 && <div className="card p-4"><div className="text-xs font-bold text-brand-300 mb-3">Editais salvos</div><div className="space-y-2 max-h-72 overflow-y-auto">{editais.map(e => {
+            const deletingThis = deleting === e.id
+            return <div key={e.id} className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs">
+              <button onClick={() => { setActive(e); setTab('verticalizado') }} className="w-full text-left">
+                <div className="font-semibold text-zinc-100">{e.title}</div>
+                <div className="text-zinc-500">{e.data?.identificacao?.banca || 'Edital'}</div>
+              </button>
+              <button disabled={deletingThis} onClick={() => deleteEdital(e.id)} className="mt-3 rounded-lg border border-red-500/20 bg-red-500/10 text-red-300 px-2 py-1.5 text-[11px] flex items-center gap-1 disabled:opacity-50">
+                {deletingThis ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Excluir
+              </button>
+            </div>
+          })}</div></div>}
         </div>
 
         <div>{!active ? <div className="card p-12 text-center text-zinc-500">Após o upload, o edital vira uma tabela verticalizada e rastreável.</div> : <div className="space-y-5">
           <div className="card p-5">
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
               <div><h2 className="font-heading font-bold">{active.title}</h2><div className="text-xs text-zinc-500 mt-1">{ident.banca} · {ident.cargo}</div></div>
-              <button onClick={exportPDF} className="btn-secondary text-xs flex items-center gap-1"><FileDown size={14} /> Exportar checklist</button>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={exportPDF} className="btn-secondary text-xs flex items-center gap-1"><FileDown size={14} /> Exportar checklist</button>
+                <button disabled={deleting === active.id} onClick={() => deleteEdital(active.id)} className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-xs flex items-center gap-1 disabled:opacity-50">{deleting === active.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir</button>
+              </div>
             </div>
             <div className="mt-4">
               <div className="flex justify-between text-xs text-zinc-500 mb-2"><span>Progresso do edital</span><span>{percent}% · {done}/{rows.length} itens</span></div>
