@@ -59,9 +59,9 @@ export default function GeradosPage() {
     setDeleting(`${type}:${id}`)
     try {
       const res = await fetch('/api/generated', {
-        method: 'DELETE',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, id }),
+        body: JSON.stringify({ action: 'delete_item', type, id }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error(data.error || 'Erro ao excluir'); return }
