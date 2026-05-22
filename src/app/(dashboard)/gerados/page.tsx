@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, FileDown, FileText, HelpCircle } from 'lucide-react'
+import { Loader2, FileDown, FileText, HelpCircle, Trash2 } from 'lucide-react'
 
 interface PlanItem {
   id: string
@@ -37,6 +37,7 @@ export default function GeradosPage() {
   const [questions, setQuestions] = useState<QuestionItem[]>([])
   const [tab, setTab] = useState<'planos' | 'questoes'>('planos')
   const [openPlan, setOpenPlan] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => { load() }, [])
 
@@ -50,6 +51,32 @@ export default function GeradosPage() {
       setQuestions(data.questions || [])
     } catch { toast.error('Erro ao carregar seus itens gerados') }
     finally { setLoading(false) }
+  }
+
+  async function deleteItem(type: 'plan' | 'question', id: string) {
+    const label = type === 'plan' ? 'este plano/projeto' : 'esta questão'
+    if (!confirm(`Tem certeza que deseja excluir ${label}?`)) return
+    setDeleting(`${type}:${id}`)
+    try {
+      const res = await fetch('/api/generated', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast.error(data.error || 'Erro ao excluir'); return }
+      if (type === 'plan') {
+        setPlans(prev => prev.filter(p => p.id !== id))
+        if (openPlan === id) setOpenPlan(null)
+      } else {
+        setQuestions(prev => prev.filter(q => q.id !== id))
+      }
+      toast.success('Item excluído com sucesso')
+    } catch {
+      toast.error('Erro ao excluir item')
+    } finally {
+      setDeleting(null)
+    }
   }
 
   async function exportPlanPDF(plan: PlanItem) {
@@ -150,7 +177,7 @@ export default function GeradosPage() {
     <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
         <h1 className="font-heading text-2xl font-bold">📁 Meus Gerados</h1>
-        <p className="text-zinc-400 text-sm mt-1">Tudo que você gerou com IA fica salvo aqui para consultar e exportar.</p>
+        <p className="text-zinc-400 text-sm mt-1">Tudo que você gerou com IA fica salvo aqui para consultar, exportar ou excluir.</p>
       </div>
 
       <div className="flex gap-2 mb-6 overflow-x-auto">
@@ -164,6 +191,7 @@ export default function GeradosPage() {
           {plans.map(plan => {
             const data = plan.planJson || {}
             const isOpen = openPlan === plan.id
+            const deletingThis = deleting === `plan:${plan.id}`
             return (
               <div key={plan.id} className="card p-5">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -174,9 +202,10 @@ export default function GeradosPage() {
                       <div className="text-xs text-zinc-500 mt-1">{plan.banca || data?.banca?.nome || 'Banca não informada'} · {plan.cargo || 'Cargo não informado'} · {new Date(plan.createdAt).toLocaleDateString('pt-BR')}</div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button className="btn-secondary text-xs" onClick={() => setOpenPlan(isOpen ? null : plan.id)}>{isOpen ? 'Fechar' : 'Ver'}</button>
                     <button className="btn-secondary text-xs flex items-center gap-1" onClick={() => exportPlanPDF(plan)}><FileDown size={14} /> PDF</button>
+                    <button disabled={deletingThis} className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-xs flex items-center gap-1 disabled:opacity-50" onClick={() => deleteItem('plan', plan.id)}>{deletingThis ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir</button>
                   </div>
                 </div>
                 {isOpen && (
@@ -205,20 +234,26 @@ export default function GeradosPage() {
           </div>
           {questions.length === 0 && <div className="card p-8 text-center text-zinc-500">Nenhuma questão gerada salva ainda. As novas questões geradas passarão a aparecer aqui.</div>}
           <div className="space-y-4">
-            {questions.map((q, idx) => (
-              <div key={q.id} className="card p-5">
-                <div className="flex gap-3 mb-3">
-                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-300 flex items-center justify-center"><HelpCircle size={18} /></div>
-                  <div>
-                    <div className="text-xs text-brand-300 font-bold">{idx + 1}. {q.banca} · {q.area} · {q.difficulty}</div>
-                    <div className="text-[11px] text-zinc-500">{new Date(q.createdAt).toLocaleDateString('pt-BR')}</div>
+            {questions.map((q, idx) => {
+              const deletingThis = deleting === `question:${q.id}`
+              return (
+                <div key={q.id} className="card p-5">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-300 flex items-center justify-center"><HelpCircle size={18} /></div>
+                      <div>
+                        <div className="text-xs text-brand-300 font-bold">{idx + 1}. {q.banca} · {q.area} · {q.difficulty}</div>
+                        <div className="text-[11px] text-zinc-500">{new Date(q.createdAt).toLocaleDateString('pt-BR')}</div>
+                      </div>
+                    </div>
+                    <button disabled={deletingThis} className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-xs flex items-center gap-1 disabled:opacity-50" onClick={() => deleteItem('question', q.id)}>{deletingThis ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir</button>
                   </div>
+                  <p className="text-sm leading-relaxed mb-3">{q.enunciado}</p>
+                  <div className="space-y-1 mb-3">{(q.options || []).map((op, i) => <div key={i} className={`text-xs rounded-lg p-2 ${i === q.correctIndex ? 'bg-green-500/10 text-green-300' : 'bg-black/20 text-zinc-400'}`}>{'ABCDE'[i]}) {op}</div>)}</div>
+                  <div className="text-xs text-zinc-400 border-l-2 border-brand-500 pl-3">{q.comentario}</div>
                 </div>
-                <p className="text-sm leading-relaxed mb-3">{q.enunciado}</p>
-                <div className="space-y-1 mb-3">{(q.options || []).map((op, i) => <div key={i} className={`text-xs rounded-lg p-2 ${i === q.correctIndex ? 'bg-green-500/10 text-green-300' : 'bg-black/20 text-zinc-400'}`}>{'ABCDE'[i]}) {op}</div>)}</div>
-                <div className="text-xs text-zinc-400 border-l-2 border-brand-500 pl-3">{q.comentario}</div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
