@@ -52,3 +52,70 @@
 .fc-card.flipped .fc-inner { transform: rotateY(180deg); }
 .fc-front, .fc-back { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 .fc-back { position: absolute; top: 0; left: 0; width: 100%; transform: rotateY(180deg); }
+
+/* Edital verticalizado: tabela vira cards no mobile */
+@media (max-width: 768px) {
+  table.min-w-\[920px\] {
+    min-width: 0 !important;
+    width: 100% !important;
+    display: block;
+  }
+
+  table.min-w-\[920px\] thead {
+    display: none;
+  }
+
+  table.min-w-\[920px\] tbody,
+  table.min-w-\[920px\] tr,
+  table.min-w-\[920px\] td {
+    display: block;
+    width: 100%;
+  }
+
+  table.min-w-\[920px\] tr {
+    margin: 12px;
+    padding: 12px;
+    border: 1px solid rgba(255,255,255,.08) !important;
+    border-radius: 18px;
+    background: rgba(24,24,27,.72);
+  }
+
+  table.min-w-\[920px\] td {
+    border: 0 !important;
+    border-top: 1px solid rgba(255,255,255,.06) !important;
+    padding: 10px 0 !important;
+    color: #d4d4d8;
+    font-size: 13px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  table.min-w-\[920px\] td:first-child {
+    border-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  table.min-w-\[920px\] td::before {
+    display: block;
+    margin-bottom: 5px;
+    color: #71717a;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  table.min-w-\[920px\] td:nth-child(1)::before { content: 'Status'; }
+  table.min-w-\[920px\] td:nth-child(2)::before { content: 'Disciplina'; }
+  table.min-w-\[920px\] td:nth-child(3)::before { content: 'Assunto'; }
+  table.min-w-\[920px\] td:nth-child(4)::before { content: 'Subtópico'; }
+  table.min-w-\[920px\] td:nth-child(5)::before { content: 'Questões'; }
+  table.min-w-\[920px\] td:nth-child(6)::before { content: 'Prioridade'; }
+  table.min-w-\[920px\] td:nth-child(7)::before { content: 'Revisão'; }
+
+  table.min-w-\[920px\] td button,
+  table.min-w-\[920px\] td span {
+    max-width: 100%;
+    white-space: normal;
+  }
+}
