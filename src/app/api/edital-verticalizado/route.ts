@@ -167,7 +167,21 @@ export async function POST(req: NextRequest) {
 
   try {
     await ensureTable()
-    const params = postSchema.parse(await req.json())
+    const body = await req.json()
+
+    if (body?.action === 'delete_item') {
+      const id = String(body.id || '')
+      if (!id) return NextResponse.json({ error: 'ID inválido.' }, { status: 400 })
+      const deleted = await prisma.$executeRawUnsafe(
+        `DELETE FROM verticalized_edicts WHERE id = $1 AND user_id = $2`,
+        id,
+        session.userId
+      )
+      if (!deleted) return NextResponse.json({ error: 'Edital não encontrado.' }, { status: 404 })
+      return NextResponse.json({ ok: true })
+    }
+
+    const params = postSchema.parse(body)
     let provider: AIProvider = (params.provider as AIProvider) || 'claude'
     if (!params.provider) {
       const cfg = await prisma.adminConfig.findUnique({ where: { key: 'defaultProvider' } }).catch(() => null)
