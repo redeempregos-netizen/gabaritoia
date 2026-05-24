@@ -18,6 +18,12 @@ async function hashBuffer(buffer: ArrayBuffer) {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+async function readJsonSafe(res: Response) {
+  const raw = await res.text()
+  if (!raw.trim()) return {}
+  try { return JSON.parse(raw) } catch { return { error: raw.slice(0, 180) } }
+}
+
 function safe(v?: string | null, fallback = 'Não informado') {
   const s = String(v || '').trim()
   return s || fallback
@@ -51,7 +57,8 @@ export default function CadernosPage() {
   async function loadBooks() {
     setLoading(true)
     try {
-      const data = await fetch('/api/question-books').then(r => r.json())
+      const res = await fetch('/api/question-books')
+      const data = await readJsonSafe(res)
       if (data?.books) setBooks(data.books)
     } catch { toast.error('Erro ao carregar cadernos') }
     setLoading(false)
@@ -65,7 +72,8 @@ export default function CadernosPage() {
     setFilterYear('')
     setFilterUf('')
     setSearch('')
-    const data = await fetch(`/api/question-books/${book.id}`).then(r => r.json()).catch(() => null)
+    const res = await fetch(`/api/question-books/${book.id}`).catch(() => null)
+    const data = res ? await readJsonSafe(res) : null
     if (!data?.ok) { toast.error(data?.error || 'Erro ao abrir caderno'); return }
     setQuestions(data.questions || [])
     setStats(data.stats || { answered: 0, correct: 0, total: 0 })
@@ -104,7 +112,7 @@ export default function CadernosPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'import', title: file.name.replace(/\.pdf$/i, ''), text, fileHash }),
       })
-      const data = await res.json()
+      const data = await readJsonSafe(res)
       if (!res.ok) { toast.error(data.error || 'Erro ao importar'); return }
       if (data.alreadyImported) toast.info('Este caderno já foi importado na sua conta. Não dupliquei o arquivo.')
       else toast.success(`${data.book.totalQuestions} questões importadas${data.book.fromCache ? ' pelo cache' : ''}!`)
@@ -125,7 +133,7 @@ export default function CadernosPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'answer', questionId: q.id, selectedIndex: idx }),
       })
-      const data = await res.json()
+      const data = await readJsonSafe(res)
       if (!res.ok) { toast.error(data.error || 'Erro ao responder'); return }
       setQuestions(prev => prev.map(item => item.id === q.id ? { ...item, selectedIndex: idx, isCorrect: data.isCorrect } : item))
       const wasAnswered = q.selectedIndex !== null && q.selectedIndex !== undefined
