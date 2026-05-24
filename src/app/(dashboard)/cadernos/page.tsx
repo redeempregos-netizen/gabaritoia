@@ -96,7 +96,8 @@ export default function CadernosPage() {
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || 'Erro ao importar'); return }
-      toast.success(`${data.book.totalQuestions} questões importadas${data.book.fromCache ? ' pelo cache' : ''}!`)
+      if (data.alreadyImported) toast.info('Este caderno já foi importado na sua conta. Não dupliquei o arquivo.')
+      else toast.success(`${data.book.totalQuestions} questões importadas${data.book.fromCache ? ' pelo cache' : ''}!`)
       await loadBooks()
     } catch (e) {
       toast.error((e as Error).message || 'Erro ao importar PDF')
@@ -226,33 +227,13 @@ export default function CadernosPage() {
                     <div className="rounded-xl bg-black/20 border border-white/10 p-3"><div className="text-zinc-500 mb-1">Tópico</div><div className="text-zinc-200 font-semibold">{safe(q.topic)}</div></div>
                     <div className="rounded-xl bg-black/20 border border-white/10 p-3"><div className="text-zinc-500 mb-1">Banca</div><div className="text-zinc-200 font-semibold">{safe(q.banca, 'Não identificada')}</div></div>
                   </div>
-                  <div className="mt-3 rounded-xl bg-black/20 border border-white/10 p-3 text-xs">
-                    <div className="text-zinc-500 mb-1">Prova</div>
-                    <div className="text-zinc-200 font-semibold leading-relaxed">{safe(q.exam)}</div>
-                  </div>
+                  <div className="mt-3 rounded-xl bg-black/20 border border-white/10 p-3 text-xs"><div className="text-zinc-500 mb-1">Prova</div><div className="text-zinc-200 font-semibold leading-relaxed">{safe(q.exam)}</div></div>
                 </div>
-
                 <div><div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Pergunta</div><p className="text-sm md:text-base leading-relaxed whitespace-pre-line text-zinc-100">{q.statement}</p></div>
-
-                <div>
-                  <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Alternativas</div>
-                  <div className="space-y-3">
-                    {(q.options || []).map((op, idx) => {
-                      const isSelected = q.selectedIndex === idx
-                      const isCorrect = q.correctIndex === idx
-                      const cls = answered && isCorrect ? 'border-green-500/40 bg-green-500/10 text-green-200' : answered && isSelected && !isCorrect ? 'border-red-500/40 bg-red-500/10 text-red-200' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-brand-500/40'
-                      return <button key={idx} disabled={answering === q.id} onClick={() => answer(q, idx)} className={`w-full text-left rounded-2xl border p-4 text-sm transition-all ${cls}`}><div className="flex gap-3"><span className="font-bold">{'ABCDE'[idx] || idx + 1})</span><span>{op}</span>{answered && isCorrect && <CheckCircle2 size={16} className="ml-auto text-green-400" />}{answered && isSelected && !isCorrect && <XCircle size={16} className="ml-auto text-red-400" />}</div></button>
-                    })}
-                  </div>
-                </div>
-
+                <div><div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Alternativas</div><div className="space-y-3">{(q.options || []).map((op, idx) => { const isSelected = q.selectedIndex === idx; const isCorrect = q.correctIndex === idx; const cls = answered && isCorrect ? 'border-green-500/40 bg-green-500/10 text-green-200' : answered && isSelected && !isCorrect ? 'border-red-500/40 bg-red-500/10 text-red-200' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-brand-500/40'; return <button key={idx} disabled={answering === q.id} onClick={() => answer(q, idx)} className={`w-full text-left rounded-2xl border p-4 text-sm transition-all ${cls}`}><div className="flex gap-3"><span className="font-bold">{'ABCDE'[idx] || idx + 1})</span><span>{op}</span>{answered && isCorrect && <CheckCircle2 size={16} className="ml-auto text-green-400" />}{answered && isSelected && !isCorrect && <XCircle size={16} className="ml-auto text-red-400" />}</div></button> })}</div></div>
                 {answered && <div className="rounded-2xl border border-brand-500/20 bg-brand-500/5 p-4"><div className="flex flex-wrap items-center gap-2 mb-3"><div className="text-xs font-bold text-brand-300 uppercase tracking-wider">Resposta e comentário</div><span className={`text-[11px] rounded-full px-2 py-1 border ${q.isCorrect ? 'border-green-500/20 bg-green-500/10 text-green-300' : 'border-red-500/20 bg-red-500/10 text-red-300'}`}>{q.isCorrect ? 'Você acertou' : 'Você errou'}</span><span className="text-[11px] rounded-full px-2 py-1 border border-white/10 bg-black/20 text-zinc-300">Resposta: {correctLetter}</span></div><div className="text-sm text-zinc-300 leading-relaxed">{q.comment || 'Comentário não informado.'}</div></div>}
               </div>
-
-              <div className="flex justify-between gap-3">
-                <button className="btn-secondary" disabled={current === 0} onClick={() => setCurrent(c => Math.max(0, c - 1))}>Anterior</button>
-                <button className="btn-primary" disabled={current >= filteredQuestions.length - 1} onClick={() => setCurrent(c => Math.min(filteredQuestions.length - 1, c + 1))}>Próxima</button>
-              </div>
+              <div className="flex justify-between gap-3"><button className="btn-secondary" disabled={current === 0} onClick={() => setCurrent(c => Math.max(0, c - 1))}>Anterior</button><button className="btn-primary" disabled={current >= filteredQuestions.length - 1} onClick={() => setCurrent(c => Math.min(filteredQuestions.length - 1, c + 1))}>Próxima</button></div>
               </>}
             </div>}
           </div>
