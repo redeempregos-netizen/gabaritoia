@@ -5,11 +5,19 @@ import { cn } from '@/lib/utils'
 import { getPlanLabel, isCadernosOnlyPlan } from '@/lib/plans'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
-  History, Settings, LogOut, CreditCard, Zap, DollarSign, FolderOpen, Brain, BookOpen
+  History, Settings, LogOut, CreditCard, Zap, DollarSign, FolderOpen, Brain, BookOpen,
+  type LucideIcon
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-const FULL_NAV = [
+type NavItem = {
+  href: string
+  label: string
+  icon: LucideIcon
+  badge?: string
+}
+
+const FULL_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen, badge: 'Novo' },
@@ -21,7 +29,7 @@ const FULL_NAV = [
   { href: '/planos',     label: 'Planos e Créditos',   icon: CreditCard },
 ]
 
-const CADERNOS_NAV = [
+const CADERNOS_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
@@ -37,7 +45,7 @@ export function Sidebar({ user }: SidebarProps) {
   const router = useRouter()
   const [credits, setCredits] = useState<number | null>(null)
   const [claiming, setClaiming] = useState(false)
-  const nav = user.role === 'ADMIN' || !isCadernosOnlyPlan(user.plan) ? FULL_NAV : CADERNOS_NAV
+  const nav: NavItem[] = user.role === 'ADMIN' || !isCadernosOnlyPlan(user.plan) ? FULL_NAV : CADERNOS_NAV
 
   useEffect(() => {
     fetch('/api/credits')
