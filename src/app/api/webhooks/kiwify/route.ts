@@ -12,16 +12,19 @@ async function ensureTablesAndEnum() {
       event_name TEXT,
       product_id TEXT,
       product_name TEXT,
-      buyer_email TEXT NOT NULL,
+      buyer_email TEXT,
       buyer_name TEXT,
       status TEXT,
       amount NUMERIC,
       plan TEXT,
+      action TEXT,
       raw_payload JSONB NOT NULL,
       created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `)
+  await prisma.$executeRawUnsafe(`ALTER TABLE kiwify_orders ALTER COLUMN buyer_email DROP NOT NULL;`).catch(() => null)
+  await prisma.$executeRawUnsafe(`ALTER TABLE kiwify_orders ADD COLUMN IF NOT EXISTS action TEXT;`).catch(() => null)
 }
 
 function normalizeEmail(email: unknown) {
@@ -48,26 +51,56 @@ function isRefundOrCancel(status: string, eventName: string) {
   return ['refunded', 'refund', 'chargeback', 'cancelled', 'canceled'].some(x => s.includes(x) || e.includes(x))
 }
 
+async function saveKiwifyOrder(params: {
+  transactionId: string
+  eventName: string
+  productId: string
+  productName: string
+  buyerEmail: string
+  buyerName: string
+  status: string
+  amount: number | null
+  action: string
+  payload: any
+}) {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO kiwify_orders (id, transaction_id, event_name, product_id, product_name, buyer_email, buyer_name, status, amount, plan, action, raw_payload)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+     ON CONFLICT (transaction_id) DO UPDATE SET
+       event_name = EXCLUDED.event_name,
+       product_id = EXCLUDED.product_id,
+       product_name = EXCLUDED.product_name,
+       buyer_email = EXCLUDED.buyer_email,
+       buyer_name = EXCLUDED.buyer_name,
+       status = EXCLUDED.status,
+       amount = EXCLUDED.amount,
+       action = EXCLUDED.action,
+       raw_payload = EXCLUDED.raw_payload,
+       updated_at = CURRENT_TIMESTAMP`,
+    crypto.randomUUID(), params.transactionId, params.eventName, params.productId, params.productName, params.buyerEmail || null, params.buyerName, params.status, params.amount, PLAN_CADERNOS_500, params.action, JSON.stringify(params.payload)
+  )
+}
+
+function authorize(req: NextRequest) {
+  const secret = process.env.KIWIFY_WEBHOOK_SECRET
+  if (!secret) return true
+  const token = req.headers.get('x-kiwify-secret') || req.headers.get('x-webhook-secret') || req.nextUrl.searchParams.get('token')
+  return token === secret
+}
+
 export async function POST(req: NextRequest) {
   try {
     await ensureTablesAndEnum()
 
-    const secret = process.env.KIWIFY_WEBHOOK_SECRET
-    if (secret) {
-      const token = req.headers.get('x-kiwify-secret') || req.headers.get('x-webhook-secret') || req.nextUrl.searchParams.get('token')
-      if (token !== secret) return NextResponse.json({ error: 'Webhook não autorizado.' }, { status: 401 })
-    }
+    if (!authorize(req)) return NextResponse.json({ error: 'Webhook não autorizado.' }, { status: 401 })
 
     const payload = await req.json()
     const eventName = String(getNested(payload, ['event_name', 'event', 'type']) || '')
-    const order = payload.order || payload.Order || payload.data || payload
-    const customer = order.Customer || order.customer || payload.Customer || payload.customer || {}
-    const product = order.Product || order.product || payload.Product || payload.product || {}
 
     const transactionId = String(getNested(payload, [
       'order.order_id', 'order.id', 'order.checkout_id', 'order.transaction_id',
       'data.id', 'id', 'transaction_id'
-    ]) || crypto.randomUUID())
+    ]) || `kiwify-${Date.now()}-${crypto.randomUUID()}`)
 
     const status = String(getNested(payload, [
       'order.order_status', 'order.status', 'data.status', 'status', 'payment_status'
@@ -97,26 +130,12 @@ export async function POST(req: NextRequest) {
     const amount = Number(String(amountRaw || '0').replace(',', '.')) || null
 
     if (!buyerEmail) {
-      return NextResponse.json({ error: 'E-mail do comprador não encontrado.' }, { status: 400 })
+      await saveKiwifyOrder({ transactionId, eventName, productId, productName, buyerEmail, buyerName, status, amount, action: 'missing_buyer_email', payload })
+      return NextResponse.json({ ok: false, action: 'missing_buyer_email', message: 'Recebido, mas sem e-mail do comprador.', status, eventName }, { status: 200 })
     }
 
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO kiwify_orders (id, transaction_id, event_name, product_id, product_name, buyer_email, buyer_name, status, amount, plan, raw_payload)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
-       ON CONFLICT (transaction_id) DO UPDATE SET
-         event_name = EXCLUDED.event_name,
-         product_id = EXCLUDED.product_id,
-         product_name = EXCLUDED.product_name,
-         buyer_email = EXCLUDED.buyer_email,
-         buyer_name = EXCLUDED.buyer_name,
-         status = EXCLUDED.status,
-         amount = EXCLUDED.amount,
-         raw_payload = EXCLUDED.raw_payload,
-         updated_at = CURRENT_TIMESTAMP`,
-      crypto.randomUUID(), transactionId, eventName, productId, productName, buyerEmail, buyerName, status, amount, PLAN_CADERNOS_500, JSON.stringify(payload)
-    )
-
     if (isRefundOrCancel(status, eventName)) {
+      await saveKiwifyOrder({ transactionId, eventName, productId, productName, buyerEmail, buyerName, status, amount, action: 'access_removed', payload })
       await prisma.user.updateMany({
         where: { email: buyerEmail, plan: PLAN_CADERNOS_500 as any },
         data: { plan: 'FREE', credits: 0 },
@@ -125,8 +144,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isApproved(status, eventName)) {
-      return NextResponse.json({ ok: true, action: 'ignored_status', status, eventName })
+      await saveKiwifyOrder({ transactionId, eventName, productId, productName, buyerEmail, buyerName, status, amount, action: 'ignored_status', payload })
+      return NextResponse.json({ ok: true, action: 'ignored_status', status, eventName, email: buyerEmail })
     }
+
+    await saveKiwifyOrder({ transactionId, eventName, productId, productName, buyerEmail, buyerName, status, amount, action: 'access_granted', payload })
 
     const credits = PLAN_CREDIT_AMOUNT[PLAN_CADERNOS_500]
     const existing = await prisma.user.findUnique({ where: { email: buyerEmail } })
@@ -174,6 +196,18 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
-  return NextResponse.json({ ok: true, webhook: 'kiwify', plan: PLAN_CADERNOS_500 })
+export async function GET(req: NextRequest) {
+  try {
+    if (!authorize(req)) return NextResponse.json({ error: 'Webhook não autorizado.' }, { status: 401 })
+    await ensureTablesAndEnum()
+    const rows = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT transaction_id, event_name, product_id, product_name, buyer_email, buyer_name, status, amount, plan, action, created_at, updated_at
+      FROM kiwify_orders
+      ORDER BY updated_at DESC
+      LIMIT 10
+    `)
+    return NextResponse.json({ ok: true, webhook: 'kiwify', plan: PLAN_CADERNOS_500, received: rows.length, latest: rows })
+  } catch (e) {
+    return NextResponse.json({ ok: true, webhook: 'kiwify', plan: PLAN_CADERNOS_500, diagnostics_error: (e as Error).message })
+  }
 }
