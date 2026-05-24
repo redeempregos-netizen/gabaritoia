@@ -13,6 +13,11 @@ function cleanExtractedText(s: string) {
   return String(s || '').replace(/\u0000/g, ' ').replace(/\s{4,}/g, ' ').trim()
 }
 
+async function hashBuffer(buffer: ArrayBuffer) {
+  const digest = await crypto.subtle.digest('SHA-256', buffer)
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 function safe(v?: string | null, fallback = 'Não informado') {
   const s = String(v || '').trim()
   return s || fallback
@@ -70,10 +75,13 @@ export default function CadernosPage() {
     setImporting(true)
     try {
       let text = ''
+      let fileHash = ''
       if (file.name.toLowerCase().endsWith('.pdf')) {
+        const buffer = await file.arrayBuffer()
+        fileHash = await hashBuffer(buffer)
         const pdfjs = await import('pdfjs-dist')
         pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
-        const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
+        const pdf = await pdfjs.getDocument({ data: buffer.slice(0) }).promise
         const parts: string[] = []
         for (let i = 1; i <= Math.min(pdf.numPages, 2500); i++) {
           const page = await pdf.getPage(i)
@@ -83,7 +91,9 @@ export default function CadernosPage() {
         }
         text = parts.join('\n\n')
       } else {
-        text = await file.text()
+        const buffer = await file.arrayBuffer()
+        fileHash = await hashBuffer(buffer)
+        text = new TextDecoder('utf-8').decode(buffer)
       }
 
       text = cleanExtractedText(text)
@@ -92,7 +102,7 @@ export default function CadernosPage() {
       const res = await fetch('/api/question-books', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'import', title: file.name.replace(/\.pdf$/i, ''), text }),
+        body: JSON.stringify({ action: 'import', title: file.name.replace(/\.pdf$/i, ''), text, fileHash }),
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || 'Erro ao importar'); return }
