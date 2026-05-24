@@ -4,13 +4,14 @@ import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
-  History, Settings, LogOut, CreditCard, Zap, DollarSign, FolderOpen, Brain
+  History, Settings, LogOut, CreditCard, Zap, DollarSign, FolderOpen, Brain, BookOpen
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 const NAV = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
+  { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen, badge: 'Novo' },
   { href: '/mapas',      label: 'Mapas Mentais',       icon: Brain, badge: 'Novo' },
   { href: '/edital',     label: 'Edital Verticalizado', icon: FileText },
   { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket, badge: 'Novo' },
