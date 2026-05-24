@@ -79,14 +79,33 @@ function extractNumber(q: string, externalId?: string) {
   return idNum ? Number(idNum.slice(-4)) : 0
 }
 
-function cutAfterHeader(text: string, number: number) {
-  let s = text
+function normalizeHeaderSpaces(s: string) {
+  return String(s || '')
+    .replace(/\s*\|\s*/g, ' | ')
+    .replace(/ID:\s*/i, 'ID: ')
+    .replace(/T[ÓO]PICO:\s*/i, 'TÓPICO: ')
+    .replace(/PROVA:\s*/i, 'PROVA: ')
+}
+
+function parseHeader(q: string) {
+  const h = normalizeHeaderSpaces(q)
+  const id = h.match(/ID:\s*([^|\n]+)/i)?.[1] || ''
+  const topic = h.match(/T[ÓO]PICO:\s*([^|\n]+)/i)?.[1] || ''
+  let exam = h.match(/PROVA:\s*([^\n]+)/i)?.[1] || ''
+  exam = exam.replace(/\s+Alternativas[\s\S]*$/i, '').trim()
+  return { externalId: cleanText(id), topic: cleanText(topic), exam: cleanText(exam) }
+}
+
+function cleanStatement(q: string, number: number) {
+  let s = q
   s = s.replace(/^[\s\S]*?Caderno de Questões Comentadas[^\n]*Questões\s*/i, '')
   s = s.replace(/^\s*Artes Visuais\s*/i, '')
-  s = s.replace(/^\s*ID:\s*[^\n]+/i, '')
+  s = s.replace(/ID:\s*[^|\n]+\|\s*T[ÓO]PICO:\s*[^|\n]+\|\s*PROVA:\s*[^\n]+/i, '')
+  s = s.replace(/ID:\s*[^\n]+/i, '')
+  s = s.replace(/Alternativas[\s\S]*$/i, '')
   if (number) {
-    s = s.replace(new RegExp(`^\\s*${number}\\s+`), '')
     s = s.replace(new RegExp(`^[\\s\\S]*?Questões\\s+${number}\\s+`, 'i'), '')
+    s = s.replace(new RegExp(`^\\s*${number}\\s+`), '')
   }
   return cleanText(s)
 }
@@ -94,29 +113,19 @@ function cutAfterHeader(text: string, number: number) {
 function parseQuestionBlock(questionText: string, answerText?: string) {
   const q = cleanText(questionText)
   const a = cleanText(answerText || '')
-  const idMatch = q.match(/ID:\s*([^|\n]+)/i)
-  const topicMatch = q.match(/T[ÓO]PICO:\s*([^|\n]+)/i)
-  const examMatch = q.match(/PROVA:\s*([^\n]+)/i)
-  const externalId = idMatch ? cleanText(idMatch[1]) : ''
-  const number = extractNumber(q, externalId)
+  const header = parseHeader(q)
+  const number = extractNumber(q, header.externalId)
 
+  const alternativesText = q.match(/Alternativas\s*([\s\S]*)/i)?.[1] || q
   const options: string[] = []
   const optRegex = /\(([A-E])\)\s*([\s\S]*?)(?=\s*\([A-E]\)\s|\s*Caderno de Questões|\s*Questões\s+\d{1,4}\s|$)/g
   let om: RegExpExecArray | null
-  while ((om = optRegex.exec(q)) !== null) {
+  while ((om = optRegex.exec(alternativesText)) !== null) {
     options[letterToIndex(om[1])] = cleanText(om[2])
   }
   const normalizedOptions = options.filter(v => typeof v === 'string' && v.trim())
 
-  let statement = q
-  statement = statement.replace(/Alternativas[\s\S]*?(?=\s*\([A-E]\)\s)/i, '')
-  statement = statement.replace(optRegex, '')
-  statement = statement.replace(/Caderno de Questões Comentadas[^\n]*Questões/g, '')
-  statement = statement.replace(/Artes Visuais\s*/g, '')
-  statement = statement.replace(/ID:\s*[^\n]+/i, '')
-  statement = cutAfterHeader(statement, number)
-  statement = statement.replace(new RegExp(`^${number}\\s+`), '')
-  statement = cleanText(statement)
+  const statement = cleanStatement(q, number)
 
   const answerMatch = a.match(/Resposta:\s*([A-E]|Certo|Errado|C|E)/i)
   const answer = answerMatch ? answerMatch[1].toUpperCase().replace('CERTO', 'C').replace('ERRADO', 'E') : ''
@@ -124,15 +133,14 @@ function parseQuestionBlock(questionText: string, answerText?: string) {
   let comment = commentMatch ? cleanText(commentMatch[1]) : ''
   comment = comment.replace(/Caderno de Questões Comentadas[\s\S]*?Questões/g, '').trim()
 
-  const exam = examMatch ? cleanText(examMatch[1]) : ''
   const correctIndex = normalizedOptions.length ? letterToIndex(answer) : answer === 'C' ? 0 : answer === 'E' ? 1 : -1
 
   return {
     number,
-    externalId,
-    topic: topicMatch ? cleanText(topicMatch[1]) : '',
-    exam,
-    banca: inferBanca(exam),
+    externalId: header.externalId,
+    topic: header.topic,
+    exam: header.exam,
+    banca: inferBanca(header.exam),
     statement,
     options: normalizedOptions.length ? normalizedOptions : ['Certo', 'Errado'],
     correctAnswer: answer,
