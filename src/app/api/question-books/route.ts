@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createHash } from 'crypto'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
@@ -42,6 +43,16 @@ async function ensureTables() {
       created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS imported_question_cache (
+      source_hash TEXT PRIMARY KEY,
+      title TEXT,
+      total_questions INTEGER NOT NULL DEFAULT 0,
+      parsed_json JSONB NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      used_count INTEGER NOT NULL DEFAULT 0
+    );
+  `)
 }
 
 function cleanText(s: string) {
@@ -51,6 +62,10 @@ function cleanText(s: string) {
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+}
+
+function sourceHash(text: string) {
+  return createHash('sha256').update(cleanText(text).replace(/\s+/g, ' ')).digest('hex')
 }
 
 function letterToIndex(letter?: string | null) {
@@ -115,7 +130,6 @@ function parseQuestionBlock(questionText: string, answerText?: string) {
   const a = cleanText(answerText || '')
   const header = parseHeader(q)
   const number = extractNumber(q, header.externalId)
-
   const alternativesText = q.match(/Alternativas\s*([\s\S]*)/i)?.[1] || q
   const options: string[] = []
   const optRegex = /\(([A-E])\)\s*([\s\S]*?)(?=\s*\([A-E]\)\s|\s*Caderno de Questões|\s*Questões\s+\d{1,4}\s|$)/g
@@ -124,15 +138,12 @@ function parseQuestionBlock(questionText: string, answerText?: string) {
     options[letterToIndex(om[1])] = cleanText(om[2])
   }
   const normalizedOptions = options.filter(v => typeof v === 'string' && v.trim())
-
   const statement = cleanStatement(q, number)
-
   const answerMatch = a.match(/Resposta:\s*([A-E]|Certo|Errado|C|E)/i)
   const answer = answerMatch ? answerMatch[1].toUpperCase().replace('CERTO', 'C').replace('ERRADO', 'E') : ''
   const commentMatch = a.match(/Coment[áa]rio\s*([\s\S]*)/i)
   let comment = commentMatch ? cleanText(commentMatch[1]) : ''
   comment = comment.replace(/Caderno de Questões Comentadas[\s\S]*?Questões/g, '').trim()
-
   const correctIndex = normalizedOptions.length ? letterToIndex(answer) : answer === 'C' ? 0 : answer === 'E' ? 1 : -1
 
   return {
@@ -180,6 +191,25 @@ function extractQuestions(fullText: string) {
   })
 }
 
+async function createBookFromParsed(userId: string, title: string, parsed: any[], fromCache: boolean) {
+  const bookId = crypto.randomUUID()
+  const area = parsed[0]?.topic?.split(' ')[0] || 'Questões'
+  const finalTitle = fromCache ? `${title} (cache reaproveitado)` : title
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO imported_question_books (id, user_id, title, area, total_questions) VALUES ($1, $2, $3, $4, $5)`,
+    bookId, userId, finalTitle, area, parsed.length
+  )
+  for (const q of parsed) {
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO imported_questions (id, book_id, user_id, number, external_id, topic, exam, banca, statement, options_json, correct_answer, correct_index, comment)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13)`,
+      crypto.randomUUID(), bookId, userId, q.number, q.externalId, q.topic, q.exam, q.banca, q.statement,
+      JSON.stringify(q.options), q.correctAnswer, q.correctIndex, q.comment
+    )
+  }
+  return { id: bookId, title: finalTitle, totalQuestions: parsed.length, fromCache }
+}
+
 export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
@@ -208,26 +238,32 @@ export async function POST(req: NextRequest) {
     const title = String(body.title || 'Caderno de questões importado')
     const extractedText = String(body.text || '')
     if (extractedText.length < 50) return NextResponse.json({ error: 'Texto insuficiente para importar.' }, { status: 400 })
+
+    const hash = sourceHash(extractedText)
+    const cached = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT parsed_json AS parsed FROM imported_question_cache WHERE source_hash = $1 LIMIT 1`,
+      hash
+    )
+
+    if (cached[0]?.parsed) {
+      const parsed = Array.isArray(cached[0].parsed) ? cached[0].parsed : []
+      const book = await createBookFromParsed(session.userId, title, parsed, true)
+      await prisma.$executeRawUnsafe(`UPDATE imported_question_cache SET used_count = used_count + 1 WHERE source_hash = $1`, hash)
+      return NextResponse.json({ ok: true, book })
+    }
+
     const parsed = extractQuestions(extractedText)
     if (!parsed.length) return NextResponse.json({ error: 'Não encontrei questões neste PDF.' }, { status: 400 })
 
-    const bookId = crypto.randomUUID()
-    const area = parsed[0]?.topic?.split(' ')[0] || 'Questões'
     await prisma.$executeRawUnsafe(
-      `INSERT INTO imported_question_books (id, user_id, title, area, total_questions) VALUES ($1, $2, $3, $4, $5)`,
-      bookId, session.userId, title, area, parsed.length
+      `INSERT INTO imported_question_cache (source_hash, title, total_questions, parsed_json, used_count)
+       VALUES ($1, $2, $3, $4::jsonb, 1)
+       ON CONFLICT (source_hash) DO NOTHING`,
+      hash, title, parsed.length, JSON.stringify(parsed)
     )
 
-    for (const q of parsed) {
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO imported_questions (id, book_id, user_id, number, external_id, topic, exam, banca, statement, options_json, correct_answer, correct_index, comment)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13)`,
-        crypto.randomUUID(), bookId, session.userId, q.number, q.externalId, q.topic, q.exam, q.banca, q.statement,
-        JSON.stringify(q.options), q.correctAnswer, q.correctIndex, q.comment
-      )
-    }
-
-    return NextResponse.json({ ok: true, book: { id: bookId, title, totalQuestions: parsed.length } })
+    const book = await createBookFromParsed(session.userId, title, parsed, false)
+    return NextResponse.json({ ok: true, book })
   }
 
   if (body?.action === 'delete') {
