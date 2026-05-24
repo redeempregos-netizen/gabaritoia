@@ -2,6 +2,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { isCadernosOnlyPlan } from '@/lib/plans'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -13,13 +14,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
   })
   if (!user) redirect('/login')
 
-  const mobileNav = [
+  const fullMobileNav = [
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
     { href: '/gerar', label: 'Gerar', emoji: '✦' },
     { href: '/cadernos', label: 'Cadernos', emoji: '📚' },
     { href: '/edital', label: 'Edital', emoji: '📄' },
     { href: '/gerados', label: 'Gerados', emoji: '📁' },
   ]
+
+  const cadernosMobileNav = [
+    { href: '/dashboard', label: 'Painel', emoji: '⊞' },
+    { href: '/cadernos', label: 'Cadernos', emoji: '📚' },
+    { href: '/gerados', label: 'Gerados', emoji: '📁' },
+    { href: '/planos', label: 'Planos', emoji: '⚡' },
+  ]
+
+  const mobileNav = user.role === 'ADMIN' || !isCadernosOnlyPlan(user.plan) ? fullMobileNav : cadernosMobileNav
 
   return (
     <div className="flex h-screen overflow-hidden">
