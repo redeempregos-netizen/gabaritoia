@@ -15,6 +15,8 @@ async function ensureTables() {
       updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `)
+  await prisma.$executeRawUnsafe(`ALTER TABLE imported_question_books ADD COLUMN IF NOT EXISTS source_hash TEXT;`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_question_books_user_hash_idx ON imported_question_books(user_id, source_hash);`)
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS imported_questions (
       id TEXT PRIMARY KEY,
@@ -146,18 +148,7 @@ function parseQuestionBlock(questionText: string, answerText?: string) {
   comment = comment.replace(/Caderno de Questões Comentadas[\s\S]*?Questões/g, '').trim()
   const correctIndex = normalizedOptions.length ? letterToIndex(answer) : answer === 'C' ? 0 : answer === 'E' ? 1 : -1
 
-  return {
-    number,
-    externalId: header.externalId,
-    topic: header.topic,
-    exam: header.exam,
-    banca: inferBanca(header.exam),
-    statement,
-    options: normalizedOptions.length ? normalizedOptions : ['Certo', 'Errado'],
-    correctAnswer: answer,
-    correctIndex,
-    comment,
-  }
+  return { number, externalId: header.externalId, topic: header.topic, exam: header.exam, banca: inferBanca(header.exam), statement, options: normalizedOptions.length ? normalizedOptions : ['Certo', 'Errado'], correctAnswer: answer, correctIndex, comment }
 }
 
 function extractQuestions(fullText: string) {
@@ -191,13 +182,12 @@ function extractQuestions(fullText: string) {
   })
 }
 
-async function createBookFromParsed(userId: string, title: string, parsed: any[], fromCache: boolean) {
+async function createBookFromParsed(userId: string, title: string, parsed: any[], fromCache: boolean, hash: string) {
   const bookId = crypto.randomUUID()
   const area = parsed[0]?.topic?.split(' ')[0] || 'Questões'
-  const finalTitle = fromCache ? `${title} (cache reaproveitado)` : title
   await prisma.$executeRawUnsafe(
-    `INSERT INTO imported_question_books (id, user_id, title, area, total_questions) VALUES ($1, $2, $3, $4, $5)`,
-    bookId, userId, finalTitle, area, parsed.length
+    `INSERT INTO imported_question_books (id, user_id, title, area, total_questions, source_hash) VALUES ($1, $2, $3, $4, $5, $6)`,
+    bookId, userId, title, area, parsed.length, hash
   )
   for (const q of parsed) {
     await prisma.$executeRawUnsafe(
@@ -207,7 +197,7 @@ async function createBookFromParsed(userId: string, title: string, parsed: any[]
       JSON.stringify(q.options), q.correctAnswer, q.correctIndex, q.comment
     )
   }
-  return { id: bookId, title: finalTitle, totalQuestions: parsed.length, fromCache }
+  return { id: bookId, title, totalQuestions: parsed.length, fromCache }
 }
 
 export async function GET() {
@@ -240,6 +230,15 @@ export async function POST(req: NextRequest) {
     if (extractedText.length < 50) return NextResponse.json({ error: 'Texto insuficiente para importar.' }, { status: 400 })
 
     const hash = sourceHash(extractedText)
+    const existing = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT id, title, total_questions AS "totalQuestions" FROM imported_question_books WHERE user_id = $1 AND source_hash = $2 LIMIT 1`,
+      session.userId,
+      hash
+    )
+    if (existing[0]) {
+      return NextResponse.json({ ok: true, alreadyImported: true, book: { ...existing[0], fromCache: true } })
+    }
+
     const cached = await prisma.$queryRawUnsafe<any[]>(
       `SELECT parsed_json AS parsed FROM imported_question_cache WHERE source_hash = $1 LIMIT 1`,
       hash
@@ -247,7 +246,7 @@ export async function POST(req: NextRequest) {
 
     if (cached[0]?.parsed) {
       const parsed = Array.isArray(cached[0].parsed) ? cached[0].parsed : []
-      const book = await createBookFromParsed(session.userId, title, parsed, true)
+      const book = await createBookFromParsed(session.userId, title, parsed, true, hash)
       await prisma.$executeRawUnsafe(`UPDATE imported_question_cache SET used_count = used_count + 1 WHERE source_hash = $1`, hash)
       return NextResponse.json({ ok: true, book })
     }
@@ -262,7 +261,7 @@ export async function POST(req: NextRequest) {
       hash, title, parsed.length, JSON.stringify(parsed)
     )
 
-    const book = await createBookFromParsed(session.userId, title, parsed, false)
+    const book = await createBookFromParsed(session.userId, title, parsed, false, hash)
     return NextResponse.json({ ok: true, book })
   }
 
