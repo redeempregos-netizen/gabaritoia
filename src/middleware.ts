@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
-import { canAccessRoute, isCadernosOnlyPlan } from '@/lib/plans'
+import { canAccessRoute, getDefaultRouteForPlan, isLimitedPlan } from '@/lib/plans'
 
 const PUBLIC_ROUTES = ['/login', '/register', '/']
 const ADMIN_ROUTES = ['/admin']
@@ -14,7 +14,7 @@ export async function middleware(req: NextRequest) {
     if (token) {
       const session = await verifySession(token)
       if (session) {
-        return NextResponse.redirect(new URL('/dashboard', req.url))
+        return NextResponse.redirect(new URL(getDefaultRouteForPlan(session.plan), req.url))
       }
     }
     return NextResponse.next()
@@ -37,8 +37,8 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  if (session.role !== 'ADMIN' && isCadernosOnlyPlan(session.plan) && !canAccessRoute(session.plan, pathname)) {
-    return NextResponse.redirect(new URL('/cadernos', req.url))
+  if (session.role !== 'ADMIN' && isLimitedPlan(session.plan) && !canAccessRoute(session.plan, pathname)) {
+    return NextResponse.redirect(new URL(getDefaultRouteForPlan(session.plan), req.url))
   }
 
   const res = NextResponse.next()
