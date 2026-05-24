@@ -2,13 +2,14 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { getPlanLabel, isCadernosOnlyPlan } from '@/lib/plans'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
   History, Settings, LogOut, CreditCard, Zap, DollarSign, FolderOpen, Brain, BookOpen
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-const NAV = [
+const FULL_NAV = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen, badge: 'Novo' },
@@ -17,6 +18,13 @@ const NAV = [
   { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket, badge: 'Novo' },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
   { href: '/historico',  label: 'Histórico',            icon: History },
+  { href: '/planos',     label: 'Planos e Créditos',   icon: CreditCard },
+]
+
+const CADERNOS_NAV = [
+  { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
+  { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
+  { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
   { href: '/planos',     label: 'Planos e Créditos',   icon: CreditCard },
 ]
 
@@ -29,6 +37,7 @@ export function Sidebar({ user }: SidebarProps) {
   const router = useRouter()
   const [credits, setCredits] = useState<number | null>(null)
   const [claiming, setClaiming] = useState(false)
+  const nav = user.role === 'ADMIN' || !isCadernosOnlyPlan(user.plan) ? FULL_NAV : CADERNOS_NAV
 
   useEffect(() => {
     fetch('/api/credits')
@@ -78,7 +87,7 @@ export function Sidebar({ user }: SidebarProps) {
         <div className="min-w-0">
           <div className="text-xs font-medium text-zinc-100 truncate">{user.name}</div>
           <div className="text-[10px] text-zinc-500">
-            {user.role === 'ADMIN' ? 'Administrador' : `Plano ${user.plan}`}
+            {user.role === 'ADMIN' ? 'Administrador' : `Plano ${getPlanLabel(user.plan)}`}
           </div>
         </div>
       </div>
@@ -94,18 +103,24 @@ export function Sidebar({ user }: SidebarProps) {
               <span className="font-heading font-bold text-amber-400 text-xs">{credits}</span>
             </div>
             <div className="h-1 bg-zinc-700 rounded-full overflow-hidden mb-2">
-              <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all" style={{ width: `${Math.min(credits / 100 * 100, 100)}%` }} />
+              <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all" style={{ width: `${Math.min(credits / 500 * 100, 100)}%` }} />
             </div>
-            <button onClick={claimBonus} disabled={claiming} className="w-full py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50">
+            {!isCadernosOnlyPlan(user.plan) && <button onClick={claimBonus} disabled={claiming} className="w-full py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50">
               {claiming ? 'Resgatando...' : '🎁 Bônus diário'}
-            </button>
+            </button>}
           </div>
+        </div>
+      )}
+
+      {isCadernosOnlyPlan(user.plan) && user.role !== 'ADMIN' && (
+        <div className="mx-3 mt-2 rounded-xl border border-brand-500/20 bg-brand-500/10 p-3 text-[11px] text-brand-100 leading-relaxed">
+          Seu plano libera acesso aos Cadernos PDF e 500 créditos.
         </div>
       )}
 
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
         <div className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-3 mb-2">Menu</div>
-        {NAV.map(item => {
+        {nav.map(item => {
           const Icon = item.icon
           const active = pathname === item.href || pathname.startsWith(item.href + '/')
           return (
