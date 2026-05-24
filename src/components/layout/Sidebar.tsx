@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { getPlanLabel, isCadernosOnlyPlan } from '@/lib/plans'
+import { getPlanLabel, isCadernosOnlyPlan, isFreePlan } from '@/lib/plans'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
   History, Settings, LogOut, CreditCard, Zap, DollarSign, FolderOpen, Brain, BookOpen,
@@ -29,6 +29,11 @@ const FULL_NAV: NavItem[] = [
   { href: '/planos',     label: 'Planos e Créditos',   icon: CreditCard },
 ]
 
+const FREE_NAV: NavItem[] = [
+  { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
+  { href: '/planos',     label: 'Planos e Créditos',   icon: CreditCard },
+]
+
 const CADERNOS_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
@@ -45,7 +50,7 @@ export function Sidebar({ user }: SidebarProps) {
   const router = useRouter()
   const [credits, setCredits] = useState<number | null>(null)
   const [claiming, setClaiming] = useState(false)
-  const nav: NavItem[] = user.role === 'ADMIN' || !isCadernosOnlyPlan(user.plan) ? FULL_NAV : CADERNOS_NAV
+  const nav: NavItem[] = user.role === 'ADMIN' ? FULL_NAV : isFreePlan(user.plan) ? FREE_NAV : isCadernosOnlyPlan(user.plan) ? CADERNOS_NAV : FULL_NAV
 
   useEffect(() => {
     fetch('/api/credits')
@@ -113,10 +118,16 @@ export function Sidebar({ user }: SidebarProps) {
             <div className="h-1 bg-zinc-700 rounded-full overflow-hidden mb-2">
               <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all" style={{ width: `${Math.min(credits / 500 * 100, 100)}%` }} />
             </div>
-            {!isCadernosOnlyPlan(user.plan) && <button onClick={claimBonus} disabled={claiming} className="w-full py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50">
+            {!isCadernosOnlyPlan(user.plan) && !isFreePlan(user.plan) && <button onClick={claimBonus} disabled={claiming} className="w-full py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50">
               {claiming ? 'Resgatando...' : '🎁 Bônus diário'}
             </button>}
           </div>
+        </div>
+      )}
+
+      {isFreePlan(user.plan) && user.role !== 'ADMIN' && (
+        <div className="mx-3 mt-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-[11px] text-amber-100 leading-relaxed">
+          Sua conta grátis ainda não possui acesso às ferramentas. Escolha um plano para liberar.
         </div>
       )}
 
