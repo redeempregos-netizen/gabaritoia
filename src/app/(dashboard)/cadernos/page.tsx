@@ -5,10 +5,15 @@ import { toast } from 'sonner'
 import { BookOpen, CheckCircle2, Circle, Loader2, Trash2, Upload, XCircle } from 'lucide-react'
 
 type Book = { id: string; title: string; area?: string; totalQuestions: number; createdAt: string; answered: number; correct: number }
-type Question = { id: string; number: number; externalId?: string; topic?: string; exam?: string; banca?: string; statement: string; options: string[]; correctIndex: number; comment?: string; selectedIndex?: number | null; isCorrect?: boolean | null }
+type Question = { id: string; number: number; externalId?: string; topic?: string; exam?: string; banca?: string; statement: string; options: string[]; correctAnswer?: string; correctIndex: number; comment?: string; selectedIndex?: number | null; isCorrect?: boolean | null }
 
 function cleanExtractedText(s: string) {
   return String(s || '').replace(/\u0000/g, ' ').replace(/\s{4,}/g, ' ').trim()
+}
+
+function safe(v?: string | null, fallback = 'Não informado') {
+  const s = String(v || '').trim()
+  return s || fallback
 }
 
 export default function CadernosPage() {
@@ -119,6 +124,8 @@ export default function CadernosPage() {
   const q = questions[current]
   const percent = stats.total ? Math.round((stats.answered / stats.total) * 100) : 0
   const score = stats.answered ? Math.round((stats.correct / stats.answered) * 100) : 0
+  const answered = q?.selectedIndex !== null && q?.selectedIndex !== undefined
+  const correctLetter = q ? (q.correctAnswer || 'ABCDE'[q.correctIndex] || '') : ''
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
@@ -161,7 +168,7 @@ export default function CadernosPage() {
                   <div>
                     <div className="text-xs text-brand-300 font-bold uppercase tracking-wider">{activeBook.title}</div>
                     <h2 className="font-heading text-xl font-bold mt-1">Questão {q.number}</h2>
-                    <div className="text-xs text-zinc-500 mt-1">{q.topic || 'Tópico não informado'} · {q.banca || 'Banca não informada'}</div>
+                    <div className="text-xs text-zinc-500 mt-1">{safe(q.topic, 'Tópico não informado')} · {safe(q.banca, 'Banca não identificada')}</div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center min-w-full md:min-w-[260px]">
                     <div className="rounded-2xl bg-black/25 border border-white/10 p-3"><div className="font-bold text-white">{percent}%</div><div className="text-[10px] text-zinc-500">Feito</div></div>
@@ -171,24 +178,45 @@ export default function CadernosPage() {
                 </div>
               </div>
 
-              <div className="card p-5 md:p-6">
-                <div className="text-xs text-zinc-500 mb-3">{q.exam}</div>
-                <p className="text-sm md:text-base leading-relaxed whitespace-pre-line text-zinc-100">{q.statement}</p>
-
-                <div className="space-y-3 mt-6">
-                  {(q.options || []).map((op, idx) => {
-                    const answered = q.selectedIndex !== null && q.selectedIndex !== undefined
-                    const isSelected = q.selectedIndex === idx
-                    const isCorrect = q.correctIndex === idx
-                    const cls = answered && isCorrect ? 'border-green-500/40 bg-green-500/10 text-green-200' : answered && isSelected && !isCorrect ? 'border-red-500/40 bg-red-500/10 text-red-200' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-brand-500/40'
-                    return <button key={idx} disabled={answering === q.id} onClick={() => answer(q, idx)} className={`w-full text-left rounded-2xl border p-4 text-sm transition-all ${cls}`}>
-                      <div className="flex gap-3"><span className="font-bold">{'ABCDE'[idx] || idx + 1})</span><span>{op}</span>{answered && isCorrect && <CheckCircle2 size={16} className="ml-auto text-green-400" />}{answered && isSelected && !isCorrect && <XCircle size={16} className="ml-auto text-red-400" />}</div>
-                    </button>
-                  })}
+              <div className="card p-5 md:p-6 space-y-5">
+                <div className="rounded-2xl border border-brand-500/20 bg-brand-500/5 p-4">
+                  <div className="text-xs font-bold text-brand-300 mb-3 uppercase tracking-wider">Origem da questão</div>
+                  <div className="grid md:grid-cols-3 gap-3 text-xs">
+                    <div className="rounded-xl bg-black/20 border border-white/10 p-3"><div className="text-zinc-500 mb-1">ID</div><div className="text-zinc-200 font-semibold">{safe(q.externalId)}</div></div>
+                    <div className="rounded-xl bg-black/20 border border-white/10 p-3"><div className="text-zinc-500 mb-1">Tópico</div><div className="text-zinc-200 font-semibold">{safe(q.topic)}</div></div>
+                    <div className="rounded-xl bg-black/20 border border-white/10 p-3"><div className="text-zinc-500 mb-1">Banca</div><div className="text-zinc-200 font-semibold">{safe(q.banca, 'Não identificada')}</div></div>
+                  </div>
+                  <div className="mt-3 rounded-xl bg-black/20 border border-white/10 p-3 text-xs">
+                    <div className="text-zinc-500 mb-1">Prova</div>
+                    <div className="text-zinc-200 font-semibold leading-relaxed">{safe(q.exam)}</div>
+                  </div>
                 </div>
 
-                {q.selectedIndex !== null && q.selectedIndex !== undefined && <div className="mt-6 rounded-2xl border border-brand-500/20 bg-brand-500/5 p-4">
-                  <div className="text-xs font-bold text-brand-300 mb-2">Comentário</div>
+                <div>
+                  <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Pergunta</div>
+                  <p className="text-sm md:text-base leading-relaxed whitespace-pre-line text-zinc-100">{q.statement}</p>
+                </div>
+
+                <div>
+                  <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Alternativas</div>
+                  <div className="space-y-3">
+                    {(q.options || []).map((op, idx) => {
+                      const isSelected = q.selectedIndex === idx
+                      const isCorrect = q.correctIndex === idx
+                      const cls = answered && isCorrect ? 'border-green-500/40 bg-green-500/10 text-green-200' : answered && isSelected && !isCorrect ? 'border-red-500/40 bg-red-500/10 text-red-200' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-brand-500/40'
+                      return <button key={idx} disabled={answering === q.id} onClick={() => answer(q, idx)} className={`w-full text-left rounded-2xl border p-4 text-sm transition-all ${cls}`}>
+                        <div className="flex gap-3"><span className="font-bold">{'ABCDE'[idx] || idx + 1})</span><span>{op}</span>{answered && isCorrect && <CheckCircle2 size={16} className="ml-auto text-green-400" />}{answered && isSelected && !isCorrect && <XCircle size={16} className="ml-auto text-red-400" />}</div>
+                      </button>
+                    })}
+                  </div>
+                </div>
+
+                {answered && <div className="rounded-2xl border border-brand-500/20 bg-brand-500/5 p-4">
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <div className="text-xs font-bold text-brand-300 uppercase tracking-wider">Resposta e comentário</div>
+                    <span className={`text-[11px] rounded-full px-2 py-1 border ${q.isCorrect ? 'border-green-500/20 bg-green-500/10 text-green-300' : 'border-red-500/20 bg-red-500/10 text-red-300'}`}>{q.isCorrect ? 'Você acertou' : 'Você errou'}</span>
+                    <span className="text-[11px] rounded-full px-2 py-1 border border-white/10 bg-black/20 text-zinc-300">Resposta: {correctLetter}</span>
+                  </div>
                   <div className="text-sm text-zinc-300 leading-relaxed">{q.comment || 'Comentário não informado.'}</div>
                 </div>}
               </div>
