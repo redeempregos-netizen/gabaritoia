@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Eye, EyeOff, CheckCircle, Key, Zap, Crown, Rocket } from 'lucide-react'
+import { Loader2, Eye, EyeOff, CheckCircle, Key, Zap, Crown, BookOpen } from 'lucide-react'
 
 const PROVIDERS = [
   { id: 'claude',     name: 'Claude (Anthropic)', hint: 'Começa com sk-ant-...' },
@@ -16,18 +16,37 @@ const PLANS = [
     id: 'FREE',
     name: 'Gratuito',
     price: 'R$0',
-    period: 'para sempre',
+    period: 'sem ferramentas',
     icon: <Zap size={20} className="text-zinc-400" />,
     color: 'border-zinc-700',
     features: [
-      '30 créditos ao cadastrar',
-      '2 créditos de bônus/dia',
-      'Gerador de questões',
-      'Edital Verticalizado',
-      'Histórico completo',
+      'Acesso ao painel',
+      'Visualização dos planos',
+      'Conta criada sem acesso às ferramentas pagas',
+      'Ideal para conhecer a plataforma',
     ],
     cta: 'Plano atual',
     disabled: true,
+  },
+  {
+    id: 'CADERNOS_500',
+    name: 'Cadernos PDF 500',
+    price: 'R$ —',
+    period: 'pagamento único',
+    icon: <BookOpen size={20} className="text-brand-300" />,
+    color: 'border-brand-500/60',
+    highlight: true,
+    badge: 'Novo',
+    features: [
+      'Acesso ao módulo Cadernos PDF',
+      '500 créditos inclusos',
+      'Importação de PDFs de questões comentadas',
+      'Resposta questão por questão dentro da plataforma',
+      'Filtros por banca, ano, estado e tópico',
+      'Correção automática com comentário',
+    ],
+    cta: 'Comprar Cadernos 500',
+    disabled: false,
   },
   {
     id: 'PRO',
@@ -36,7 +55,6 @@ const PLANS = [
     period: '/mês',
     icon: <Crown size={20} className="text-amber-400" />,
     color: 'border-amber-500/50',
-    highlight: true,
     features: [
       '500 créditos/mês',
       '5 créditos de bônus/dia',
@@ -60,7 +78,7 @@ const PLANS = [
       'Zero créditos consumidos',
       'Claude, GPT, Gemini, Grok',
       'Controle total dos custos',
-      'Acesso a todos recursos',
+      'Acesso conforme seu plano ativo',
     ],
     cta: 'Configurar chave',
     disabled: false,
@@ -120,19 +138,24 @@ export default function PlanosPage() {
 
   function handlePlanCta(planId: string) {
     if (planId === 'OWN_KEY') { setActiveTab('apikey'); return }
+    if (planId === 'CADERNOS_500') {
+      const url = process.env.NEXT_PUBLIC_KIWIFY_CADERNOS_500_URL
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+      else toast.info('Plano Cadernos 500 já está criado. Falta configurar o link do produto da Kiwify em NEXT_PUBLIC_KIWIFY_CADERNOS_500_URL.')
+      return
+    }
     if (planId === 'PRO') {
       toast.info('Integração com pagamento em breve! Entre em contato: contato@gabaritoia.com')
     }
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-8">
         <h1 className="font-heading text-2xl font-bold">💎 Planos e Créditos</h1>
         <p className="text-zinc-400 text-sm mt-1">Escolha o melhor plano ou use sua própria chave de IA</p>
       </div>
 
-      {/* Créditos atuais */}
       {credits !== null && (
         <div className="card p-4 mb-6 flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center">
@@ -140,13 +163,12 @@ export default function PlanosPage() {
           </div>
           <div className="flex-1">
             <div className="text-sm font-medium">Seus créditos atuais</div>
-            <div className="text-xs text-zinc-500">1 questão = 1 crédito · 5 questões = 4 créditos · Plano de estudos = 15 créditos</div>
+            <div className="text-xs text-zinc-500">Os créditos são usados para gerar, importar, organizar e estudar conteúdos dentro da plataforma.</div>
           </div>
           <div className="font-heading text-2xl font-bold text-amber-400">{credits}</div>
         </div>
       )}
 
-      {/* Tabs */}
       <div className="flex gap-1 border-b border-white/[0.07] mb-6">
         <button
           onClick={() => setActiveTab('plans')}
@@ -163,14 +185,13 @@ export default function PlanosPage() {
         </button>
       </div>
 
-      {/* Plans Tab */}
       {activeTab === 'plans' && (
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
           {PLANS.map(plan => (
-            <div key={plan.id} className={`card p-5 border ${plan.color} ${plan.highlight ? 'relative' : ''}`}>
+            <div key={plan.id} className={`card p-5 border ${plan.color} ${plan.highlight ? 'relative bg-brand-500/5' : ''}`}>
               {plan.highlight && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-black text-xs font-bold px-3 py-1 rounded-full">
-                  MAIS POPULAR
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+                  {plan.badge || 'DESTAQUE'}
                 </div>
               )}
               <div className="flex items-center gap-2 mb-3">
@@ -181,7 +202,7 @@ export default function PlanosPage() {
                 <span className="font-heading text-2xl font-bold">{plan.price}</span>
                 <span className="text-zinc-500 text-sm ml-1">{plan.period}</span>
               </div>
-              <ul className="space-y-2 mb-5">
+              <ul className="space-y-2 mb-5 min-h-[170px]">
                 {plan.features.map(f => (
                   <li key={f} className="flex items-start gap-2 text-sm text-zinc-300">
                     <CheckCircle size={13} className="text-green-400 flex-shrink-0 mt-0.5" />
@@ -196,8 +217,8 @@ export default function PlanosPage() {
                   plan.disabled
                     ? 'bg-zinc-800 text-zinc-500 cursor-default'
                     : plan.highlight
-                    ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-black hover:opacity-90'
-                    : 'bg-brand-600 text-white hover:bg-brand-500'
+                    ? 'bg-gradient-to-r from-brand-600 to-purple-600 text-white hover:opacity-90'
+                    : 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700 border border-white/10'
                 }`}
               >
                 {plan.cta}
@@ -207,10 +228,8 @@ export default function PlanosPage() {
         </div>
       )}
 
-      {/* API Key Tab */}
       {activeTab === 'apikey' && (
         <div className="max-w-lg">
-          {/* Status atual */}
           {ownKeyInfo?.hasOwnKey ? (
             <div className="card p-4 mb-6 border border-green-500/30 bg-green-500/5">
               <div className="flex items-center gap-3">
@@ -235,12 +254,11 @@ export default function PlanosPage() {
             <div className="card p-4 mb-6 border border-blue-500/20 bg-blue-500/5">
               <div className="text-sm text-blue-300 font-medium mb-1">Como funciona</div>
               <div className="text-xs text-zinc-400 leading-relaxed">
-                Configure sua própria chave de API de qualquer provedor (Claude, ChatGPT, Gemini...) e todas as gerações usarão sua chave diretamente — sem consumir créditos do GabaritoIA. Você paga apenas o que usar no provedor escolhido.
+                Configure sua própria chave de API de qualquer provedor. Ela reduz consumo de créditos nas gerações de IA, mas o acesso às ferramentas continua respeitando o plano ativo da conta.
               </div>
             </div>
           )}
 
-          {/* Formulário */}
           <div className="card p-5">
             <div className="font-heading font-semibold mb-4">{ownKeyInfo?.hasOwnKey ? 'Atualizar chave' : 'Configurar chave própria'}</div>
 
@@ -295,7 +313,6 @@ export default function PlanosPage() {
             </button>
           </div>
 
-          {/* Links para obter chaves */}
           <div className="mt-4 card p-4">
             <div className="text-xs font-medium text-zinc-400 mb-3">Onde obter cada chave:</div>
             <div className="space-y-2 text-xs">
