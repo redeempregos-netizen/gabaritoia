@@ -64,17 +64,44 @@ function inferBanca(exam: string) {
   return known.find(k => lower.includes(k.toLowerCase())) || ''
 }
 
+function extractNumber(q: string, externalId?: string) {
+  const patterns = [
+    /(?:^|\n)\s*(\d{1,4})\s*\n/,
+    /Questões\s+(\d{1,4})\s+/i,
+    /Quest[ãa]o\s+(\d{1,4})\b/i,
+    /(?:^|\s)(\d{1,4})\s+(?:Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Usando|Qualquer|O artista|A respeito|Em\s+\d{4}|“|\")/i,
+  ]
+  for (const p of patterns) {
+    const m = q.match(p)
+    if (m?.[1]) return Number(m[1])
+  }
+  const idNum = String(externalId || '').match(/\d+/)?.[0]
+  return idNum ? Number(idNum.slice(-4)) : 0
+}
+
+function cutAfterHeader(text: string, number: number) {
+  let s = text
+  s = s.replace(/^[\s\S]*?Caderno de Questões Comentadas[^\n]*Questões\s*/i, '')
+  s = s.replace(/^\s*Artes Visuais\s*/i, '')
+  s = s.replace(/^\s*ID:\s*[^\n]+/i, '')
+  if (number) {
+    s = s.replace(new RegExp(`^\\s*${number}\\s+`), '')
+    s = s.replace(new RegExp(`^[\\s\\S]*?Questões\\s+${number}\\s+`, 'i'), '')
+  }
+  return cleanText(s)
+}
+
 function parseQuestionBlock(questionText: string, answerText?: string) {
   const q = cleanText(questionText)
   const a = cleanText(answerText || '')
-  const numberMatch = q.match(/(?:^|\n)\s*(\d{1,4})\s*\n/)
-  const number = numberMatch ? Number(numberMatch[1]) : 0
   const idMatch = q.match(/ID:\s*([^|\n]+)/i)
   const topicMatch = q.match(/T[ÓO]PICO:\s*([^|\n]+)/i)
   const examMatch = q.match(/PROVA:\s*([^\n]+)/i)
+  const externalId = idMatch ? cleanText(idMatch[1]) : ''
+  const number = extractNumber(q, externalId)
 
   const options: string[] = []
-  const optRegex = /\(([A-E])\)\s*([\s\S]*?)(?=\s*\([A-E]\)\s|\n\s*Caderno de Questões|\n\s*\d{1,4}\s*\n|$)/g
+  const optRegex = /\(([A-E])\)\s*([\s\S]*?)(?=\s*\([A-E]\)\s|\s*Caderno de Questões|\s*Questões\s+\d{1,4}\s|$)/g
   let om: RegExpExecArray | null
   while ((om = optRegex.exec(q)) !== null) {
     options[letterToIndex(om[1])] = cleanText(om[2])
@@ -82,15 +109,16 @@ function parseQuestionBlock(questionText: string, answerText?: string) {
   const normalizedOptions = options.filter(v => typeof v === 'string' && v.trim())
 
   let statement = q
-  statement = statement.replace(/Caderno de Questões Comentadas[\s\S]*?Questões/g, '')
+  statement = statement.replace(/Alternativas[\s\S]*?(?=\s*\([A-E]\)\s)/i, '')
+  statement = statement.replace(optRegex, '')
+  statement = statement.replace(/Caderno de Questões Comentadas[^\n]*Questões/g, '')
   statement = statement.replace(/Artes Visuais\s*/g, '')
   statement = statement.replace(/ID:\s*[^\n]+/i, '')
-  statement = statement.replace(/Alternativas[\s\S]*?(?=\n\s*\d{1,4}\s*\n)/i, '')
-  statement = statement.replace(optRegex, '')
-  statement = statement.replace(/^\s*\d{1,4}\s*/m, '')
+  statement = cutAfterHeader(statement, number)
+  statement = statement.replace(new RegExp(`^${number}\\s+`), '')
   statement = cleanText(statement)
 
-  const answerMatch = a.match(/Resposta:\s*([A-E]|C|E|Certo|Errado)/i)
+  const answerMatch = a.match(/Resposta:\s*([A-E]|Certo|Errado|C|E)/i)
   const answer = answerMatch ? answerMatch[1].toUpperCase().replace('CERTO', 'C').replace('ERRADO', 'E') : ''
   const commentMatch = a.match(/Coment[áa]rio\s*([\s\S]*)/i)
   let comment = commentMatch ? cleanText(commentMatch[1]) : ''
@@ -101,7 +129,7 @@ function parseQuestionBlock(questionText: string, answerText?: string) {
 
   return {
     number,
-    externalId: idMatch ? cleanText(idMatch[1]) : '',
+    externalId,
     topic: topicMatch ? cleanText(topicMatch[1]) : '',
     exam,
     banca: inferBanca(exam),
@@ -127,7 +155,7 @@ function extractQuestions(fullText: string) {
   }
 
   if (!questions.length) {
-    const blocks = text.split(/(?=\n\s*ID:\s*)/i)
+    const blocks = text.split(/(?=\s*ID:\s*)/i)
     for (const block of blocks) {
       if (!/ID:\s*/i.test(block)) continue
       const parsed = parseQuestionBlock(block, '')
