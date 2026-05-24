@@ -3,6 +3,9 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { PLAN_CADERNOS_500, PLAN_CREDIT_AMOUNT } from '@/lib/plans'
 
+const CADERNOS_PRODUCT_IDS = ['cb46e2b0-57ba-11f1-96d3-a30f1df2bc59']
+const CADERNOS_PRODUCT_NAMES = ['caderno questoes', 'caderno questões', 'cadernos pdf 500', 'cadernos 500']
+
 async function ensureTablesAndEnum() {
   await prisma.$executeRawUnsafe(`DO $$ BEGIN ALTER TYPE "Plan" ADD VALUE IF NOT EXISTS 'CADERNOS_500'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`)
   await prisma.$executeRawUnsafe(`
@@ -43,6 +46,17 @@ function isApproved(status: string, eventName: string) {
   const s = status.toLowerCase()
   const e = eventName.toLowerCase()
   return ['paid', 'approved', 'complete', 'completed', 'order_approved'].some(x => s.includes(x) || e.includes(x))
+}
+
+function isCadernosProduct(productId: string, productName: string) {
+  const id = productId.trim()
+  const name = productName.trim().toLowerCase()
+  return CADERNOS_PRODUCT_IDS.includes(id) || CADERNOS_PRODUCT_NAMES.some(product => name.includes(product))
+}
+
+function shouldGrantAccess(status: string, eventName: string, productId: string, productName: string) {
+  if (isApproved(status, eventName)) return true
+  return isCadernosProduct(productId, productName) && !status && !eventName
 }
 
 function isRefundOrCancel(status: string, eventName: string) {
@@ -143,9 +157,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, action: 'access_removed', email: buyerEmail })
     }
 
-    if (!isApproved(status, eventName)) {
+    if (!shouldGrantAccess(status, eventName, productId, productName)) {
       await saveKiwifyOrder({ transactionId, eventName, productId, productName, buyerEmail, buyerName, status, amount, action: 'ignored_status', payload })
-      return NextResponse.json({ ok: true, action: 'ignored_status', status, eventName, email: buyerEmail })
+      return NextResponse.json({ ok: true, action: 'ignored_status', status, eventName, email: buyerEmail, productId, productName })
     }
 
     await saveKiwifyOrder({ transactionId, eventName, productId, productName, buyerEmail, buyerName, status, amount, action: 'access_granted', payload })
