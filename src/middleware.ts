@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
+import { canAccessRoute, isCadernosOnlyPlan } from '@/lib/plans'
 
 const PUBLIC_ROUTES = ['/login', '/register', '/']
 const ADMIN_ROUTES = ['/admin']
@@ -9,7 +10,6 @@ export async function middleware(req: NextRequest) {
   const isPublic = PUBLIC_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))
   const token = req.cookies.get('gaia-session')?.value
 
-  // Rota pública — se já logado, redireciona pro dashboard
   if (isPublic) {
     if (token) {
       const session = await verifySession(token)
@@ -20,7 +20,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Rota protegida — verifica sessão
   if (!token) {
     return NextResponse.redirect(new URL('/login', req.url))
   }
@@ -32,14 +31,16 @@ export async function middleware(req: NextRequest) {
     return res
   }
 
-  // Rotas de admin — verifica role
   if (ADMIN_ROUTES.some(r => pathname.startsWith(r))) {
     if (session.role !== 'ADMIN') {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
   }
 
-  // Adiciona headers com dados do usuário para Server Components
+  if (session.role !== 'ADMIN' && isCadernosOnlyPlan(session.plan) && !canAccessRoute(session.plan, pathname)) {
+    return NextResponse.redirect(new URL('/cadernos', req.url))
+  }
+
   const res = NextResponse.next()
   res.headers.set('x-user-id', session.userId)
   res.headers.set('x-user-role', session.role)
