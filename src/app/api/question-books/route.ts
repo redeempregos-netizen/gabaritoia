@@ -70,6 +70,11 @@ function sourceHash(text: string) {
   return createHash('sha256').update(cleanText(text).replace(/\s+/g, ' ')).digest('hex')
 }
 
+function normalizeHash(value: unknown) {
+  const h = String(value || '').trim().toLowerCase()
+  return /^[a-f0-9]{64}$/.test(h) ? h : ''
+}
+
 function letterToIndex(letter?: string | null) {
   const l = String(letter || '').trim().toUpperCase()
   return ['A', 'B', 'C', 'D', 'E'].indexOf(l)
@@ -229,25 +234,38 @@ export async function POST(req: NextRequest) {
     const extractedText = String(body.text || '')
     if (extractedText.length < 50) return NextResponse.json({ error: 'Texto insuficiente para importar.' }, { status: 400 })
 
-    const hash = sourceHash(extractedText)
+    const fileHash = normalizeHash(body.fileHash)
+    const hash = fileHash || sourceHash(extractedText)
+    const textHash = sourceHash(extractedText)
+    const possibleHashes = Array.from(new Set([hash, textHash].filter(Boolean)))
+    const placeholders = possibleHashes.map((_, i) => `$${i + 2}`).join(', ')
+
     const existing = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT id, title, total_questions AS "totalQuestions" FROM imported_question_books WHERE user_id = $1 AND source_hash = $2 LIMIT 1`,
+      `SELECT id, title, total_questions AS "totalQuestions" FROM imported_question_books WHERE user_id = $1 AND source_hash IN (${placeholders}) LIMIT 1`,
       session.userId,
-      hash
+      ...possibleHashes
     )
     if (existing[0]) {
       return NextResponse.json({ ok: true, alreadyImported: true, book: { ...existing[0], fromCache: true } })
     }
 
     const cached = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT parsed_json AS parsed FROM imported_question_cache WHERE source_hash = $1 LIMIT 1`,
-      hash
+      `SELECT parsed_json AS parsed, source_hash AS "sourceHash" FROM imported_question_cache WHERE source_hash IN (${placeholders}) LIMIT 1`,
+      ...possibleHashes
     )
 
     if (cached[0]?.parsed) {
       const parsed = Array.isArray(cached[0].parsed) ? cached[0].parsed : []
       const book = await createBookFromParsed(session.userId, title, parsed, true, hash)
-      await prisma.$executeRawUnsafe(`UPDATE imported_question_cache SET used_count = used_count + 1 WHERE source_hash = $1`, hash)
+      await prisma.$executeRawUnsafe(`UPDATE imported_question_cache SET used_count = used_count + 1 WHERE source_hash = $1`, cached[0].sourceHash)
+      if (cached[0].sourceHash !== hash) {
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO imported_question_cache (source_hash, title, total_questions, parsed_json, used_count)
+           VALUES ($1, $2, $3, $4::jsonb, 1)
+           ON CONFLICT (source_hash) DO NOTHING`,
+          hash, title, parsed.length, JSON.stringify(parsed)
+        )
+      }
       return NextResponse.json({ ok: true, book })
     }
 
@@ -260,6 +278,14 @@ export async function POST(req: NextRequest) {
        ON CONFLICT (source_hash) DO NOTHING`,
       hash, title, parsed.length, JSON.stringify(parsed)
     )
+    if (textHash !== hash) {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO imported_question_cache (source_hash, title, total_questions, parsed_json, used_count)
+         VALUES ($1, $2, $3, $4::jsonb, 1)
+         ON CONFLICT (source_hash) DO NOTHING`,
+        textHash, title, parsed.length, JSON.stringify(parsed)
+      )
+    }
 
     const book = await createBookFromParsed(session.userId, title, parsed, false, hash)
     return NextResponse.json({ ok: true, book })
