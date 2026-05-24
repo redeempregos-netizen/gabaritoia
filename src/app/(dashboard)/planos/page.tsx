@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Loader2, Eye, EyeOff, CheckCircle, Key, Zap, Crown, BookOpen } from 'lucide-react'
 
+const KIWIFY_CADERNOS_500_URL = process.env.NEXT_PUBLIC_KIWIFY_CADERNOS_500_URL || 'https://pay.kiwify.com.br/kqeCPlG'
+
 const PROVIDERS = [
   { id: 'claude',     name: 'Claude (Anthropic)', hint: 'Começa com sk-ant-...' },
   { id: 'openai',     name: 'ChatGPT (OpenAI)',   hint: 'Começa com sk-proj-...' },
@@ -139,9 +141,7 @@ export default function PlanosPage() {
   function handlePlanCta(planId: string) {
     if (planId === 'OWN_KEY') { setActiveTab('apikey'); return }
     if (planId === 'CADERNOS_500') {
-      const url = process.env.NEXT_PUBLIC_KIWIFY_CADERNOS_500_URL
-      if (url) window.open(url, '_blank', 'noopener,noreferrer')
-      else toast.info('Plano Cadernos 500 já está criado. Falta configurar o link do produto da Kiwify em NEXT_PUBLIC_KIWIFY_CADERNOS_500_URL.')
+      window.open(KIWIFY_CADERNOS_500_URL, '_blank', 'noopener,noreferrer')
       return
     }
     if (planId === 'PRO') {
