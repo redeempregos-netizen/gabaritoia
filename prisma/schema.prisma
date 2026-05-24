@@ -18,6 +18,7 @@ enum Plan {
   FREE
   PRO
   ENTERPRISE
+  CADERNOS_500
 }
 
 enum QuestionType {
