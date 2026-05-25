@@ -20,6 +20,7 @@ export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
   FREE: [
     '/dashboard',
     '/planos',
+    '/cadernos',
   ],
   [PLAN_CADERNOS_500]: [
     '/dashboard',
