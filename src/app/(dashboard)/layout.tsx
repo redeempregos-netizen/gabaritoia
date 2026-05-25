@@ -23,6 +23,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/gerados', label: 'Gerados', emoji: '📁' },
   ]
 
+  const adminMobileNav = [
+    { href: '/dashboard', label: 'Painel', emoji: '⊞' },
+    { href: '/admin', label: 'Admin', emoji: '⚙️' },
+    { href: '/admin/usuarios', label: 'Usuários', emoji: '👥' },
+    { href: '/admin/custos', label: 'Custos', emoji: '💰' },
+    { href: '/planos', label: 'Planos', emoji: '⚡' },
+  ]
+
   const freeMobileNav = [
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
     { href: '/planos', label: 'Planos', emoji: '⚡' },
@@ -35,7 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/planos', label: 'Planos', emoji: '⚡' },
   ]
 
-  const mobileNav = user.role === 'ADMIN' ? fullMobileNav : isFreePlan(user.plan) ? freeMobileNav : isCadernosOnlyPlan(user.plan) ? cadernosMobileNav : fullMobileNav
+  const mobileNav = user.role === 'ADMIN' ? adminMobileNav : isFreePlan(user.plan) ? freeMobileNav : isCadernosOnlyPlan(user.plan) ? cadernosMobileNav : fullMobileNav
 
   return (
     <div className="flex h-screen overflow-hidden">
