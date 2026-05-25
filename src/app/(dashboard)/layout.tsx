@@ -2,6 +2,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { MobileShell } from '@/components/layout/MobileShell'
 import { isCadernosOnlyPlan, isFreePlan } from '@/lib/plans'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -42,20 +43,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <Sidebar user={user} />
       </div>
 
-      <main className="flex-1 overflow-y-auto bg-zinc-950 pb-20 md:pb-0">
+      <main className="flex-1 overflow-y-auto bg-zinc-950 pb-24 md:pb-0">
+        <MobileShell user={user} nav={mobileNav} />
         {children}
       </main>
-
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-white/[0.07] z-50 px-1 pb-safe">
-        <div className="flex">
-          {mobileNav.map(item => (
-            <a key={item.href} href={item.href} className="flex-1 flex flex-col items-center justify-center py-2.5 text-zinc-500 hover:text-brand-400 transition-colors">
-              <span className="text-lg leading-none">{item.emoji}</span>
-              <span className="text-[9px] mt-0.5 font-medium">{item.label}</span>
-            </a>
-          ))}
-        </div>
-      </nav>
     </div>
   )
 }
