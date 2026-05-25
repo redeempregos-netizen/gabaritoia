@@ -1,6 +1,5 @@
 'use client'
 import { useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -46,7 +45,7 @@ export default function LoginPage() {
           <div className="font-heading font-extrabold text-2xl mb-1 tracking-tight">
             Gabarito<span className="text-brand-400">IA</span>
           </div>
-          <p className="text-zinc-400 text-sm mb-8">Plataforma inteligente para concursos públicos</p>
+          <p className="text-zinc-400 text-sm mb-8">Acesso exclusivo para compradores. Use o e-mail e senha liberados após a compra.</p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
@@ -66,12 +65,10 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-sm text-zinc-500 mt-6">
-            Não tem conta?{' '}
-            <Link href="/register" className="text-brand-400 hover:text-brand-300 font-medium">Criar conta</Link>
+            Ainda não recebeu acesso? Finalize a compra pela Kiwify ou fale com o suporte.
           </p>
 
           <div className="mt-6 p-3 bg-zinc-800/50 rounded-xl text-xs text-zinc-500 space-y-1">
-            <div>Demo: <span className="text-zinc-400">teste@demo.com / 123456</span></div>
             <div>Admin: <span className="text-zinc-400">admin@gabaritoia.com / admin123</span></div>
           </div>
         </div>
