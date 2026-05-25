@@ -42,7 +42,26 @@ export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = cookies()
   const token = cookieStore.get('gaia-session')?.value
   if (!token) return null
-  return verifySession(token)
+
+  const session = await verifySession(token)
+  if (!session?.userId) return null
+
+  // Sempre busca o usuário atual no banco para evitar sessão antiga com plano antigo.
+  // Isso permite que alterações feitas no admin/Supabase liberem o acesso imediatamente.
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { id: true, email: true, role: true, plan: true },
+  }).catch(() => null)
+
+  if (!user) return null
+
+  return {
+    ...session,
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    plan: user.plan,
+  }
 }
 
 export async function deleteSession(token: string) {
