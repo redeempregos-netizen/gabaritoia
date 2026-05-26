@@ -32,6 +32,7 @@ export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
     '/dashboard',
     '/cadernos',
     '/gerar',
+    '/plano-questoes',
     '/historico',
     '/gerados',
     '/planos',
