@@ -70,6 +70,9 @@ model Question {
   subtopic     String?
   cargo        String?
   education    String?
+  examName     String?
+  examYear     String?
+  basedOn      String?
   difficulty   String
   type         QuestionType @default(MULTIPLE_CHOICE)
   format       String
