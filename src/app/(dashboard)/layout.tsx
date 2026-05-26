@@ -17,18 +17,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const fullMobileNav = [
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
-    { href: '/gerar', label: 'Gerar', emoji: '✦' },
-    { href: '/cadernos', label: 'Cadernos', emoji: '📚' },
-    { href: '/plano-questoes', label: 'Plano', emoji: '🎯' },
-    { href: '/gerados', label: 'Gerados', emoji: '📁' },
+    { href: '/gerar', label: 'Gerar Questão', emoji: '✦' },
+    { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
+    { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
+    { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
+    { href: '/historico', label: 'Histórico', emoji: '🕘' },
+    { href: '/mapas', label: 'Mapas Mentais', emoji: '🧠' },
+    { href: '/edital', label: 'Edital Verticalizado', emoji: '📄' },
+    { href: '/edital-pro', label: 'Edital Pro', emoji: '🚀' },
+    { href: '/planos', label: 'Planos', emoji: '⚡' },
   ]
 
   const adminMobileNav = [
-    { href: '/dashboard', label: 'Painel', emoji: '⊞' },
-    { href: '/admin', label: 'Admin', emoji: '⚙️' },
+    ...fullMobileNav,
+    { href: '/admin', label: 'Administração', emoji: '⚙️' },
     { href: '/admin/usuarios', label: 'Usuários', emoji: '👥' },
-    { href: '/admin/custos', label: 'Custos', emoji: '💰' },
-    { href: '/planos', label: 'Planos', emoji: '⚡' },
+    { href: '/admin/custos', label: 'Custos IA', emoji: '💰' },
   ]
 
   const freeMobileNav = [
@@ -38,9 +42,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const cadernosMobileNav = [
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
-    { href: '/cadernos', label: 'Cadernos', emoji: '📚' },
-    { href: '/plano-questoes', label: 'Plano', emoji: '🎯' },
-    { href: '/gerados', label: 'Gerados', emoji: '📁' },
+    { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
+    { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
+    { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
     { href: '/planos', label: 'Planos', emoji: '⚡' },
   ]
 
