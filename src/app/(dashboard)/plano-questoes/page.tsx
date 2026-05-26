@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarDays, CheckCircle2, Loader2, Target } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Loader2, RotateCcw, Target } from 'lucide-react'
 import { toast } from 'sonner'
 
 type DayPlan = {
@@ -30,6 +30,17 @@ export default function PlanoQuestoesPage() {
   const [plan, setPlan] = useState<DayPlan[]>([])
 
   const materias = useMemo(() => materiasText.split('\n').map(s => s.trim()).filter(Boolean), [materiasText])
+
+  function resetarPlano() {
+    setPlan([])
+    setBanca('')
+    setCargo('')
+    setExamDate('')
+    setQuestionsPerDay(30)
+    setMateriasText(DEFAULT_MATERIAS)
+    setSource('ambos')
+    toast.success('Plano resetado')
+  }
 
   function gerarPlano() {
     if (!banca.trim()) { toast.error('Informe a banca'); return }
@@ -118,10 +129,15 @@ export default function PlanoQuestoesPage() {
             </div>
             <p className="text-xs text-zinc-600 mt-2">Essa escolha só orienta o cronograma: de onde o aluno deve tirar as questões do dia.</p>
           </div>
-          <button onClick={gerarPlano} disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
-            {loading && <Loader2 size={16} className="animate-spin" />}
-            Gerar plano de questões
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button onClick={gerarPlano} disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
+              {loading && <Loader2 size={16} className="animate-spin" />}
+              Gerar plano
+            </button>
+            <button onClick={resetarPlano} type="button" className="btn-secondary w-full flex items-center justify-center gap-2 h-11">
+              <RotateCcw size={15} /> Resetar
+            </button>
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -141,9 +157,14 @@ export default function PlanoQuestoesPage() {
               </div>
 
               <div className="card overflow-hidden">
-                <div className="p-4 border-b border-white/[0.07]">
-                  <div className="font-heading font-bold">Cronograma de questões</div>
-                  <div className="text-xs text-zinc-500 mt-1">{cargo}</div>
+                <div className="p-4 border-b border-white/[0.07] flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-heading font-bold">Cronograma de questões</div>
+                    <div className="text-xs text-zinc-500 mt-1">{cargo}</div>
+                  </div>
+                  <button onClick={resetarPlano} className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 flex items-center gap-1.5">
+                    <RotateCcw size={13} /> Resetar tudo
+                  </button>
                 </div>
                 <div className="divide-y divide-white/[0.05]">
                   {plan.map(day => (
