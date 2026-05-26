@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { getPlanLabel, isCadernosOnlyPlan, isFreePlan } from '@/lib/plans'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
-  History, Settings, LogOut, CreditCard, Zap, DollarSign, FolderOpen, Brain, BookOpen,
+  History, Settings, LogOut, CreditCard, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target,
   type LucideIcon
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -20,6 +20,7 @@ type NavItem = {
 const FULL_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
+  { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Novo' },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen, badge: 'Novo' },
   { href: '/mapas',      label: 'Mapas Mentais',       icon: Brain, badge: 'Novo' },
   { href: '/edital',     label: 'Edital Verticalizado', icon: FileText },
