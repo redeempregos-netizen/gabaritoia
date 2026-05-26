@@ -39,6 +39,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const cadernosMobileNav = [
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
     { href: '/cadernos', label: 'Cadernos', emoji: '📚' },
+    { href: '/plano-questoes', label: 'Plano', emoji: '🎯' },
     { href: '/gerados', label: 'Gerados', emoji: '📁' },
     { href: '/planos', label: 'Planos', emoji: '⚡' },
   ]
