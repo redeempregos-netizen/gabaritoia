@@ -62,10 +62,10 @@ export default function PlanoQuestoesPage() {
             : isReview
               ? 'Refazer questões erradas e ler comentários antes de avançar.'
               : source === 'cadernos'
-                ? 'Usar questões dos Cadernos PDF importados.'
+                ? 'Usar questões dos PDFs importados no módulo Cadernos.'
                 : source === 'geradas'
-                  ? 'Usar questões geradas por IA no estilo da banca.'
-                  : 'Misturar Cadernos PDF e questões geradas por IA.',
+                  ? 'Usar questões criadas pelo Gerador de Questões com IA.'
+                  : 'Combinar questões dos PDFs importados com questões criadas pela IA.',
         })
       }
       setPlan(rows)
@@ -112,10 +112,11 @@ export default function PlanoQuestoesPage() {
           <div>
             <label className="label">Fonte das questões</label>
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => setSource('ambos')} className={`chip ${source === 'ambos' ? 'chip-active' : ''}`}>Cadernos + IA</button>
-              <button onClick={() => setSource('cadernos')} className={`chip ${source === 'cadernos' ? 'chip-active' : ''}`}>Cadernos PDF</button>
-              <button onClick={() => setSource('geradas')} className={`chip ${source === 'geradas' ? 'chip-active' : ''}`}>Geradas IA</button>
+              <button onClick={() => setSource('ambos')} className={`chip ${source === 'ambos' ? 'chip-active' : ''}`}>PDFs + Gerador IA</button>
+              <button onClick={() => setSource('cadernos')} className={`chip ${source === 'cadernos' ? 'chip-active' : ''}`}>Só PDFs importados</button>
+              <button onClick={() => setSource('geradas')} className={`chip ${source === 'geradas' ? 'chip-active' : ''}`}>Só Gerador IA</button>
             </div>
+            <p className="text-xs text-zinc-600 mt-2">Essa escolha só orienta o cronograma: de onde o aluno deve tirar as questões do dia.</p>
           </div>
           <button onClick={gerarPlano} disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
             {loading && <Loader2 size={16} className="animate-spin" />}
