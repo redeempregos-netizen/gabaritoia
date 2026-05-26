@@ -20,6 +20,7 @@ interface Question {
   correctIndex: number
   comentario: string
   subtopic?: string
+  cargo?: string
   examName?: string
   examYear?: string
   basedOn?: string
