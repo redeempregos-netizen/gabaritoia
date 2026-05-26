@@ -25,6 +25,7 @@ export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
   [PLAN_CADERNOS_500]: [
     '/dashboard',
     '/cadernos',
+    '/plano-questoes',
     '/gerados',
     '/planos',
   ],
