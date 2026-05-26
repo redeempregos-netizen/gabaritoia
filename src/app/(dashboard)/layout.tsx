@@ -19,7 +19,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
     { href: '/gerar', label: 'Gerar', emoji: '✦' },
     { href: '/cadernos', label: 'Cadernos', emoji: '📚' },
-    { href: '/edital', label: 'Edital', emoji: '📄' },
+    { href: '/plano-questoes', label: 'Plano', emoji: '🎯' },
     { href: '/gerados', label: 'Gerados', emoji: '📁' },
   ]
 
