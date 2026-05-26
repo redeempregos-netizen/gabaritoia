@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Upload, Search } from 'lucide-react'
+import { Loader2, Upload, Search, FileText, Target } from 'lucide-react'
 
 const DIFS = ['Fácil', 'Média', 'Difícil']
 const TIPOS = ['MULTIPLE_CHOICE', 'TRUE_FALSE']
@@ -20,8 +20,33 @@ interface Question {
   correctIndex: number
   comentario: string
   subtopic?: string
+  examName?: string
+  examYear?: string
+  basedOn?: string
   isOriginal?: boolean
   aiProvider?: string
+}
+
+function parseOrigin(q: Question) {
+  const text = String(q.enunciado || '')
+  const [firstLine, ...rest] = text.split('\n')
+  const hasHeader = firstLine.toLowerCase().startsWith('banca:')
+  const meta: Record<string, string> = {}
+
+  if (hasHeader) {
+    firstLine.split('|').forEach(part => {
+      const [key, ...value] = part.split(':')
+      if (key && value.length) meta[key.trim().toLowerCase()] = value.join(':').trim()
+    })
+  }
+
+  return {
+    banca: q.banca || meta.banca || 'Não informada',
+    prova: q.examName || meta.prova || q.cargo || 'Concurso público',
+    ano: q.examYear || meta.ano || '',
+    baseado: q.basedOn || meta['baseado em'] || q.subtopic || q.area,
+    pergunta: hasHeader ? rest.join('\n').trim() : text.trim(),
+  }
 }
 
 export default function GerarPage() {
@@ -133,14 +158,14 @@ export default function GerarPage() {
       if (!res.ok) { toast.error(data.error || 'Erro ao gerar'); return }
       setQuestions(data.questions)
       toast.success(`${data.questions.length} questão(ões) gerada(s)!`)
-    } catch (e) {
+    } catch {
       toast.error('Erro ao gerar questão')
     } finally {
       setLoading(false)
     }
   }
 
-  async function responder(qId: string, idx: number, correctIndex: number) {
+  async function responder(qId: string, idx: number) {
     if (answered[qId] !== undefined) return
     setAnswered(prev => ({ ...prev, [qId]: idx }))
     try {
@@ -153,18 +178,18 @@ export default function GerarPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 max-w-6xl mx-auto">
       <div className="mb-8">
         <h1 className="font-heading text-2xl font-bold">✦ Gerar Questão</h1>
-        <p className="text-zinc-400 text-sm mt-1">A IA cria questões no estilo de qualquer banca</p>
+        <p className="text-zinc-400 text-sm mt-1">A IA cria questões no estilo da banca com origem, prova, ano e base de conteúdo.</p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid lg:grid-cols-[420px_1fr] gap-6">
         <div className="space-y-4">
           <div className="card p-5">
             <div className="font-heading text-sm font-semibold text-brand-300 mb-4">1. Banca</div>
             <input className="input" placeholder="Ex: CEBRASPE, FCC, FGV, FEPESE, FAURGS..." value={banca} onChange={e => setBanca(e.target.value)} />
-            <p className="text-xs text-zinc-600 mt-2">A IA conhece centenas de bancas e imita o estilo de cada uma</p>
+            <p className="text-xs text-zinc-600 mt-2">A IA conhece centenas de bancas e imita o estilo de cada uma.</p>
           </div>
 
           <div className="card p-5">
@@ -176,8 +201,8 @@ export default function GerarPage() {
             <div className="font-heading text-sm font-semibold text-brand-300">3. Contexto do edital</div>
             <div>
               <label className="label">Referência do edital/concurso</label>
-              <input className="input" placeholder="Ex: Prefeitura de Florianópolis 2023 FEPESE — Professor" value={editalRef} onChange={e => setEditalRef(e.target.value)} />
-              <p className="text-xs text-zinc-600 mt-2">Use para orientar a IA sobre órgão, ano, cidade ou cargo.</p>
+              <input className="input" placeholder="Ex: Prefeitura de Florianópolis 2025 FURB — Administrativo" value={editalRef} onChange={e => setEditalRef(e.target.value)} />
+              <p className="text-xs text-zinc-600 mt-2">Essa referência vira a origem da questão: prova, ano e contexto.</p>
             </div>
 
             <div className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-3">
@@ -186,7 +211,7 @@ export default function GerarPage() {
                 <span>Buscar referências públicas na web com SerpAPI</span>
               </label>
               {useWebSearch && <div className="space-y-2">
-                <input className="input" placeholder="Ex: edital Florianópolis 2024 FEPESE professor provas anteriores" value={webQuery} onChange={e => setWebQuery(e.target.value)} />
+                <input className="input" placeholder="Ex: edital Florianópolis 2025 FURB administrativo" value={webQuery} onChange={e => setWebQuery(e.target.value)} />
                 <button type="button" onClick={buscarWebContexto} disabled={searchingWeb} className="btn-secondary text-xs flex items-center gap-1">
                   {searchingWeb ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Buscar agora
                 </button>
@@ -197,7 +222,7 @@ export default function GerarPage() {
             <div className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${dragging ? 'border-brand-500 bg-brand-500/5' : 'border-white/10 hover:border-white/20'}`} onClick={() => document.getElementById('gerar-edital-file')?.click()} onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) processEditalFile(f) }}>
               <Upload size={24} className="mx-auto mb-2 text-zinc-500" />
               <div className="font-heading font-semibold text-sm mb-1">{editalFileName || 'Enviar edital original'}</div>
-              <div className="text-xs text-zinc-500">PDF ou TXT — aumenta a precisão das questões</div>
+              <div className="text-xs text-zinc-500">PDF ou TXT — melhora prova, ano, cargo e base da questão</div>
               {editalText && <div className="mt-2 text-xs text-green-400">✓ {Math.round(editalText.length / 100) / 10}kb de contexto carregado</div>}
             </div>
             <input type="file" id="gerar-edital-file" accept=".pdf,.txt,.doc,.docx" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) processEditalFile(f) }} />
@@ -222,11 +247,50 @@ export default function GerarPage() {
 
         <div>
           {loading && <div className="card p-8 text-center"><Loader2 size={32} className="animate-spin text-brand-400 mx-auto mb-4" /><div className="text-zinc-400 text-sm">Gerando questões...</div></div>}
-          {!loading && questions.length === 0 && <div className="card p-12 text-center"><div className="text-4xl mb-4">✦</div><div className="text-zinc-300 font-medium mb-1">Configure e gere sua questão</div><div className="text-zinc-500 text-sm">A IA cria com gabarito e comentário detalhado</div></div>}
+          {!loading && questions.length === 0 && <div className="card p-12 text-center"><div className="text-4xl mb-4">✦</div><div className="text-zinc-300 font-medium mb-1">Configure e gere sua questão</div><div className="text-zinc-500 text-sm">A IA cria com origem, gabarito e comentário detalhado</div></div>}
           {questions.map(q => {
             const sel = answered[q.id]
             const isTF = q.type === 'TRUE_FALSE'
-            return <div key={q.id} className="card p-5 mb-4"><div className="flex flex-wrap gap-2 mb-3"><span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400">{q.banca}</span><span className="text-xs px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-300">{q.area}</span><span className={`text-xs px-2.5 py-1 rounded-full ${q.difficulty === 'Fácil' ? 'bg-green-500/10 text-green-400' : q.difficulty === 'Difícil' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'}`}>{q.difficulty}</span>{q.isOriginal && <span className="text-xs px-2.5 py-1 rounded-full bg-pink-500/10 text-pink-400">Inédita</span>}{q.subtopic && <span className="text-xs px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-400">{q.subtopic}</span>}</div><p className="text-sm leading-relaxed mb-4">{q.enunciado}</p><div className="space-y-2 mb-3">{q.options.map((opt, i) => { let cls = 'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all text-sm '; if (sel === undefined) cls += 'border-white/[0.07] text-zinc-300 hover:border-brand-500/50 hover:bg-brand-500/5'; else if (i === q.correctIndex) cls += 'border-green-500 bg-green-500/8 text-zinc-100'; else if (i === sel && sel !== q.correctIndex) cls += 'border-red-500 bg-red-500/8 text-zinc-100'; else cls += 'border-white/[0.04] text-zinc-500'; return <div key={i} className={cls} onClick={() => responder(q.id, i, q.correctIndex)}><span className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 ${isTF ? (i === 0 ? 'border-blue-400 text-blue-400' : 'border-red-400 text-red-400') : 'border-current'}`}>{isTF ? (i === 0 ? 'C' : 'E') : 'ABCDE'[i]}</span><span>{opt}</span></div> })}</div>{sel !== undefined && <div className="bg-zinc-800/60 border-l-2 border-brand-500 rounded-r-xl p-4 text-sm text-zinc-300 leading-relaxed"><span className="font-semibold text-brand-300">💡 Comentário:</span><br />{q.comentario}</div>}{sel !== undefined && <button onClick={gerar} className="mt-3 btn-secondary text-sm w-full">+ Gerar nova questão</button>}</div>
+            const origin = parseOrigin(q)
+            return (
+              <div key={q.id} className="card p-5 mb-4 overflow-hidden">
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 uppercase font-semibold">{origin.banca}</span>
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-300">{q.area}</span>
+                  <span className={`text-xs px-2.5 py-1 rounded-full ${q.difficulty === 'Fácil' ? 'bg-green-500/10 text-green-400' : q.difficulty === 'Difícil' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'}`}>{q.difficulty}</span>
+                  {q.isOriginal && <span className="text-xs px-2.5 py-1 rounded-full bg-pink-500/10 text-pink-400">Inédita</span>}
+                  {q.subtopic && <span className="text-xs px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-400">{q.subtopic}</span>}
+                </div>
+
+                <div className="rounded-2xl border border-brand-500/20 bg-brand-500/5 p-4 mb-5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-brand-300 uppercase tracking-wider mb-3"><FileText size={14} /> Origem da questão</div>
+                  <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3"><div className="text-zinc-500 mb-1">Banca</div><div className="font-semibold text-zinc-100">{origin.banca}</div></div>
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3"><div className="text-zinc-500 mb-1">Prova</div><div className="font-semibold text-zinc-100">{origin.prova}</div></div>
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3"><div className="text-zinc-500 mb-1">Ano</div><div className="font-semibold text-zinc-100">{origin.ano || 'Não informado'}</div></div>
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3"><div className="text-zinc-500 mb-1">Baseado em</div><div className="font-semibold text-zinc-100">{origin.baseado}</div></div>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2"><Target size={13} /> Pergunta</div>
+                  <p className="text-sm md:text-base leading-relaxed whitespace-pre-line text-zinc-100">{origin.pergunta}</p>
+                </div>
+
+                <div className="space-y-2 mb-3">
+                  {q.options.map((opt, i) => {
+                    let cls = 'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all text-sm '
+                    if (sel === undefined) cls += 'border-white/[0.07] text-zinc-300 hover:border-brand-500/50 hover:bg-brand-500/5'
+                    else if (i === q.correctIndex) cls += 'border-green-500 bg-green-500/8 text-zinc-100'
+                    else if (i === sel && sel !== q.correctIndex) cls += 'border-red-500 bg-red-500/8 text-zinc-100'
+                    else cls += 'border-white/[0.04] text-zinc-500'
+                    return <div key={i} className={cls} onClick={() => responder(q.id, i)}><span className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 ${isTF ? (i === 0 ? 'border-blue-400 text-blue-400' : 'border-red-400 text-red-400') : 'border-current'}`}>{isTF ? (i === 0 ? 'C' : 'E') : 'ABCDE'[i]}</span><span>{opt}</span></div>
+                  })}
+                </div>
+                {sel !== undefined && <div className="bg-zinc-800/60 border-l-2 border-brand-500 rounded-r-xl p-4 text-sm text-zinc-300 leading-relaxed"><span className="font-semibold text-brand-300">💡 Comentário:</span><br />{q.comentario}</div>}
+                {sel !== undefined && <button onClick={gerar} className="mt-3 btn-secondary text-sm w-full">+ Gerar nova questão</button>}
+              </div>
+            )
           })}
         </div>
       </div>
