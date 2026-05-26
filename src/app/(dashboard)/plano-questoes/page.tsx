@@ -1,7 +1,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarDays, CheckCircle2, Loader2, RotateCcw, Target } from 'lucide-react'
+import { CalendarDays, CheckCircle2, ExternalLink, Loader2, RotateCcw, Sparkles, Target } from 'lucide-react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 
 type DayPlan = {
@@ -27,12 +28,16 @@ export default function PlanoQuestoesPage() {
   const [materiasText, setMateriasText] = useState(DEFAULT_MATERIAS)
   const [source, setSource] = useState<'geradas' | 'cadernos' | 'ambos'>('ambos')
   const [loading, setLoading] = useState(false)
+  const [generatingDay, setGeneratingDay] = useState<number | null>(null)
+  const [generatedDays, setGeneratedDays] = useState<Record<number, number>>({})
   const [plan, setPlan] = useState<DayPlan[]>([])
 
   const materias = useMemo(() => materiasText.split('\n').map(s => s.trim()).filter(Boolean), [materiasText])
 
   function resetarPlano() {
     setPlan([])
+    setGeneratedDays({})
+    setGeneratingDay(null)
     setBanca('')
     setCargo('')
     setExamDate('')
@@ -48,6 +53,7 @@ export default function PlanoQuestoesPage() {
     if (!materias.length) { toast.error('Informe pelo menos uma matéria'); return }
 
     setLoading(true)
+    setGeneratedDays({})
     setTimeout(() => {
       const today = new Date()
       const end = examDate ? new Date(`${examDate}T12:00:00`) : new Date(today.getTime() + 21 * 86400000)
@@ -85,6 +91,58 @@ export default function PlanoQuestoesPage() {
     }, 350)
   }
 
+  async function gerarQuestoesDoDia(day: DayPlan) {
+    if (!banca.trim() || !cargo.trim()) {
+      toast.error('Informe banca e cargo antes de gerar as questões')
+      return
+    }
+
+    const total = Math.max(1, Number(day.metaQuestoes || 1))
+    if (total > 10) {
+      const ok = window.confirm(`Este dia tem ${total} questões. Isso vai consumir ${total} créditos e gerar em lotes de 10. Continuar?`)
+      if (!ok) return
+    }
+
+    setGeneratingDay(day.dia)
+    try {
+      let created = 0
+      const batches = Math.ceil(total / 10)
+      for (let i = 0; i < batches; i++) {
+        const quantity = Math.min(10, total - created)
+        const res = await fetch('/api/ai/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            banca,
+            area: day.foco,
+            cargo,
+            education: 'Nível Superior',
+            difficulty: day.tipo === 'Simulado' ? 'Média' : day.tipo === 'Revisão' ? 'Fácil' : 'Média',
+            type: 'MULTIPLE_CHOICE',
+            format: 'Estilo banca',
+            quantity,
+            editalText: `REFERÊNCIA DO PLANO DE QUESTÕES: ${cargo}\nDIA: ${day.dia}\nDATA: ${day.data}\nTIPO: ${day.tipo}\nFOCO: ${day.foco}\nORIENTAÇÃO: ${day.observacao}`,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.error(data.error || 'Erro ao gerar questões do dia')
+          break
+        }
+        created += data.questions?.length || quantity
+        setGeneratedDays(prev => ({ ...prev, [day.dia]: (prev[day.dia] || 0) + (data.questions?.length || quantity) }))
+      }
+
+      if (created > 0) {
+        toast.success(`${created} questão(ões) gerada(s) e salvas em Meus Gerados`)
+      }
+    } catch {
+      toast.error('Erro ao gerar questões do dia')
+    } finally {
+      setGeneratingDay(null)
+    }
+  }
+
   const totalQuestoes = plan.reduce((acc, d) => acc + d.metaQuestoes, 0)
 
   return (
@@ -94,7 +152,7 @@ export default function PlanoQuestoesPage() {
           <Target size={13} /> Plano de resolução
         </div>
         <h1 className="font-heading text-2xl md:text-3xl font-bold">Plano de Estudos de Questões</h1>
-        <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Monte um cronograma prático de questões por dia, com revisão de erros e simulados no estilo da banca.</p>
+        <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Monte um cronograma, gere as questões do dia com IA, salve em Meus Gerados e desconte créditos apenas na geração real.</p>
       </div>
 
       <div className="grid lg:grid-cols-[380px_1fr] gap-6">
@@ -127,7 +185,7 @@ export default function PlanoQuestoesPage() {
               <button onClick={() => setSource('cadernos')} className={`chip ${source === 'cadernos' ? 'chip-active' : ''}`}>Só PDFs importados</button>
               <button onClick={() => setSource('geradas')} className={`chip ${source === 'geradas' ? 'chip-active' : ''}`}>Só Gerador IA</button>
             </div>
-            <p className="text-xs text-zinc-600 mt-2">Essa escolha só orienta o cronograma: de onde o aluno deve tirar as questões do dia.</p>
+            <p className="text-xs text-zinc-600 mt-2">Essa escolha orienta o cronograma. O botão de gerar usa IA e salva em Meus Gerados.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button onClick={gerarPlano} disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
@@ -162,31 +220,50 @@ export default function PlanoQuestoesPage() {
                     <div className="font-heading font-bold">Cronograma de questões</div>
                     <div className="text-xs text-zinc-500 mt-1">{cargo}</div>
                   </div>
-                  <button onClick={resetarPlano} className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 flex items-center gap-1.5">
-                    <RotateCcw size={13} /> Resetar tudo
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <Link href="/gerados" className="rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                      <ExternalLink size={13} /> Meus Gerados
+                    </Link>
+                    <button onClick={resetarPlano} className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 flex items-center gap-1.5">
+                      <RotateCcw size={13} /> Resetar tudo
+                    </button>
+                  </div>
                 </div>
                 <div className="divide-y divide-white/[0.05]">
-                  {plan.map(day => (
-                    <div key={day.dia} className="p-4 hover:bg-white/[0.02] transition-colors">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <div className="flex gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-brand-500/10 border border-brand-500/20 text-brand-300 flex items-center justify-center font-bold text-xs">D{day.dia}</div>
-                          <div>
-                            <div className="font-semibold text-sm text-zinc-100">{day.foco}</div>
-                            <div className="text-xs text-zinc-500 mt-1">{day.data} · {day.tipo}</div>
+                  {plan.map(day => {
+                    const generated = generatedDays[day.dia] || 0
+                    return (
+                      <div key={day.dia} className="p-4 hover:bg-white/[0.02] transition-colors">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+                          <div className="flex gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-brand-500/10 border border-brand-500/20 text-brand-300 flex items-center justify-center font-bold text-xs">D{day.dia}</div>
+                            <div>
+                              <div className="font-semibold text-sm text-zinc-100">{day.foco}</div>
+                              <div className="text-xs text-zinc-500 mt-1">{day.data} · {day.tipo}</div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col sm:flex-row md:flex-col gap-2 md:items-end">
+                            <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold text-brand-300 whitespace-nowrap">
+                              {day.metaQuestoes} questões
+                            </div>
+                            <button
+                              onClick={() => gerarQuestoesDoDia(day)}
+                              disabled={generatingDay !== null}
+                              className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50"
+                            >
+                              {generatingDay === day.dia ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                              {generated > 0 ? `Gerar mais (${generated} feitas)` : 'Gerar questões do dia'}
+                            </button>
                           </div>
                         </div>
-                        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold text-brand-300 whitespace-nowrap">
-                          {day.metaQuestoes} questões
+                        <div className="mt-3 flex items-start gap-2 text-xs text-zinc-400 leading-relaxed">
+                          <CheckCircle2 size={13} className="text-green-400 mt-0.5 shrink-0" />
+                          {day.observacao}
                         </div>
+                        {generated > 0 && <div className="mt-2 text-xs text-green-400">✓ {generated} questão(ões) deste dia salvas em Meus Gerados.</div>}
                       </div>
-                      <div className="mt-3 flex items-start gap-2 text-xs text-zinc-400 leading-relaxed">
-                        <CheckCircle2 size={13} className="text-green-400 mt-0.5 shrink-0" />
-                        {day.observacao}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </>
