@@ -36,6 +36,18 @@ function cleanMeta(value?: string | null, fallback = '') {
   return s || fallback
 }
 
+function withOriginHeader(params: { enunciado: string; banca: string; examName: string; examYear: string; basedOn: string }) {
+  const header = [
+    `Banca: ${params.banca || 'Não informada'}`,
+    `Prova: ${params.examName || 'Concurso público'}`,
+    params.examYear ? `Ano: ${params.examYear}` : '',
+    `Baseado em: ${params.basedOn || 'Conteúdo programático informado'}`,
+  ].filter(Boolean).join(' | ')
+  const enunciado = String(params.enunciado || '').trim()
+  if (enunciado.toLowerCase().startsWith('banca:')) return enunciado
+  return `${header}\n\n${enunciado}`
+}
+
 async function saveGeneratedQuestionLinks(userId: string, questionIds: string[]) {
   try {
     await prisma.$executeRawUnsafe(`
@@ -102,26 +114,31 @@ export async function POST(req: NextRequest) {
 
     await deductCredits(session.userId, cost, 'generate_question', `${params.quantity}x ${params.banca}`)
 
-    const questions = await Promise.all(parsed.map((q) => prisma.question.create({ data: {
-      banca: params.banca,
-      area: q.area || params.area,
-      subtopic: q.subtopic,
-      cargo: params.cargo,
-      education: params.education,
-      examName: cleanMeta(q.examName, defaultExamName),
-      examYear: cleanMeta(q.examYear, defaultExamYear),
-      basedOn: cleanMeta(q.basedOn, q.subtopic || defaultBasedOn),
-      difficulty: params.difficulty,
-      type: params.type,
-      format: params.format,
-      enunciado: q.enunciado,
-      options: q.options,
-      correctIndex: q.correctIndex,
-      comentario: q.comentario,
-      isOriginal,
-      fromEdital: isEdital,
-      aiProvider: provider,
-    } })))
+    const questions = await Promise.all(parsed.map((q) => {
+      const examName = cleanMeta(q.examName, defaultExamName)
+      const examYear = cleanMeta(q.examYear, defaultExamYear)
+      const basedOn = cleanMeta(q.basedOn, q.subtopic || defaultBasedOn)
+      return prisma.question.create({ data: {
+        banca: params.banca,
+        area: q.area || params.area,
+        subtopic: q.subtopic,
+        cargo: params.cargo,
+        education: params.education,
+        examName,
+        examYear,
+        basedOn,
+        difficulty: params.difficulty,
+        type: params.type,
+        format: params.format,
+        enunciado: withOriginHeader({ enunciado: q.enunciado, banca: params.banca, examName, examYear, basedOn }),
+        options: q.options,
+        correctIndex: q.correctIndex,
+        comentario: q.comentario,
+        isOriginal,
+        fromEdital: isEdital,
+        aiProvider: provider,
+      } })
+    }))
     await saveGeneratedQuestionLinks(session.userId, questions.map(q => q.id))
 
     const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { credits: true } })
