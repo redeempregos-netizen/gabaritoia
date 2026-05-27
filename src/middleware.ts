@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
 import { canAccessRoute, getDefaultRouteForPlan, isLimitedPlan } from '@/lib/plans'
 
-const PUBLIC_ROUTES = ['/login', '/']
+const PUBLIC_ROUTES = ['/login', '/register', '/']
 const ADMIN_ROUTES = ['/admin']
 
 export async function middleware(req: NextRequest) {
@@ -10,23 +10,15 @@ export async function middleware(req: NextRequest) {
   const isPublic = PUBLIC_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))
   const token = req.cookies.get('gaia-session')?.value
 
-  if (pathname.startsWith('/register')) {
-    return NextResponse.redirect(new URL('/login', req.url))
-  }
-
   if (isPublic) {
     if (token) {
       const session = await verifySession(token)
-      if (session) {
-        return NextResponse.redirect(new URL(getDefaultRouteForPlan(session.plan), req.url))
-      }
+      if (session) return NextResponse.redirect(new URL(getDefaultRouteForPlan(session.plan), req.url))
     }
     return NextResponse.next()
   }
 
-  if (!token) {
-    return NextResponse.redirect(new URL('/login', req.url))
-  }
+  if (!token) return NextResponse.redirect(new URL('/login', req.url))
 
   const session = await verifySession(token)
   if (!session) {
@@ -36,9 +28,7 @@ export async function middleware(req: NextRequest) {
   }
 
   if (ADMIN_ROUTES.some(r => pathname.startsWith(r))) {
-    if (session.role !== 'ADMIN') {
-      return NextResponse.redirect(new URL('/dashboard', req.url))
-    }
+    if (session.role !== 'ADMIN') return NextResponse.redirect(new URL('/dashboard', req.url))
   }
 
   if (session.role !== 'ADMIN' && isLimitedPlan(session.plan) && !canAccessRoute(session.plan, pathname)) {
