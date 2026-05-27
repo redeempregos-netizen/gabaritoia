@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { BarChart3, Target, Zap, Flame } from 'lucide-react'
 import Link from 'next/link'
+import { ResetDashboardButton } from '@/components/dashboard/ResetDashboardButton'
 
 export default async function DashboardPage() {
   const session = await getSession()
@@ -24,7 +25,6 @@ export default async function DashboardPage() {
   const today = new Date().toISOString().split('T')[0]
   const todayAns = answers.filter(a => a.createdAt.toISOString().startsWith(today)).length
 
-  // Desempenho por área
   const areaMap: Record<string, { total: number; correct: number }> = {}
   answers.forEach(a => {
     const area = a.question.area
@@ -43,12 +43,14 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="font-heading text-2xl font-bold">{greeting}, {firstName}! 👋</h1>
-        <p className="text-zinc-400 text-sm mt-1">Veja seu progresso e continue estudando</p>
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-2xl font-bold">{greeting}, {firstName}! 👋</h1>
+          <p className="text-zinc-400 text-sm mt-1">Veja seu progresso e continue estudando</p>
+        </div>
+        <ResetDashboardButton />
       </div>
 
-      {/* Métricas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
           { label: 'Total respondidas', value: total, icon: BarChart3, color: 'text-brand-400', bg: 'bg-brand-500/10', bar: pct, barColor: 'bg-brand-500' },
@@ -73,7 +75,6 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Desempenho por área */}
         <div className="card p-5">
           <h2 className="font-heading text-sm font-semibold text-brand-300 mb-4">Desempenho por área</h2>
           {topAreas.length === 0 ? (
@@ -92,7 +93,6 @@ export default async function DashboardPage() {
           ))}
         </div>
 
-        {/* Últimas questões */}
         <div className="card p-5">
           <h2 className="font-heading text-sm font-semibold text-brand-300 mb-4">Últimas questões</h2>
           {answers.length === 0 ? (
@@ -115,13 +115,12 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
         {[
           { href: '/gerar', label: 'Gerar questão', emoji: '✦', desc: 'Nova questão agora' },
-          { href: '/edital-pro', label: 'Edital Pro', emoji: '🚀', desc: 'Plano de estudos IA' },
-          { href: '/edital', label: 'Edital', emoji: '📄', desc: 'Questões do edital' },
-          { href: '/historico', label: 'Histórico', emoji: '◷', desc: 'Ver progresso completo' },
+          { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚', desc: 'Subir PDFs' },
+          { href: '/gerados', label: 'Meus Gerados', emoji: '📁', desc: 'Ver questões' },
+          { href: '/em-breve', label: 'Em breve', emoji: '🚧', desc: 'Novas funções' },
         ].map(item => (
           <Link key={item.href} href={item.href} className="card p-4 hover:border-brand-500/30 transition-colors group">
             <div className="text-2xl mb-2">{item.emoji}</div>
