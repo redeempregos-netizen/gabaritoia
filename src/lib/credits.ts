@@ -2,24 +2,23 @@ import { prisma } from './prisma'
 
 // Custo em créditos por ação
 export const CREDIT_COSTS = {
-  generate_question_1:  1,  // 1 questão
-  generate_question_5:  4,  // 5 questões (desconto)
-  generate_question_10: 7,  // 10 questões (desconto maior)
-  generate_plan:        15, // Plano de estudos completo
-  generate_flashcards:  3,  // Mais flashcards
+  generate_question_1:  1,
+  generate_question_5:  5,
+  generate_question_10: 10,
+  generate_plan:        15,
+  generate_flashcards:  3,
 } as const
 
 // Créditos gratuitos por plano
 export const PLAN_CREDITS = {
-  FREE: 30,  // 30 créditos ao cadastrar
-  PRO:  500, // 500 créditos/mês
-  ENTERPRISE: 9999, // Ilimitado (própria chave)
+  FREE: 1000,
+  PRO:  1000,
+  ENTERPRISE: 3000,
+  CADERNOS_500: 1000,
 } as const
 
 export function getQuestionCost(quantity: number): number {
-  if (quantity >= 10) return CREDIT_COSTS.generate_question_10
-  if (quantity >= 5)  return CREDIT_COSTS.generate_question_5
-  return quantity * CREDIT_COSTS.generate_question_1
+  return Math.max(1, quantity)
 }
 
 export async function getCredits(userId: string): Promise<number> {
@@ -91,7 +90,7 @@ export async function getCreditHistory(userId: string, limit = 20) {
   })
 }
 
-// Bonus diário — recompensa usuários ativos
+// Bônus diário fixo
 export async function claimDailyBonus(userId: string): Promise<{ claimed: boolean; amount: number }> {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -106,12 +105,8 @@ export async function claimDailyBonus(userId: string): Promise<{ claimed: boolea
 
   if (alreadyClaimed) return { claimed: false, amount: 0 }
 
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true, streak: true } })
-  const bonus = user?.plan === 'PRO' ? 5 : 2
-  const streakBonus = Math.min(user?.streak || 0, 5) // Até 5 créditos extras por streak
-
-  const total = bonus + streakBonus
-  await addCredits(userId, total, 'daily_bonus', `Bônus diário (+${streakBonus} streak)`)
+  const total = 20
+  await addCredits(userId, total, 'daily_bonus', 'Bônus diário de 20 créditos')
 
   return { claimed: true, amount: total }
 }
