@@ -4,7 +4,7 @@ export const PLAN_CADERNOS_QUESTOES = 'PRO'
 export const PLAN_FULL = 'ENTERPRISE'
 
 export const PLAN_LABELS: Record<string, string> = {
-  FREE: 'Sem acesso',
+  FREE: 'Gratuito',
   PRO: 'Cadernos + Questões',
   ENTERPRISE: 'Full',
   [PLAN_CADERNOS_500]: 'Cadernos PDF',
@@ -21,6 +21,7 @@ export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
     '/dashboard',
     '/cadernos',
     '/gerar',
+    '/plano-questoes',
     '/gerados',
     '/em-breve',
   ],
@@ -28,6 +29,7 @@ export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
     '/dashboard',
     '/cadernos',
     '/gerar',
+    '/plano-questoes',
     '/gerados',
     '/em-breve',
   ],
@@ -35,6 +37,7 @@ export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
     '/dashboard',
     '/cadernos',
     '/gerar',
+    '/plano-questoes',
     '/gerados',
     '/em-breve',
   ],
@@ -61,7 +64,7 @@ export function isLimitedPlan(plan?: string | null) {
 }
 
 export function getPlanLabel(plan?: string | null) {
-  return PLAN_LABELS[plan || ''] || plan || 'Sem acesso'
+  return PLAN_LABELS[plan || ''] || plan || 'Gratuito'
 }
 
 export function getDefaultRouteForPlan(plan?: string | null) {
