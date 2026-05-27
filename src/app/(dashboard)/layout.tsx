@@ -17,9 +17,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const userMobileNav = [
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
     { href: '/gerar', label: 'Gerar Questão', emoji: '✦' },
+    { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
     { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
     { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
-    { href: '/em-breve', label: 'Plano de Questões', emoji: '🎯' },
     { href: '/em-breve', label: 'Mapas Mentais', emoji: '🧠' },
     { href: '/em-breve', label: 'Edital Verticalizado', emoji: '📄' },
     { href: '/em-breve', label: 'Edital Pro', emoji: '🚀' },
