@@ -2,10 +2,10 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { getPlanLabel, isCadernosOnlyPlan, isFreePlan } from '@/lib/plans'
+import { getPlanLabel } from '@/lib/plans'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
-  History, Settings, LogOut, CreditCard, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target,
+  History, Settings, LogOut, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target,
   type LucideIcon
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -17,29 +17,28 @@ type NavItem = {
   badge?: string
 }
 
-const FULL_NAV: NavItem[] = [
+const ADMIN_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
   { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Novo' },
-  { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen, badge: 'Novo' },
-  { href: '/mapas',      label: 'Mapas Mentais',       icon: Brain, badge: 'Novo' },
+  { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
+  { href: '/mapas',      label: 'Mapas Mentais',       icon: Brain },
   { href: '/edital',     label: 'Edital Verticalizado', icon: FileText },
-  { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket, badge: 'Novo' },
+  { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
   { href: '/historico',  label: 'Histórico',            icon: History },
-  { href: '/planos',     label: 'Planos e Créditos',   icon: CreditCard },
 ]
 
-const FREE_NAV: NavItem[] = [
+const USER_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
-  { href: '/planos',     label: 'Planos e Créditos',   icon: CreditCard },
-]
-
-const CADERNOS_NAV: NavItem[] = [
-  { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
+  { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
-  { href: '/planos',     label: 'Planos e Créditos',   icon: CreditCard },
+  { href: '/em-breve',   label: 'Plano de Questões',   icon: Target, badge: 'Em breve' },
+  { href: '/em-breve',   label: 'Mapas Mentais',       icon: Brain, badge: 'Em breve' },
+  { href: '/em-breve',   label: 'Edital Verticalizado', icon: FileText, badge: 'Em breve' },
+  { href: '/em-breve',   label: 'Edital Pro',           icon: Rocket, badge: 'Em breve' },
+  { href: '/em-breve',   label: 'Histórico',            icon: History, badge: 'Em breve' },
 ]
 
 interface SidebarProps {
@@ -51,7 +50,7 @@ export function Sidebar({ user }: SidebarProps) {
   const router = useRouter()
   const [credits, setCredits] = useState<number | null>(null)
   const [claiming, setClaiming] = useState(false)
-  const nav: NavItem[] = user.role === 'ADMIN' ? FULL_NAV : isFreePlan(user.plan) ? FREE_NAV : isCadernosOnlyPlan(user.plan) ? CADERNOS_NAV : FULL_NAV
+  const nav: NavItem[] = user.role === 'ADMIN' ? ADMIN_NAV : USER_NAV
 
   useEffect(() => {
     fetch('/api/credits')
@@ -101,7 +100,7 @@ export function Sidebar({ user }: SidebarProps) {
         <div className="min-w-0">
           <div className="text-xs font-medium text-zinc-100 truncate">{user.name}</div>
           <div className="text-[10px] text-zinc-500">
-            {user.role === 'ADMIN' ? 'Administrador' : `Plano ${getPlanLabel(user.plan)}`}
+            {user.role === 'ADMIN' ? 'Administrador' : getPlanLabel(user.plan)}
           </div>
         </div>
       </div>
@@ -117,37 +116,25 @@ export function Sidebar({ user }: SidebarProps) {
               <span className="font-heading font-bold text-amber-400 text-xs">{credits}</span>
             </div>
             <div className="h-1 bg-zinc-700 rounded-full overflow-hidden mb-2">
-              <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all" style={{ width: `${Math.min(credits / 500 * 100, 100)}%` }} />
+              <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all" style={{ width: `${Math.min(credits / 1000 * 100, 100)}%` }} />
             </div>
-            {!isCadernosOnlyPlan(user.plan) && !isFreePlan(user.plan) && <button onClick={claimBonus} disabled={claiming} className="w-full py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50">
-              {claiming ? 'Resgatando...' : '🎁 Bônus diário'}
-            </button>}
+            <button onClick={claimBonus} disabled={claiming} className="w-full py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50">
+              {claiming ? 'Resgatando...' : '🎁 Resgatar 20 créditos'}
+            </button>
           </div>
-        </div>
-      )}
-
-      {isFreePlan(user.plan) && user.role !== 'ADMIN' && (
-        <div className="mx-3 mt-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-[11px] text-amber-100 leading-relaxed">
-          Sua conta grátis ainda não possui acesso às ferramentas. Escolha um plano para liberar.
-        </div>
-      )}
-
-      {isCadernosOnlyPlan(user.plan) && user.role !== 'ADMIN' && (
-        <div className="mx-3 mt-2 rounded-xl border border-brand-500/20 bg-brand-500/10 p-3 text-[11px] text-brand-100 leading-relaxed">
-          Seu plano libera acesso aos Cadernos PDF e 500 créditos.
         </div>
       )}
 
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
         <div className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-3 mb-2">Menu</div>
-        {nav.map(item => {
+        {nav.map((item, idx) => {
           const Icon = item.icon
           const active = pathname === item.href || pathname.startsWith(item.href + '/')
           return (
-            <Link key={item.href} href={item.href} className={cn('sidebar-item', active && 'sidebar-item-active')}>
+            <Link key={`${item.href}-${item.label}-${idx}`} href={item.href} className={cn('sidebar-item', active && 'sidebar-item-active')}>
               <Icon size={15} />
               <span className="flex-1 text-xs">{item.label}</span>
-              {item.badge && <span className="text-[9px] bg-brand-600 text-white px-1.5 py-0.5 rounded-full font-semibold">{item.badge}</span>}
+              {item.badge && <span className="text-[9px] bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded-full font-semibold">{item.badge}</span>}
             </Link>
           )
         })}
