@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -16,11 +16,20 @@ type Form = z.infer<typeof schema>
 export default function LoginPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const { register, handleSubmit, formState: { errors } } = useForm<Form>({ resolver: zodResolver(schema) })
+  const [remember, setRemember] = useState(true)
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm<Form>({ resolver: zodResolver(schema) })
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('gaia-login-email')
+    if (saved) setValue('email', saved)
+  }, [setValue])
 
   async function onSubmit(data: Form) {
     setLoading(true)
     try {
+      if (remember) window.localStorage.setItem('gaia-login-email', data.email)
+      else window.localStorage.removeItem('gaia-login-email')
+
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -36,6 +45,10 @@ export default function LoginPage() {
     }
   }
 
+  function alterarSenhaAviso() {
+    toast.info('Para alterar a senha, entre em contato com o suporte por enquanto.')
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-brand-950/30 via-transparent to-purple-950/20 pointer-events-none" />
@@ -49,7 +62,7 @@ export default function LoginPage() {
             Entrar no Gabarito<span className="text-brand-400">IA</span>
           </div>
           <p className="text-zinc-400 text-sm mb-6 leading-relaxed">
-            Acesso exclusivo para compradores. Use o e-mail informado na compra e a senha liberada pela administração.
+            Acesse sua conta para usar Cadernos PDF e Gerar Questões.
           </p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -63,18 +76,29 @@ export default function LoginPage() {
               <input {...register('password')} type="password" className="input" placeholder="••••••••" autoComplete="current-password" />
               {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password.message}</p>}
             </div>
+
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <label className="flex items-center gap-2 text-zinc-400 cursor-pointer">
+                <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
+                Lembrar e-mail
+              </label>
+              <button type="button" onClick={alterarSenhaAviso} className="text-brand-300 hover:text-brand-200 font-medium">
+                Alterar senha
+              </button>
+            </div>
+
             <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 mt-2 h-11">
               {loading && <Loader2 size={16} className="animate-spin" />}
               Entrar
             </button>
           </form>
 
-          <div className="mt-6 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100 leading-relaxed">
-            Não existe cadastro aberto. O acesso é criado automaticamente pela compra ou manualmente pelo administrador.
+          <div className="mt-6 rounded-xl border border-brand-500/20 bg-brand-500/10 p-3 text-xs text-brand-100 leading-relaxed">
+            Novos usuários recebem 1000 créditos para começar.
           </div>
 
           <p className="text-center text-xs text-zinc-500 mt-5">
-            Ainda não recebeu acesso? Fale com o suporte informando o mesmo e-mail da compra.
+            Problemas no acesso? Fale com o suporte informando seu e-mail.
           </p>
         </div>
       </div>
