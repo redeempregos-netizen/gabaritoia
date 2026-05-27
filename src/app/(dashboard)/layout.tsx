@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MobileShell } from '@/components/layout/MobileShell'
-import { isCadernosOnlyPlan, isFreePlan } from '@/lib/plans'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -15,7 +14,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
   })
   if (!user) redirect('/login')
 
-  const fullMobileNav = [
+  const userMobileNav = [
+    { href: '/dashboard', label: 'Painel', emoji: '⊞' },
+    { href: '/gerar', label: 'Gerar Questão', emoji: '✦' },
+    { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
+    { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
+    { href: '/em-breve', label: 'Plano de Questões', emoji: '🎯' },
+    { href: '/em-breve', label: 'Mapas Mentais', emoji: '🧠' },
+    { href: '/em-breve', label: 'Edital Verticalizado', emoji: '📄' },
+    { href: '/em-breve', label: 'Edital Pro', emoji: '🚀' },
+    { href: '/em-breve', label: 'Histórico', emoji: '🕘' },
+  ]
+
+  const adminMobileNav = [
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
     { href: '/gerar', label: 'Gerar Questão', emoji: '✦' },
     { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
@@ -25,30 +36,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/mapas', label: 'Mapas Mentais', emoji: '🧠' },
     { href: '/edital', label: 'Edital Verticalizado', emoji: '📄' },
     { href: '/edital-pro', label: 'Edital Pro', emoji: '🚀' },
-    { href: '/planos', label: 'Planos', emoji: '⚡' },
-  ]
-
-  const adminMobileNav = [
-    ...fullMobileNav,
     { href: '/admin', label: 'Administração', emoji: '⚙️' },
     { href: '/admin/usuarios', label: 'Usuários', emoji: '👥' },
     { href: '/admin/custos', label: 'Custos IA', emoji: '💰' },
   ]
 
-  const freeMobileNav = [
-    { href: '/dashboard', label: 'Painel', emoji: '⊞' },
-    { href: '/planos', label: 'Planos', emoji: '⚡' },
-  ]
-
-  const cadernosMobileNav = [
-    { href: '/dashboard', label: 'Painel', emoji: '⊞' },
-    { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
-    { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
-    { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
-    { href: '/planos', label: 'Planos', emoji: '⚡' },
-  ]
-
-  const mobileNav = user.role === 'ADMIN' ? adminMobileNav : isFreePlan(user.plan) ? freeMobileNav : isCadernosOnlyPlan(user.plan) ? cadernosMobileNav : fullMobileNav
+  const mobileNav = user.role === 'ADMIN' ? adminMobileNav : userMobileNav
 
   return (
     <div className="flex h-screen overflow-hidden">
