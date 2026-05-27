@@ -34,14 +34,14 @@ model User {
   role          Role      @default(USER)
   plan          Plan      @default(FREE)
   avatarUrl     String?
-  credits       Int       @default(30)
+  credits       Int       @default(1000)
   creditsUsed   Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastStudyAt   DateTime?
   streak        Int       @default(0)
-  ownApiKey     String?   // Chave de IA própria do usuário
-  ownApiProvider String?  // Provedor da chave própria
+  ownApiKey     String?
+  ownApiProvider String?
 
   answers       Answer[]
   studyPlans    StudyPlan[]
@@ -84,7 +84,7 @@ model Question {
   fromEdital   Boolean      @default(false)
   aiProvider   String       @default("claude")
   aiModel      String?
-  promptHash   String?      // Para cache
+  promptHash   String?
   createdAt    DateTime     @default(now())
 
   answers Answer[]
@@ -129,7 +129,6 @@ model StudyPlan {
   @@map("study_plans")
 }
 
-// ── CACHE DE IA ──────────────────────────────
 model AICache {
   id         String   @id @default(cuid())
   promptHash String   @unique
@@ -146,12 +145,11 @@ model AICache {
   @@map("ai_cache")
 }
 
-// ── CRÉDITOS ─────────────────────────────────
 model CreditLog {
   id        String   @id @default(cuid())
   userId    String
-  amount    Int      // positivo = ganhou, negativo = gastou
-  action    String   // "generate_question", "generate_plan", "purchase", etc
+  amount    Int
+  action    String
   details   String?
   createdAt DateTime @default(now())
 
@@ -161,10 +159,9 @@ model CreditLog {
   @@map("credit_logs")
 }
 
-// ── RATE LIMIT ───────────────────────────────
 model RateLimit {
   id        String   @id @default(cuid())
-  key       String   @unique // ip:action ou userId:action
+  key       String   @unique
   count     Int      @default(0)
   resetAt   DateTime
   createdAt DateTime @default(now())
@@ -174,7 +171,6 @@ model RateLimit {
   @@map("rate_limits")
 }
 
-// ── CONFIG ADMIN ─────────────────────────────
 model AdminConfig {
   id        String   @id @default(cuid())
   key       String   @unique
