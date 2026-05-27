@@ -1,7 +1,8 @@
 'use client'
-import { useState, useEffect } from 'react'
+
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Upload, Search, FileText, Target } from 'lucide-react'
+import { Loader2, Upload, Search, FileText, Target, RotateCcw } from 'lucide-react'
 
 const DIFS = ['Fácil', 'Média', 'Difícil']
 const TIPOS = ['MULTIPLE_CHOICE', 'TRUE_FALSE']
@@ -166,16 +167,27 @@ export default function GerarPage() {
     }
   }
 
-  async function responder(qId: string, idx: number) {
-    if (answered[qId] !== undefined) return
-    setAnswered(prev => ({ ...prev, [qId]: idx }))
+  async function responder(q: Question, idx: number) {
+    const previous = answered[q.id]
+    const previousWasCorrect = previous === q.correctIndex
+    if (previousWasCorrect) return
+
+    setAnswered(prev => ({ ...prev, [q.id]: idx }))
     try {
       await fetch('/api/ai/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questionId: qId, selectedIdx: idx }),
+        body: JSON.stringify({ questionId: q.id, selectedIdx: idx }),
       })
     } catch {}
+  }
+
+  function tentarNovamente(qId: string) {
+    setAnswered(prev => {
+      const next = { ...prev }
+      delete next[qId]
+      return next
+    })
   }
 
   return (
@@ -253,6 +265,8 @@ export default function GerarPage() {
             const sel = answered[q.id]
             const isTF = q.type === 'TRUE_FALSE'
             const origin = parseOrigin(q)
+            const errou = sel !== undefined && sel !== q.correctIndex
+            const acertou = sel === q.correctIndex
             return (
               <div key={q.id} className="card p-5 mb-4 overflow-hidden">
                 <div className="flex flex-wrap gap-2 mb-4">
@@ -281,14 +295,16 @@ export default function GerarPage() {
                 <div className="space-y-2 mb-3">
                   {q.options.map((opt, i) => {
                     let cls = 'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all text-sm '
-                    if (sel === undefined) cls += 'border-white/[0.07] text-zinc-300 hover:border-brand-500/50 hover:bg-brand-500/5'
-                    else if (i === q.correctIndex) cls += 'border-green-500 bg-green-500/8 text-zinc-100'
-                    else if (i === sel && sel !== q.correctIndex) cls += 'border-red-500 bg-red-500/8 text-zinc-100'
-                    else cls += 'border-white/[0.04] text-zinc-500'
-                    return <div key={i} className={cls} onClick={() => responder(q.id, i)}><span className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 ${isTF ? (i === 0 ? 'border-blue-400 text-blue-400' : 'border-red-400 text-red-400') : 'border-current'}`}>{isTF ? (i === 0 ? 'C' : 'E') : 'ABCDE'[i]}</span><span>{opt}</span></div>
+                    if (sel === undefined || errou) cls += 'border-white/[0.07] text-zinc-300 hover:border-brand-500/50 hover:bg-brand-500/5'
+                    if (sel !== undefined && i === q.correctIndex && acertou) cls = 'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all text-sm border-green-500 bg-green-500/8 text-zinc-100'
+                    if (sel !== undefined && i === sel && errou) cls = 'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all text-sm border-red-500 bg-red-500/8 text-zinc-100'
+                    return <div key={i} className={cls} onClick={() => responder(q, i)}><span className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 ${isTF ? (i === 0 ? 'border-blue-400 text-blue-400' : 'border-red-400 text-red-400') : 'border-current'}`}>{isTF ? (i === 0 ? 'C' : 'E') : 'ABCDE'[i]}</span><span>{opt}</span></div>
                   })}
                 </div>
-                {sel !== undefined && <div className="bg-zinc-800/60 border-l-2 border-brand-500 rounded-r-xl p-4 text-sm text-zinc-300 leading-relaxed"><span className="font-semibold text-brand-300">💡 Comentário:</span><br />{q.comentario}</div>}
+
+                {errou && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200 mb-3">Você errou. Clique em <b>Tentar novamente</b> para responder de novo antes de ver o comentário.</div>}
+                {acertou && <div className="bg-zinc-800/60 border-l-2 border-brand-500 rounded-r-xl p-4 text-sm text-zinc-300 leading-relaxed"><span className="font-semibold text-brand-300">💡 Comentário:</span><br />{q.comentario}</div>}
+                {errou && <button onClick={() => tentarNovamente(q.id)} className="mt-2 btn-secondary text-sm w-full flex items-center justify-center gap-2"><RotateCcw size={14} /> Tentar novamente</button>}
                 {sel !== undefined && <button onClick={gerar} className="mt-3 btn-secondary text-sm w-full">+ Gerar nova questão</button>}
               </div>
             )
