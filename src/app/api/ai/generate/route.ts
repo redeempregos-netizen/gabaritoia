@@ -21,6 +21,8 @@ const schema = z.object({
   queueJobId: z.string().optional(),
 })
 
+const ALL_PROVIDERS: AIProvider[] = ['openai', 'gemini', 'openrouter', 'grok', 'claude']
+
 async function ensureQuestionOriginColumns() {
   await prisma.$executeRawUnsafe(`ALTER TABLE questions ADD COLUMN IF NOT EXISTS "examName" TEXT;`).catch(() => null)
   await prisma.$executeRawUnsafe(`ALTER TABLE questions ADD COLUMN IF NOT EXISTS "examYear" TEXT;`).catch(() => null)
@@ -70,6 +72,55 @@ async function saveGeneratedQuestionLinks(userId: string, questionIds: string[])
   }
 }
 
+async function getProviderOrder(requested?: AIProvider): Promise<AIProvider[]> {
+  const enabled = await prisma.apiKey.findMany({
+    where: { isEnabled: true },
+    select: { provider: true },
+  }).catch(() => [])
+
+  const enabledProviders = enabled.map(k => k.provider as AIProvider).filter(p => ALL_PROVIDERS.includes(p))
+  const cfg = await prisma.adminConfig.findUnique({ where: { key: 'defaultProvider' } }).catch(() => null)
+  const defaultProvider = cfg?.value as AIProvider | undefined
+
+  const order: AIProvider[] = []
+  const add = (p?: AIProvider) => {
+    if (p && ALL_PROVIDERS.includes(p) && !order.includes(p)) order.push(p)
+  }
+
+  add(requested)
+  add(defaultProvider)
+  enabledProviders.forEach(add)
+  ALL_PROVIDERS.forEach(add)
+
+  return order
+}
+
+async function callAIWithFallback(opts: { prompt: string; systemPrompt: string; provider?: AIProvider; maxTokens: number; queueJobId?: string }) {
+  const providers = await getProviderOrder(opts.provider)
+  let lastError = ''
+
+  for (const provider of providers) {
+    try {
+      const raw = await callAI({
+        prompt: opts.prompt,
+        systemPrompt: opts.systemPrompt,
+        provider,
+        maxTokens: opts.maxTokens,
+        useCache: false,
+        action: 'generate_questions',
+        queueJobId: opts.queueJobId,
+      })
+      return { raw, provider }
+    } catch (e) {
+      lastError = (e as Error).message || String(e)
+      console.error(`[AI fallback] provider=${provider} error=${lastError}`)
+      continue
+    }
+  }
+
+  throw new Error(`Nenhuma chave de IA ativa funcionou. Último erro: ${lastError || 'erro desconhecido'}`)
+}
+
 export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
@@ -88,12 +139,6 @@ export async function POST(req: NextRequest) {
     const sufficient = await hasCredits(session.userId, cost)
     if (!sufficient) return NextResponse.json({ error: `Créditos insuficientes. Precisa de ${cost} crédito(s).`, code: 'insufficient_credits' }, { status: 402 })
 
-    let provider: AIProvider = (params.provider as AIProvider) || 'claude'
-    if (!params.provider) {
-      const cfg = await prisma.adminConfig.findUnique({ where: { key: 'defaultProvider' } }).catch(() => null)
-      if (cfg?.value) provider = cfg.value as AIProvider
-    }
-
     const isTF = params.type === 'TRUE_FALSE'
     const isOriginal = params.format === 'Questão inédita'
     const isEdital = !!params.editalText?.trim()
@@ -109,8 +154,9 @@ export async function POST(req: NextRequest) {
 
     const prompt = `Crie EXATAMENTE ${params.quantity} questão(ões) para concurso público brasileiro.\n\n${contextoBase}\n\nREGRAS:\n- Use o contexto do edital quando fornecido para escolher temas, subtemas, cargo, órgão, banca e nível de cobrança.\n- Em cada questão, preencha examName, examYear e basedOn.\n- examName deve ser o nome da prova/concurso/órgão/cargo quando houver referência; se não houver, use "Concurso público".\n- examYear deve ser o ano citado no edital/referência; se não houver ano, deixe string vazia.\n- basedOn deve indicar o tópico/subtópico/item de edital que inspirou a questão.\n- Se houver apenas referência do edital/concurso, use apenas como orientação e não invente dados factuais específicos.\n- As questões devem ser plausíveis para a banca ${params.banca}, com pegadinhas e linguagem compatíveis.\n- Não copie questões reais literalmente.\n- Cada comentário deve explicar a resposta correta.\n- Responda SOMENTE com JSON válido no formato: ${schemaJson}`
 
-    const raw = await callAI({ prompt, systemPrompt, provider, maxTokens: 3500, useCache: false, action: 'generate_questions', queueJobId: params.queueJobId })
-    const parsed = parseAIJson<Array<{ enunciado: string; options: string[]; correctIndex: number; comentario: string; subtopic?: string; area?: string; examName?: string; examYear?: string; basedOn?: string }>>(raw)
+    const aiResult = await callAIWithFallback({ prompt, systemPrompt, provider: params.provider as AIProvider | undefined, maxTokens: 3500, queueJobId: params.queueJobId })
+    const provider = aiResult.provider
+    const parsed = parseAIJson<Array<{ enunciado: string; options: string[]; correctIndex: number; comentario: string; subtopic?: string; area?: string; examName?: string; examYear?: string; basedOn?: string }>>(aiResult.raw)
 
     await deductCredits(session.userId, cost, 'generate_question', `${params.quantity}x ${params.banca}`)
 
