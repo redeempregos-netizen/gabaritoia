@@ -9,6 +9,7 @@ const TIPOS = ['MULTIPLE_CHOICE', 'TRUE_FALSE']
 const TIPO_LABELS: Record<string, string> = { MULTIPLE_CHOICE: 'Múltipla escolha', TRUE_FALSE: 'Certo ou Errado' }
 const FMTS = ['Estilo banca', 'Questão inédita']
 const ESCOLARIDADES = ['Fundamental incompleto', 'Fundamental completo', 'Médio completo', 'Técnico (curso técnico específico)', 'Nível Superior', 'Pós-graduação']
+const BANCAS = ['CEBRASPE', 'CESPE', 'FCC', 'FGV', 'VUNESP', 'IBFC', 'IDECAN', 'FURB', 'FEPESE', 'FAURGS', 'FUNDATEC', 'AOCP', 'INSTITUTO AOCP', 'QUADRIX', 'CONSULPLAN', 'OBJETIVA', 'LEGALLE', 'FAFIPA', 'AVANÇA SP']
 
 interface Question {
   id: string
@@ -51,6 +52,32 @@ function parseOrigin(q: Question) {
   }
 }
 
+function detectarBanca(texto: string) {
+  const upper = texto.toUpperCase()
+  return BANCAS.find(banca => upper.includes(banca)) || ''
+}
+
+function detectarAno(texto: string) {
+  const match = texto.match(/\b(20[0-3][0-9])\b/)
+  return match?.[1] || ''
+}
+
+function detectarCargos(texto: string) {
+  const encontrados = new Set<string>()
+  const linhas = texto.split(/\n|\r|\.|;/).map(l => l.trim()).filter(Boolean)
+
+  linhas.forEach(linha => {
+    const clean = linha.replace(/\s+/g, ' ').trim()
+    const matchCargo = clean.match(/(?:cargo|emprego|função|vaga)\s*(?:de|para|:|-)?\s*([A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-Za-zÀ-ú0-9ºª\s\/\-]{3,70})/i)
+    if (matchCargo?.[1]) encontrados.add(matchCargo[1].replace(/\s{2,}/g, ' ').trim())
+
+    const matchEscolaridade = clean.match(/(Agente|Analista|Assistente|Auxiliar|Técnico|Professor|Contador|Fiscal|Motorista|Enfermeiro|Médico|Procurador|Guarda|Operador|Pedagogo|Psicólogo|Farmacêutico|Engenheiro)[A-Za-zÀ-ú0-9ºª\s\/\-]{2,70}/i)
+    if (matchEscolaridade?.[0]) encontrados.add(matchEscolaridade[0].replace(/\s{2,}/g, ' ').trim())
+  })
+
+  return Array.from(encontrados).slice(0, 12)
+}
+
 export default function GerarPage() {
   const [banca, setBanca] = useState('')
   const [area, setArea] = useState('')
@@ -69,26 +96,30 @@ export default function GerarPage() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [answered, setAnswered] = useState<Record<string, number>>({})
   const [editalRef, setEditalRef] = useState('')
+  const [editalYear, setEditalYear] = useState('')
   const [editalText, setEditalText] = useState('')
   const [editalFileName, setEditalFileName] = useState('')
+  const [detectedCargos, setDetectedCargos] = useState<string[]>([])
   const [dragging, setDragging] = useState(false)
   const [useWebSearch, setUseWebSearch] = useState(false)
   const [webQuery, setWebQuery] = useState('')
   const [webResults, setWebResults] = useState<any[]>([])
 
   useEffect(() => {
-    fetch('/api/admin/stats')
-      .then(async r => {
-        if (!r.ok) {
-          setIsAdmin(false)
+    async function carregarUsuario() {
+      try {
+        const meRes = await fetch('/api/auth/me')
+        const me = await meRes.json()
+        const admin = meRes.ok && me.user?.role === 'ADMIN'
+        setIsAdmin(admin)
+        if (!admin) {
           setUseWebSearch(false)
-          return null
+          return
         }
-        return r.json()
-      })
-      .then(data => {
-        if (!data) return
-        setIsAdmin(true)
+
+        const res = await fetch('/api/admin/stats')
+        if (!res.ok) return
+        const data = await res.json()
         const cfg = data.config?.maxQtd
         if (cfg) setMaxQtd(Number(cfg))
         const keys = (data.apiKeys || []).filter((k: any) => k.hasKey && k.isEnabled).map((k: any) => k.provider)
@@ -97,12 +128,31 @@ export default function GerarPage() {
           const def = data.config?.defaultProvider
           setProvider(def && keys.includes(def) ? def : keys[0])
         }
-      })
-      .catch(() => {
+      } catch {
         setIsAdmin(false)
         setUseWebSearch(false)
-      })
+      }
+    }
+    carregarUsuario()
   }, [])
+
+  function aplicarTextoDoEdital(raw: string) {
+    const cleaned = raw.replace(/\s{3,}/g, ' ').substring(0, 8000)
+    setEditalText(cleaned)
+
+    const bancaDetectada = detectarBanca(cleaned)
+    if (bancaDetectada && !banca.trim()) {
+      setBanca(bancaDetectada)
+      toast.success(`Banca detectada: ${bancaDetectada}`)
+    }
+
+    const anoDetectado = detectarAno(cleaned)
+    if (anoDetectado && !editalYear.trim()) setEditalYear(anoDetectado)
+
+    const cargos = detectarCargos(cleaned)
+    setDetectedCargos(cargos)
+    toast.success('Edital carregado para contexto das questões')
+  }
 
   function processEditalFile(file: File) {
     setEditalFileName(file.name)
@@ -114,17 +164,12 @@ export default function GerarPage() {
         for (let i = 0; i < arr.length; i++) {
           if (arr[i] > 31 && arr[i] < 127) text += String.fromCharCode(arr[i])
         }
-        const cleaned = text.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s{3,}/g, ' ').substring(0, 8000)
-        setEditalText(cleaned)
-        toast.success('Edital carregado para contexto das questões')
+        aplicarTextoDoEdital(text.replace(/[^\x20-\x7E\n]/g, ' '))
       }
       reader.readAsArrayBuffer(file)
     } else {
       const reader = new FileReader()
-      reader.onload = e => {
-        setEditalText(String(e.target?.result || '').replace(/\s{3,}/g, ' ').substring(0, 8000))
-        toast.success('Edital carregado para contexto das questões')
-      }
+      reader.onload = e => aplicarTextoDoEdital(String(e.target?.result || ''))
       reader.readAsText(file, 'utf-8')
     }
   }
@@ -164,6 +209,8 @@ export default function GerarPage() {
       const webContext = results.length ? `REFERÊNCIAS PÚBLICAS ENCONTRADAS NA WEB:\n${results.map((r: any, i: number) => `${i + 1}. ${r.title}\nFonte: ${r.displayedLink || r.source || r.link}\nResumo: ${r.snippet}`).join('\n\n')}` : ''
       const contextoEdital = [
         editalRef.trim() ? `REFERÊNCIA DO EDITAL/CONCURSO: ${editalRef.trim()}` : '',
+        editalYear.trim() ? `ANO DO EDITAL/PROVA: ${editalYear.trim()}` : '',
+        cargo.trim() ? `CARGO/FUNÇÃO: ${cargo.trim()}` : '',
         webContext,
         editalText.trim() ? `TRECHO EXTRAÍDO DO EDITAL ORIGINAL: ${editalText.trim()}` : '',
       ].filter(Boolean).join('\n\n')
@@ -219,7 +266,7 @@ export default function GerarPage() {
           <div className="card p-5">
             <div className="font-heading text-sm font-semibold text-brand-300 mb-4">1. Banca</div>
             <input className="input" placeholder="Ex: CEBRASPE, FCC, FGV, FEPESE, FAURGS..." value={banca} onChange={e => setBanca(e.target.value)} />
-            <p className="text-xs text-zinc-600 mt-2">A IA conhece centenas de bancas e imita o estilo de cada uma.</p>
+            <p className="text-xs text-zinc-600 mt-2">Ao enviar edital, o sistema tenta preencher a banca automaticamente.</p>
           </div>
 
           <div className="card p-5">
@@ -231,8 +278,12 @@ export default function GerarPage() {
             <div className="font-heading text-sm font-semibold text-brand-300">3. Contexto do edital</div>
             <div>
               <label className="label">Referência do edital/concurso</label>
-              <input className="input" placeholder="Ex: Prefeitura de Florianópolis 2025 FURB — Administrativo" value={editalRef} onChange={e => setEditalRef(e.target.value)} />
+              <input className="input" placeholder="Ex: Prefeitura de Florianópolis — Administrativo" value={editalRef} onChange={e => setEditalRef(e.target.value)} />
               <p className="text-xs text-zinc-600 mt-2">Essa referência vira a origem da questão: prova, ano e contexto.</p>
+            </div>
+            <div>
+              <label className="label">Ano do edital/prova</label>
+              <input className="input" placeholder="Ex: 2026" value={editalYear} onChange={e => setEditalYear(e.target.value.replace(/\D/g, '').slice(0, 4))} />
             </div>
 
             {isAdmin ? (
@@ -242,7 +293,7 @@ export default function GerarPage() {
                   <span>Buscar referências públicas na web com SerpAPI</span>
                 </label>
                 {useWebSearch && <div className="space-y-2">
-                  <input className="input" placeholder="Ex: edital Florianópolis 2025 FURB administrativo" value={webQuery} onChange={e => setWebQuery(e.target.value)} />
+                  <input className="input" placeholder="Ex: edital Florianópolis 2026 banca cargo" value={webQuery} onChange={e => setWebQuery(e.target.value)} />
                   <button type="button" onClick={buscarWebContexto} disabled={searchingWeb} className="btn-secondary text-xs flex items-center gap-1">
                     {searchingWeb ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Buscar agora
                   </button>
@@ -261,11 +312,12 @@ export default function GerarPage() {
             <div className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${dragging ? 'border-brand-500 bg-brand-500/5' : 'border-white/10 hover:border-white/20'}`} onClick={() => document.getElementById('gerar-edital-file')?.click()} onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) processEditalFile(f) }}>
               <Upload size={24} className="mx-auto mb-2 text-zinc-500" />
               <div className="font-heading font-semibold text-sm mb-1">{editalFileName || 'Enviar edital original'}</div>
-              <div className="text-xs text-zinc-500">PDF ou TXT — melhora prova, ano, cargo e base da questão</div>
+              <div className="text-xs text-zinc-500">PDF ou TXT — tenta reconhecer banca, ano e cargos</div>
               {editalText && <div className="mt-2 text-xs text-green-400">✓ {Math.round(editalText.length / 100) / 10}kb de contexto carregado</div>}
             </div>
             <input type="file" id="gerar-edital-file" accept=".pdf,.txt,.doc,.docx" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) processEditalFile(f) }} />
-            {editalText && <button type="button" className="btn-secondary text-xs" onClick={() => { setEditalText(''); setEditalFileName('') }}>Remover edital carregado</button>}
+            {editalText && <button type="button" className="btn-secondary text-xs" onClick={() => { setEditalText(''); setEditalFileName(''); setDetectedCargos([]) }}>Remover edital carregado</button>}
+            {detectedCargos.length > 0 && <div className="rounded-xl border border-brand-500/20 bg-brand-500/5 p-3"><div className="text-xs font-semibold text-brand-300 mb-2">Cargos encontrados no edital</div><div className="flex flex-wrap gap-2">{detectedCargos.map(c => <button key={c} type="button" onClick={() => setCargo(c)} className="chip text-xs">{c}</button>)}</div></div>}
           </div>
 
           <div className="card p-5 space-y-4">
