@@ -63,6 +63,7 @@ export default function GerarPage() {
   const [maxQtd, setMaxQtd] = useState(10)
   const [provider, setProvider] = useState('claude')
   const [availableProviders, setAvailableProviders] = useState<string[]>(['claude'])
+  const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(false)
   const [searchingWeb, setSearchingWeb] = useState(false)
   const [questions, setQuestions] = useState<Question[]>([])
@@ -76,16 +77,31 @@ export default function GerarPage() {
   const [webResults, setWebResults] = useState<any[]>([])
 
   useEffect(() => {
-    fetch('/api/admin/stats').then(r => r.json()).then(data => {
-      const cfg = data.config?.maxQtd
-      if (cfg) setMaxQtd(Number(cfg))
-      const keys = (data.apiKeys || []).filter((k: any) => k.hasKey && k.isEnabled).map((k: any) => k.provider)
-      if (keys.length > 0) {
-        setAvailableProviders(keys)
-        const def = data.config?.defaultProvider
-        setProvider(def && keys.includes(def) ? def : keys[0])
-      }
-    }).catch(() => {})
+    fetch('/api/admin/stats')
+      .then(async r => {
+        if (!r.ok) {
+          setIsAdmin(false)
+          setUseWebSearch(false)
+          return null
+        }
+        return r.json()
+      })
+      .then(data => {
+        if (!data) return
+        setIsAdmin(true)
+        const cfg = data.config?.maxQtd
+        if (cfg) setMaxQtd(Number(cfg))
+        const keys = (data.apiKeys || []).filter((k: any) => k.hasKey && k.isEnabled).map((k: any) => k.provider)
+        if (keys.length > 0) {
+          setAvailableProviders(keys)
+          const def = data.config?.defaultProvider
+          setProvider(def && keys.includes(def) ? def : keys[0])
+        }
+      })
+      .catch(() => {
+        setIsAdmin(false)
+        setUseWebSearch(false)
+      })
   }, [])
 
   function processEditalFile(file: File) {
@@ -114,6 +130,7 @@ export default function GerarPage() {
   }
 
   async function buscarWebContexto() {
+    if (!isAdmin) return []
     const q = (webQuery || editalRef || `${banca} ${cargo} ${area} concurso questões edital`).trim()
     if (!q) { toast.error('Informe uma busca para usar a SerpAPI'); return [] }
     setSearchingWeb(true)
@@ -143,7 +160,7 @@ export default function GerarPage() {
     setQuestions([])
     setAnswered({})
     try {
-      const results = useWebSearch ? await buscarWebContexto() : []
+      const results = isAdmin && useWebSearch ? await buscarWebContexto() : []
       const webContext = results.length ? `REFERÊNCIAS PÚBLICAS ENCONTRADAS NA WEB:\n${results.map((r: any, i: number) => `${i + 1}. ${r.title}\nFonte: ${r.displayedLink || r.source || r.link}\nResumo: ${r.snippet}`).join('\n\n')}` : ''
       const contextoEdital = [
         editalRef.trim() ? `REFERÊNCIA DO EDITAL/CONCURSO: ${editalRef.trim()}` : '',
@@ -218,19 +235,28 @@ export default function GerarPage() {
               <p className="text-xs text-zinc-600 mt-2">Essa referência vira a origem da questão: prova, ano e contexto.</p>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-3">
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={useWebSearch} onChange={e => setUseWebSearch(e.target.checked)} />
-                <span>Buscar referências públicas na web com SerpAPI</span>
-              </label>
-              {useWebSearch && <div className="space-y-2">
-                <input className="input" placeholder="Ex: edital Florianópolis 2025 FURB administrativo" value={webQuery} onChange={e => setWebQuery(e.target.value)} />
-                <button type="button" onClick={buscarWebContexto} disabled={searchingWeb} className="btn-secondary text-xs flex items-center gap-1">
-                  {searchingWeb ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Buscar agora
-                </button>
-                {webResults.length > 0 && <div className="space-y-1 max-h-40 overflow-y-auto">{webResults.map((r, i) => <div key={i} className="text-[11px] text-zinc-500 border border-white/5 rounded-lg p-2"><div className="text-zinc-300 font-medium">{r.title}</div><div>{r.snippet}</div></div>)}</div>}
-              </div>}
-            </div>
+            {isAdmin ? (
+              <div className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-3">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={useWebSearch} onChange={e => setUseWebSearch(e.target.checked)} />
+                  <span>Buscar referências públicas na web com SerpAPI</span>
+                </label>
+                {useWebSearch && <div className="space-y-2">
+                  <input className="input" placeholder="Ex: edital Florianópolis 2025 FURB administrativo" value={webQuery} onChange={e => setWebQuery(e.target.value)} />
+                  <button type="button" onClick={buscarWebContexto} disabled={searchingWeb} className="btn-secondary text-xs flex items-center gap-1">
+                    {searchingWeb ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Buscar agora
+                  </button>
+                  {webResults.length > 0 && <div className="space-y-1 max-h-40 overflow-y-auto">{webResults.map((r, i) => <div key={i} className="text-[11px] text-zinc-500 border border-white/5 rounded-lg p-2"><div className="text-zinc-300 font-medium">{r.title}</div><div>{r.snippet}</div></div>)}</div>}
+                </div>}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/60 p-3 text-xs text-zinc-400">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Buscar referências públicas na web com SerpAPI</span>
+                  <span className="rounded-full bg-zinc-800 px-2 py-1 text-[10px] font-semibold text-zinc-300">Em breve</span>
+                </div>
+              </div>
+            )}
 
             <div className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${dragging ? 'border-brand-500 bg-brand-500/5' : 'border-white/10 hover:border-white/20'}`} onClick={() => document.getElementById('gerar-edital-file')?.click()} onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) processEditalFile(f) }}>
               <Upload size={24} className="mx-auto mb-2 text-zinc-500" />
@@ -249,7 +275,7 @@ export default function GerarPage() {
             <div><label className="label">Dificuldade</label><div className="flex gap-2">{DIFS.map(d => <button key={d} onClick={() => setDifficulty(d)} className={`chip ${difficulty === d ? 'chip-active' : ''}`}>{d}</button>)}</div></div>
             <div><label className="label">Tipo de questão</label><div className="flex gap-2">{TIPOS.map(t => <button key={t} onClick={() => setType(t)} className={`chip ${type === t ? 'chip-active' : ''}`}>{TIPO_LABELS[t]}</button>)}</div></div>
             <div><label className="label">Formato</label><div className="flex gap-2">{FMTS.map(f => <button key={f} onClick={() => setFormat(f)} className={`chip ${format === f ? 'chip-active' : ''}`}>{f}</button>)}</div></div>
-            <div><label className="label">Provedor de IA</label><div className="flex flex-wrap gap-2">{availableProviders.map(p => { const labels: Record<string,string> = {claude:'🟠 Claude',openai:'🟢 ChatGPT',gemini:'🔵 Gemini',grok:'⚡ Grok',openrouter:'🔶 OpenRouter'}; return <button key={p} onClick={() => setProvider(p)} className={`chip ${provider === p ? 'chip-active' : ''}`}>{labels[p] || p}</button> })}</div></div>
+            {isAdmin && <div><label className="label">Provedor de IA</label><div className="flex flex-wrap gap-2">{availableProviders.map(p => { const labels: Record<string,string> = {claude:'🟠 Claude',openai:'🟢 ChatGPT',gemini:'🔵 Gemini',grok:'⚡ Grok',openrouter:'🔶 OpenRouter'}; return <button key={p} onClick={() => setProvider(p)} className={`chip ${provider === p ? 'chip-active' : ''}`}>{labels[p] || p}</button> })}</div></div>}
             <div><label className="label">Quantidade ({maxQtd} máx.)</label><div className="flex flex-wrap gap-2">{Array.from({ length: maxQtd }, (_, i) => i + 1).map(n => <button key={n} onClick={() => setQuantity(n)} className={`w-9 h-9 rounded-xl border text-sm font-semibold transition-all ${quantity === n ? 'bg-brand-600 border-brand-500 text-white' : 'border-white/10 text-zinc-400 hover:border-brand-500'}`}>{n}</button>)}</div></div>
           </div>
 
