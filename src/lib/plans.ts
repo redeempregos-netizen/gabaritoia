@@ -19,24 +19,24 @@ export const PLAN_CREDIT_AMOUNT: Record<string, number> = {
 export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
   FREE: [
     '/dashboard',
-    '/planos',
     '/cadernos',
+    '/gerar',
+    '/gerados',
+    '/em-breve',
   ],
   [PLAN_CADERNOS_500]: [
     '/dashboard',
     '/cadernos',
-    '/plano-questoes',
+    '/gerar',
     '/gerados',
-    '/planos',
+    '/em-breve',
   ],
   [PLAN_CADERNOS_QUESTOES]: [
     '/dashboard',
     '/cadernos',
     '/gerar',
-    '/plano-questoes',
-    '/historico',
     '/gerados',
-    '/planos',
+    '/em-breve',
   ],
 }
 
@@ -65,10 +65,7 @@ export function getPlanLabel(plan?: string | null) {
 }
 
 export function getDefaultRouteForPlan(plan?: string | null) {
-  if (isCadernosOnlyPlan(plan)) return '/cadernos'
-  if (isCadernosQuestoesPlan(plan)) return '/dashboard'
-  if (isFullPlan(plan)) return '/dashboard'
-  return '/planos'
+  return '/dashboard'
 }
 
 export function canAccessRoute(plan: string | undefined | null, pathname: string) {
