@@ -86,8 +86,7 @@ async function getAIUsageSummary() {
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
-
-  const isAdmin = session.role === 'ADMIN'
+  if (session.role !== 'ADMIN') return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 })
 
   const [apiKeys, configs] = await Promise.all([
     prisma.apiKey.findMany(),
@@ -104,13 +103,6 @@ export async function GET(req: NextRequest) {
     lastTested: k.lastTested,
     testStatus: k.testStatus,
   }))
-
-  if (!isAdmin) {
-    return NextResponse.json({
-      apiKeys: apiKeysResponse,
-      config: { maxQtd: configMap.maxQtd || 10, defaultProvider: configMap.defaultProvider || 'claude' },
-    })
-  }
 
   const [totalUsers, totalAnswers, totalPlans, aiUsage] = await Promise.all([
     prisma.user.count(),
