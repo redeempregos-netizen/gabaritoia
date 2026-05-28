@@ -16,6 +16,8 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   api_global:   { limit: 100, windowMs: 60 * 1000 },           // 100 req/min global
 }
 
+const FAIL_CLOSED_ACTIONS = new Set(['generate', 'generate_ip', 'login', 'register'])
+
 export async function checkRateLimit(
   key: string,
   action: string
@@ -54,9 +56,16 @@ export async function checkRateLimit(
       remaining: config.limit - updated.count,
       resetAt: record.resetAt,
     }
-  } catch {
-    // Em caso de erro no DB, permitir a requisição
-    return { allowed: true, remaining: 1, resetAt: new Date(now.getTime() + config.windowMs) }
+  } catch (e) {
+    console.error('[rate limit error]', e)
+    const resetAt = new Date(now.getTime() + config.windowMs)
+
+    // Em rotas críticas, se o limitador falhar, bloqueia em vez de liberar.
+    if (FAIL_CLOSED_ACTIONS.has(action)) {
+      return { allowed: false, remaining: 0, resetAt }
+    }
+
+    return { allowed: true, remaining: 1, resetAt }
   }
 }
 
