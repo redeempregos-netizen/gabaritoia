@@ -2,9 +2,13 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import { prisma } from './prisma'
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fallback-secret-change-in-production'
-)
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET
+  if (!secret || secret.length < 32) {
+    throw new Error('JWT_SECRET ausente ou fraco. Configure uma chave com pelo menos 32 caracteres.')
+  }
+  return new TextEncoder().encode(secret)
+}
 
 export interface SessionPayload {
   userId: string
@@ -19,7 +23,7 @@ export async function createSession(payload: SessionPayload): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('30d')
-    .sign(JWT_SECRET)
+    .sign(getJwtSecret())
 
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
   await prisma.session.create({
@@ -31,7 +35,7 @@ export async function createSession(payload: SessionPayload): Promise<string> {
 
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, getJwtSecret())
     return payload as unknown as SessionPayload
   } catch {
     return null
