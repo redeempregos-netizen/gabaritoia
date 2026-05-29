@@ -30,16 +30,46 @@ async function ensureTable() {
   `)
 }
 
+function cleanShort(value: any, fallback: string, maxWords = 5, maxChars = 34) {
+  const text = String(value || fallback || '')
+    .replace(/^\s*\d+[.)-]?\s*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const words = text.split(' ').filter(Boolean)
+  const short = words.slice(0, maxWords).join(' ')
+  return (short || fallback).slice(0, maxChars).trim()
+}
+
+function cleanSummary(value: any, fallback = '', maxChars = 80) {
+  return String(value || fallback || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxChars)
+}
+
 function normalize(raw: any, tema: string) {
   const nodes = Array.isArray(raw?.nodes) ? raw.nodes : []
+  const normalizedNodes = nodes.slice(0, 8).map((n: any, idx: number) => ({
+    titulo: cleanShort(n?.titulo, `Tópico ${idx + 1}`, 4, 30),
+    resumo: cleanSummary(n?.resumo, 'Ponto essencial para revisão.', 72),
+    prioridade: ['Alta', 'Média', 'Baixa'].includes(n?.prioridade) ? n.prioridade : 'Média',
+    palavrasChave: Array.isArray(n?.palavrasChave) ? n.palavrasChave.slice(0, 4).map((p: any) => cleanShort(p, '', 3, 24)).filter(Boolean) : [],
+    filhos: (Array.isArray(n?.filhos) ? n.filhos : []).slice(0, 3).map((f: any, fidx: number) => ({
+      titulo: cleanShort(f?.titulo, `Item ${fidx + 1}`, 4, 28),
+      resumo: cleanSummary(f?.resumo, 'Detalhe importante.', 70),
+      palavrasChave: Array.isArray(f?.palavrasChave) ? f.palavrasChave.slice(0, 3).map((p: any) => cleanShort(p, '', 3, 22)).filter(Boolean) : [],
+      filhos: [],
+    })),
+  }))
+
   return {
-    titulo: raw?.titulo || `Mapa Mental — ${tema}`,
-    resumo: raw?.resumo || 'Resumo não informado.',
-    nodes: nodes.length ? nodes : [{ titulo: tema, resumo: 'Tema central.', filhos: [] }],
-    revisaoRapida: Array.isArray(raw?.revisaoRapida) ? raw.revisaoRapida : [],
-    pegadinhas: Array.isArray(raw?.pegadinhas) ? raw.pegadinhas : [],
-    mnemônicos: Array.isArray(raw?.mnemônicos) ? raw.mnemônicos : (Array.isArray(raw?.mnemonicos) ? raw.mnemonicos : []),
-    questoesProvaveis: Array.isArray(raw?.questoesProvaveis) ? raw.questoesProvaveis : [],
+    titulo: cleanShort(raw?.titulo, `Mapa Mental — ${tema}`, 6, 42),
+    resumo: cleanSummary(raw?.resumo, 'Resumo objetivo para revisão.', 180),
+    nodes: normalizedNodes.length ? normalizedNodes : [{ titulo: cleanShort(tema, 'Tema'), resumo: 'Tema central.', prioridade: 'Média', filhos: [] }],
+    revisaoRapida: Array.isArray(raw?.revisaoRapida) ? raw.revisaoRapida.slice(0, 8).map((x: any) => cleanSummary(x, '', 120)).filter(Boolean) : [],
+    pegadinhas: Array.isArray(raw?.pegadinhas) ? raw.pegadinhas.slice(0, 6).map((x: any) => cleanSummary(x, '', 120)).filter(Boolean) : [],
+    mnemônicos: Array.isArray(raw?.mnemônicos) ? raw.mnemônicos.slice(0, 5).map((x: any) => cleanSummary(x, '', 120)).filter(Boolean) : (Array.isArray(raw?.mnemonicos) ? raw.mnemonicos.slice(0, 5).map((x: any) => cleanSummary(x, '', 120)).filter(Boolean) : []),
+    questoesProvaveis: Array.isArray(raw?.questoesProvaveis) ? raw.questoesProvaveis.slice(0, 6).map((x: any) => cleanSummary(x, '', 140)).filter(Boolean) : [],
   }
 }
 
@@ -56,7 +86,7 @@ export async function POST(req: NextRequest) {
       if (cfg?.value) provider = cfg.value as AIProvider
     }
 
-    const prompt = `Crie um mapa mental premium para estudo de concursos públicos.
+    const prompt = `Crie um mapa mental VISUAL para estudo de concursos públicos.
 
 Tema: ${params.tema}
 Banca: ${params.banca || 'Não informado'}
@@ -68,15 +98,16 @@ ${(params.contexto || '').substring(0, 12000)}
 
 Retorne SOMENTE JSON válido neste formato:
 {
-  "titulo":"Mapa Mental — tema",
-  "resumo":"resumo objetivo do tema em até 4 linhas",
+  "titulo":"tema curto",
+  "resumo":"resumo objetivo do tema em até 2 linhas",
   "nodes":[
     {
-      "titulo":"Bloco principal",
-      "resumo":"explicação curta",
+      "titulo":"2 a 4 palavras",
+      "resumo":"explicação curta em até 9 palavras",
       "prioridade":"Alta|Média|Baixa",
+      "palavrasChave":["termo curto","termo curto"],
       "filhos":[
-        {"titulo":"Subtópico","resumo":"explicação curta","palavrasChave":["termo 1","termo 2"],"filhos":[]}
+        {"titulo":"2 a 4 palavras","resumo":"explicação curta","palavrasChave":["termo","termo"],"filhos":[]}
       ]
     }
   ],
@@ -86,14 +117,23 @@ Retorne SOMENTE JSON válido neste formato:
   "questoesProvaveis":["como a banca pode cobrar"]
 }
 
-Regras:
-- Organize em árvore clara: tema central > blocos > subtópicos.
+REGRAS OBRIGATÓRIAS PARA O MAPA VISUAL:
+- O título de cada bloco principal deve ter no máximo 4 palavras.
+- O título de cada subtópico deve ter no máximo 4 palavras.
+- Não use numeração nos títulos. Proibido: "1.", "2.", "3.", "I -".
+- Não use frases longas nos títulos.
+- Não use títulos como "Classificação dos atos administrativos quanto ao conteúdo".
+- Prefira: "Classificação", "Atributos", "Poderes", "Controle", "Responsabilidade".
+- Coloque detalhes no resumo e nas palavras-chave, não no título.
+- Gere entre 6 e 8 blocos principais.
+- Cada bloco deve ter de 2 a 3 subtópicos.
+- Palavras-chave devem ter no máximo 3 palavras cada.
 - Foque em memorização, revisão e prova.
 - Se houver banca, adapte ao estilo dela.
 - Não invente lei específica se não tiver contexto suficiente.
 - Português do Brasil.`
 
-    const raw = await callAI({ prompt, provider, maxTokens: 5000, systemPrompt: 'Responda somente JSON válido, sem markdown.', useCache: false, action: 'mind_map', queueJobId: params.queueJobId })
+    const raw = await callAI({ prompt, provider, maxTokens: 5000, systemPrompt: 'Responda somente JSON válido, sem markdown. Use títulos muito curtos próprios para mapa mental visual.', useCache: false, action: 'mind_map', queueJobId: params.queueJobId })
     const data = normalize(parseAIJson<any>(raw), params.tema)
     const id = crypto.randomUUID()
     const title = data.titulo || `Mapa Mental — ${params.tema}`
