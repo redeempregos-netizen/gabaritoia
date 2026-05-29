@@ -73,6 +73,42 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { action, type, id } = body || {}
 
+    if (action === 'save_question_plan') {
+      const plan = body.plan || {}
+      const title = String(body.title || `Plano de Questões — ${body.cargo || 'Concurso'}`).slice(0, 120)
+      const saved = await prisma.studyPlan.create({
+        data: {
+          userId: session.userId,
+          title,
+          banca: body.banca || null,
+          cargo: body.cargo || null,
+          examDate: body.examDate ? new Date(`${body.examDate}T12:00:00`) : null,
+          hoursPerDay: String(body.hoursPerDay || '2'),
+          level: 'Plano de Questões',
+          editalText: body.materiasText || null,
+          planJson: {
+            tipo: 'plano_questoes',
+            banca: body.banca || '',
+            cargo: body.cargo || '',
+            examDate: body.examDate || '',
+            selectedDays: body.selectedDays || [],
+            turno: body.turno || '',
+            hoursPerDay: body.hoursPerDay || 2,
+            questionsPerDay: body.questionsPerDay || 30,
+            source: body.source || 'ambos',
+            materias: body.materias || [],
+            cronograma: Array.isArray(plan) ? plan : [],
+            progresso: {},
+          },
+          flashcards: [],
+          daysCompleted: {},
+        },
+        select: { id: true, title: true, createdAt: true },
+      })
+
+      return NextResponse.json({ ok: true, plan: saved })
+    }
+
     if (action !== 'delete_item') {
       return NextResponse.json({ error: 'Ação desconhecida.' }, { status: 400 })
     }
@@ -98,7 +134,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: 'Tipo desconhecido.' }, { status: 400 })
   } catch (e) {
-    console.error('[delete generated item]', e)
-    return NextResponse.json({ error: (e as Error).message || 'Erro ao excluir item.' }, { status: 500 })
+    console.error('[generated item]', e)
+    return NextResponse.json({ error: (e as Error).message || 'Erro ao processar item.' }, { status: 500 })
   }
 }
