@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, Loader2, Upload, Search, FileText, Target } from 'lucide-react'
 
@@ -112,6 +112,7 @@ export default function GerarPage() {
   const [webResults, setWebResults] = useState<any[]>([])
   const [lastError, setLastError] = useState<LastError | null>(null)
   const [reportingError, setReportingError] = useState(false)
+  const generateLockRef = useRef(false)
 
   useEffect(() => {
     async function carregarUsuario() {
@@ -240,8 +241,13 @@ export default function GerarPage() {
   }
 
   async function gerar() {
+    if (generateLockRef.current || loading || searchingWeb) {
+      toast.info('Já existe uma geração em andamento')
+      return
+    }
     if (!banca.trim()) { toast.error('Informe o nome da banca'); return }
     if (!area.trim()) { toast.error('Informe a área do conhecimento'); return }
+    generateLockRef.current = true
     setLoading(true)
     setQuestions([])
     setAnswered({})
@@ -274,6 +280,7 @@ export default function GerarPage() {
       handleError('Erro ao gerar questão', 'generate_question_exception', { error: (e as Error).message, banca, area, cargo, quantity })
     } finally {
       setLoading(false)
+      generateLockRef.current = false
     }
   }
 
@@ -370,7 +377,7 @@ export default function GerarPage() {
             <div><label className="label">Quantidade ({maxQtd} máx.)</label><div className="flex flex-wrap gap-2">{Array.from({ length: maxQtd }, (_, i) => i + 1).map(n => <button key={n} onClick={() => setQuantity(n)} className={`w-9 h-9 rounded-xl border text-sm font-semibold transition-all ${quantity === n ? 'bg-brand-600 border-brand-500 text-white' : 'border-white/10 text-zinc-400 hover:border-brand-500'}`}>{n}</button>)}</div></div>
           </div>
 
-          <button onClick={gerar} disabled={loading || searchingWeb} className="w-full bg-gradient-to-r from-brand-600 to-purple-600 text-white font-semibold rounded-xl px-6 py-3.5 flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-40">
+          <button onClick={gerar} disabled={loading || searchingWeb || generateLockRef.current} className="w-full bg-gradient-to-r from-brand-600 to-purple-600 text-white font-semibold rounded-xl px-6 py-3.5 flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-40">
             {loading ? <><Loader2 size={16} className="animate-spin" />Gerando...</> : searchingWeb ? <><Loader2 size={16} className="animate-spin" />Buscando...</> : '✦ Gerar questões com IA'}
           </button>
         </div>
