@@ -81,7 +81,7 @@ function letterToIndex(letter?: string | null) {
 }
 
 function inferBanca(exam: string) {
-  const known = ['CEBRASPE', 'FGV', 'FCC', 'CESGRANRIO', 'VUNESP', 'QUADRIX', 'IBFC', 'IDECAN', 'FUNDATEC', 'UNESC', 'OBJETIVA', 'AMEOSC', 'Avança SP', 'IDHTEC']
+  const known = ['CEBRASPE', 'CESPE', 'FGV', 'FCC', 'CESGRANRIO', 'VUNESP', 'QUADRIX', 'IBFC', 'IDECAN', 'FUNDATEC', 'UNESC', 'OBJETIVA', 'AMEOSC', 'Avança SP', 'IDHTEC', 'FEPESE', 'IGEDUC', 'ADVISE', 'FUNATEC', 'Itame', 'FACET Concursos', 'IVIN']
   const lower = exam.toLowerCase()
   return known.find(k => lower.includes(k.toLowerCase())) || ''
 }
@@ -91,7 +91,7 @@ function extractNumber(q: string, externalId?: string) {
     /(?:^|\n)\s*(\d{1,4})\s*\n/,
     /Questões\s+(\d{1,4})\s+/i,
     /Quest[ãa]o\s+(\d{1,4})\b/i,
-    /(?:^|\s)(\d{1,4})\s+(?:Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Usando|Qualquer|O artista|A respeito|Em\s+\d{4}|“|\")/i,
+    /(?:^|\s)(\d{1,4})\s+(?:Assinale|Julgue|Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Usando|Qualquer|O artista|A respeito|Em\s+\d{4}|“|")/i,
   ]
   for (const p of patterns) {
     const m = q.match(p)
@@ -118,17 +118,62 @@ function parseHeader(q: string) {
   return { externalId: cleanText(id), topic: cleanText(topic), exam: cleanText(exam) }
 }
 
+function removeFooter(s: string) {
+  return String(s || '')
+    .replace(/Caderno de Questões Comentadas[\s\S]*?(?:Questões|Questions)/gi, ' ')
+    .replace(/Caderno de Questões\s*-?\s*[^\n]*/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+function cleanOptionText(s: string) {
+  let out = removeFooter(s)
+  out = out.replace(/\s+\d{1,4}\s+(?:Assinale|Julgue|Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Em relação|No ensino|Na abordagem|Marque|Preencha|Existem)\b[\s\S]*$/i, '')
+  return cleanText(out)
+}
+
+function parseOptionsPreservingLetters(raw: string) {
+  const alternativesText = raw.match(/Alternativas\s*([\s\S]*)/i)?.[1] || raw
+  const markers = Array.from(alternativesText.matchAll(/\(([A-E])\)\s*/g))
+  const byLetter: Record<string, string> = {}
+
+  for (let i = 0; i < markers.length; i++) {
+    const letter = markers[i][1].toUpperCase()
+    const start = (markers[i].index || 0) + markers[i][0].length
+    const end = i + 1 < markers.length ? (markers[i + 1].index || alternativesText.length) : alternativesText.length
+    const value = cleanOptionText(alternativesText.slice(start, end))
+    if (value) byLetter[letter] = value
+  }
+
+  const letters = Object.keys(byLetter).sort()
+  const isTrueFalseCE = letters.length === 2 && letters.includes('C') && letters.includes('E') && !letters.includes('A') && !letters.includes('B')
+  if (isTrueFalseCE) {
+    return { options: ['Certo', 'Errado'], mapAnswer: (answer: string) => answer === 'C' ? 0 : answer === 'E' ? 1 : -1 }
+  }
+
+  const options: string[] = []
+  for (const letter of ['A', 'B', 'C', 'D', 'E']) {
+    if (byLetter[letter]) options.push(byLetter[letter])
+  }
+  return { options, mapAnswer: (answer: string) => letterToIndex(answer) }
+}
+
 function cleanStatement(q: string, number: number) {
   let s = q
-  s = s.replace(/^[\s\S]*?Caderno de Questões Comentadas[^\n]*Questões\s*/i, '')
-  s = s.replace(/^\s*Artes Visuais\s*/i, '')
+  const afterFooter = number
+    ? s.match(new RegExp(`Caderno de Questões Comentadas[\\s\\S]*?Questões\\s+${number}\\s+([\\s\\S]*)`, 'i'))?.[1]
+    : ''
+  if (afterFooter) return cleanText(afterFooter)
+
+  const afterNumber = number
+    ? s.match(new RegExp(`(?:^|\\s)${number}\\s+(Assinale|Julgue|Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Em relação|No ensino|Na abordagem|Marque|Preencha|Existem)[\\s\\S]*$`, 'i'))?.[0]
+    : ''
+  if (afterNumber) return cleanText(afterNumber.replace(new RegExp(`^\s*${number}\s+`), ''))
+
   s = s.replace(/ID:\s*[^|\n]+\|\s*T[ÓO]PICO:\s*[^|\n]+\|\s*PROVA:\s*[^\n]+/i, '')
   s = s.replace(/ID:\s*[^\n]+/i, '')
   s = s.replace(/Alternativas[\s\S]*$/i, '')
-  if (number) {
-    s = s.replace(new RegExp(`^[\\s\\S]*?Questões\\s+${number}\\s+`, 'i'), '')
-    s = s.replace(new RegExp(`^\\s*${number}\\s+`), '')
-  }
+  if (number) s = s.replace(new RegExp(`^\s*${number}\s+`), '')
   return cleanText(s)
 }
 
@@ -137,23 +182,35 @@ function parseQuestionBlock(questionText: string, answerText?: string) {
   const a = cleanText(answerText || '')
   const header = parseHeader(q)
   const number = extractNumber(q, header.externalId)
-  const alternativesText = q.match(/Alternativas\s*([\s\S]*)/i)?.[1] || q
-  const options: string[] = []
-  const optRegex = /\(([A-E])\)\s*([\s\S]*?)(?=\s*\([A-E]\)\s|\s*Caderno de Questões|\s*Questões\s+\d{1,4}\s|$)/g
-  let om: RegExpExecArray | null
-  while ((om = optRegex.exec(alternativesText)) !== null) {
-    options[letterToIndex(om[1])] = cleanText(om[2])
-  }
-  const normalizedOptions = options.filter(v => typeof v === 'string' && v.trim())
+  const parsedOptions = parseOptionsPreservingLetters(q)
   const statement = cleanStatement(q, number)
   const answerMatch = a.match(/Resposta:\s*([A-E]|Certo|Errado|C|E)/i)
   const answer = answerMatch ? answerMatch[1].toUpperCase().replace('CERTO', 'C').replace('ERRADO', 'E') : ''
   const commentMatch = a.match(/Coment[áa]rio\s*([\s\S]*)/i)
   let comment = commentMatch ? cleanText(commentMatch[1]) : ''
-  comment = comment.replace(/Caderno de Questões Comentadas[\s\S]*?Questões/g, '').trim()
-  const correctIndex = normalizedOptions.length ? letterToIndex(answer) : answer === 'C' ? 0 : answer === 'E' ? 1 : -1
+  comment = removeFooter(comment)
+  const options = parsedOptions.options.length ? parsedOptions.options : ['Certo', 'Errado']
+  const correctIndex = answer ? parsedOptions.mapAnswer(answer) : -1
 
-  return { number, externalId: header.externalId, topic: header.topic, exam: header.exam, banca: inferBanca(header.exam), statement, options: normalizedOptions.length ? normalizedOptions : ['Certo', 'Errado'], correctAnswer: answer, correctIndex, comment }
+  return {
+    number,
+    externalId: header.externalId,
+    topic: header.topic,
+    exam: header.exam,
+    banca: inferBanca(header.exam),
+    statement,
+    options,
+    correctAnswer: answer,
+    correctIndex,
+    comment,
+  }
+}
+
+function isValidParsedQuestion(q: any) {
+  if (!q?.statement || !q?.number) return false
+  if (!Array.isArray(q.options) || q.options.length < 2) return false
+  if (q.correctAnswer && (q.correctIndex < 0 || q.correctIndex >= q.options.length)) return false
+  return true
 }
 
 function extractQuestions(fullText: string) {
@@ -166,7 +223,7 @@ function extractQuestions(fullText: string) {
     if (!/ID:\s*/i.test(current) || !/Alternativas/i.test(current)) continue
     const next = pageChunks[i + 1] || ''
     const parsed = parseQuestionBlock(current, /Gabarito Comentado/i.test(next) ? next : '')
-    if (parsed.statement && parsed.number) questions.push(parsed)
+    if (isValidParsedQuestion(parsed)) questions.push(parsed)
   }
 
   if (!questions.length) {
@@ -174,7 +231,7 @@ function extractQuestions(fullText: string) {
     for (const block of blocks) {
       if (!/ID:\s*/i.test(block)) continue
       const parsed = parseQuestionBlock(block, '')
-      if (parsed.statement && parsed.number) questions.push(parsed)
+      if (isValidParsedQuestion(parsed)) questions.push(parsed)
     }
   }
 
@@ -273,7 +330,7 @@ export async function POST(req: NextRequest) {
       }
 
       const parsed = extractQuestions(extractedText)
-      if (!parsed.length) return NextResponse.json({ error: 'Não encontrei questões neste PDF.' }, { status: 400 })
+      if (!parsed.length) return NextResponse.json({ error: 'Não encontrei questões válidas neste PDF.' }, { status: 400 })
 
       await prisma.$executeRawUnsafe(
         `INSERT INTO imported_question_cache (source_hash, title, total_questions, parsed_json, used_count)
