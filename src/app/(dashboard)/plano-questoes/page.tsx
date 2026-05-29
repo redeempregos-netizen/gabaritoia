@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { CalendarDays, CheckCircle2, ExternalLink, Loader2, RotateCcw, Sparkles, Target } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -49,6 +49,8 @@ export default function PlanoQuestoesPage() {
   const [generatingDay, setGeneratingDay] = useState<number | null>(null)
   const [generatedDays, setGeneratedDays] = useState<Record<number, number>>({})
   const [plan, setPlan] = useState<DayPlan[]>([])
+  const planLockRef = useRef(false)
+  const dayLocksRef = useRef<Record<number, boolean>>({})
 
   const materias = useMemo(() => materiasText.split('\n').map(s => s.trim()).filter(Boolean), [materiasText])
 
@@ -60,9 +62,14 @@ export default function PlanoQuestoesPage() {
   }
 
   function resetarPlano() {
+    if (loading || generatingDay !== null || planLockRef.current) {
+      toast.info('Aguarde a geração atual finalizar')
+      return
+    }
     setPlan([])
     setGeneratedDays({})
     setGeneratingDay(null)
+    dayLocksRef.current = {}
     setBanca('')
     setCargo('')
     setExamDate('')
@@ -75,13 +82,19 @@ export default function PlanoQuestoesPage() {
   }
 
   function gerarPlano() {
+    if (planLockRef.current || loading) {
+      toast.info('Já existe uma geração de plano em andamento')
+      return
+    }
     if (!banca.trim()) { toast.error('Informe a banca'); return }
     if (!cargo.trim()) { toast.error('Informe o cargo'); return }
     if (!materias.length) { toast.error('Informe pelo menos uma matéria'); return }
     if (!selectedDays.length) { toast.error('Escolha pelo menos um dia da semana'); return }
 
+    planLockRef.current = true
     setLoading(true)
     setGeneratedDays({})
+    dayLocksRef.current = {}
     setTimeout(() => {
       const today = new Date()
       const end = examDate ? new Date(`${examDate}T12:00:00`) : new Date(today.getTime() + 21 * 86400000)
@@ -122,11 +135,16 @@ export default function PlanoQuestoesPage() {
 
       setPlan(rows)
       setLoading(false)
+      planLockRef.current = false
       toast.success('Plano de questões gerado')
     }, 350)
   }
 
   async function gerarQuestoesDoDia(day: DayPlan) {
+    if (generatingDay !== null || dayLocksRef.current[day.dia]) {
+      toast.info('Já existe uma geração de questões em andamento')
+      return
+    }
     if (!banca.trim() || !cargo.trim()) {
       toast.error('Informe banca e cargo antes de gerar as questões')
       return
@@ -138,6 +156,7 @@ export default function PlanoQuestoesPage() {
       if (!ok) return
     }
 
+    dayLocksRef.current[day.dia] = true
     setGeneratingDay(day.dia)
     try {
       let created = 0
@@ -175,6 +194,7 @@ export default function PlanoQuestoesPage() {
       toast.error('Erro ao gerar questões do dia')
     } finally {
       setGeneratingDay(null)
+      dayLocksRef.current[day.dia] = false
     }
   }
 
@@ -235,11 +255,11 @@ export default function PlanoQuestoesPage() {
             <p className="text-xs text-zinc-600 mt-2">Essa escolha orienta o cronograma. O botão de gerar usa IA e salva em Meus Gerados.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button onClick={gerarPlano} disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
+            <button onClick={gerarPlano} disabled={loading || planLockRef.current} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
               {loading && <Loader2 size={16} className="animate-spin" />}
-              Gerar plano
+              {loading ? 'Gerando plano...' : 'Gerar plano'}
             </button>
-            <button onClick={resetarPlano} type="button" className="btn-secondary w-full flex items-center justify-center gap-2 h-11">
+            <button onClick={resetarPlano} type="button" disabled={loading || generatingDay !== null} className="btn-secondary w-full flex items-center justify-center gap-2 h-11 disabled:opacity-50">
               <RotateCcw size={15} /> Resetar
             </button>
           </div>
@@ -271,7 +291,7 @@ export default function PlanoQuestoesPage() {
                     <Link href="/gerados" className="rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
                       <ExternalLink size={13} /> Meus Gerados
                     </Link>
-                    <button onClick={resetarPlano} className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 flex items-center gap-1.5">
+                    <button onClick={resetarPlano} disabled={loading || generatingDay !== null} className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 flex items-center gap-1.5 disabled:opacity-50">
                       <RotateCcw size={13} /> Resetar tudo
                     </button>
                   </div>
@@ -295,11 +315,11 @@ export default function PlanoQuestoesPage() {
                             </div>
                             <button
                               onClick={() => gerarQuestoesDoDia(day)}
-                              disabled={generatingDay !== null}
+                              disabled={generatingDay !== null || !!dayLocksRef.current[day.dia]}
                               className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50"
                             >
                               {generatingDay === day.dia ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                              {generated > 0 ? `Gerar mais (${generated} feitas)` : 'Gerar questões do dia'}
+                              {generatingDay === day.dia ? 'Gerando...' : generated > 0 ? `Gerar mais (${generated} feitas)` : 'Gerar questões do dia'}
                             </button>
                           </div>
                         </div>
