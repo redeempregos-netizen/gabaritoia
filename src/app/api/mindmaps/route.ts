@@ -30,9 +30,11 @@ async function ensureTable() {
   `)
 }
 
-function cleanShort(value: any, fallback: string, maxWords = 5, maxChars = 34) {
+function cleanShort(value: any, fallback: string, maxWords = 3, maxChars = 24) {
   const text = String(value || fallback || '')
     .replace(/^\s*\d+[.)-]?\s*/g, '')
+    .replace(/^\s*[IVXLCDM]+\s*[-.)]\s*/gi, '')
+    .replace(/\b(classificação|conceito|aspectos|principais|quanto|sobre|relativo|relacionado)\s+dos?\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
   const words = text.split(' ').filter(Boolean)
@@ -40,7 +42,7 @@ function cleanShort(value: any, fallback: string, maxWords = 5, maxChars = 34) {
   return (short || fallback).slice(0, maxChars).trim()
 }
 
-function cleanSummary(value: any, fallback = '', maxChars = 80) {
+function cleanSummary(value: any, fallback = '', maxChars = 64) {
   return String(value || fallback || '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -49,27 +51,27 @@ function cleanSummary(value: any, fallback = '', maxChars = 80) {
 
 function normalize(raw: any, tema: string) {
   const nodes = Array.isArray(raw?.nodes) ? raw.nodes : []
-  const normalizedNodes = nodes.slice(0, 8).map((n: any, idx: number) => ({
-    titulo: cleanShort(n?.titulo, `Tópico ${idx + 1}`, 4, 30),
-    resumo: cleanSummary(n?.resumo, 'Ponto essencial para revisão.', 72),
+  const normalizedNodes = nodes.slice(0, 7).map((n: any, idx: number) => ({
+    titulo: cleanShort(n?.titulo, `Tópico ${idx + 1}`, 3, 24),
+    resumo: cleanSummary(n?.resumo, 'Ponto essencial.', 56),
     prioridade: ['Alta', 'Média', 'Baixa'].includes(n?.prioridade) ? n.prioridade : 'Média',
-    palavrasChave: Array.isArray(n?.palavrasChave) ? n.palavrasChave.slice(0, 4).map((p: any) => cleanShort(p, '', 3, 24)).filter(Boolean) : [],
+    palavrasChave: Array.isArray(n?.palavrasChave) ? n.palavrasChave.slice(0, 3).map((p: any) => cleanShort(p, '', 2, 18)).filter(Boolean) : [],
     filhos: (Array.isArray(n?.filhos) ? n.filhos : []).slice(0, 3).map((f: any, fidx: number) => ({
-      titulo: cleanShort(f?.titulo, `Item ${fidx + 1}`, 4, 28),
-      resumo: cleanSummary(f?.resumo, 'Detalhe importante.', 70),
-      palavrasChave: Array.isArray(f?.palavrasChave) ? f.palavrasChave.slice(0, 3).map((p: any) => cleanShort(p, '', 3, 22)).filter(Boolean) : [],
+      titulo: cleanShort(f?.titulo, `Item ${fidx + 1}`, 3, 22),
+      resumo: cleanSummary(f?.resumo, 'Detalhe.', 52),
+      palavrasChave: Array.isArray(f?.palavrasChave) ? f.palavrasChave.slice(0, 2).map((p: any) => cleanShort(p, '', 2, 16)).filter(Boolean) : [],
       filhos: [],
     })),
   }))
 
   return {
-    titulo: cleanShort(raw?.titulo, `Mapa Mental — ${tema}`, 6, 42),
-    resumo: cleanSummary(raw?.resumo, 'Resumo objetivo para revisão.', 180),
+    titulo: cleanShort(raw?.titulo, `Mapa Mental — ${tema}`, 5, 38),
+    resumo: cleanSummary(raw?.resumo, 'Resumo objetivo para revisão.', 150),
     nodes: normalizedNodes.length ? normalizedNodes : [{ titulo: cleanShort(tema, 'Tema'), resumo: 'Tema central.', prioridade: 'Média', filhos: [] }],
-    revisaoRapida: Array.isArray(raw?.revisaoRapida) ? raw.revisaoRapida.slice(0, 8).map((x: any) => cleanSummary(x, '', 120)).filter(Boolean) : [],
-    pegadinhas: Array.isArray(raw?.pegadinhas) ? raw.pegadinhas.slice(0, 6).map((x: any) => cleanSummary(x, '', 120)).filter(Boolean) : [],
-    mnemônicos: Array.isArray(raw?.mnemônicos) ? raw.mnemônicos.slice(0, 5).map((x: any) => cleanSummary(x, '', 120)).filter(Boolean) : (Array.isArray(raw?.mnemonicos) ? raw.mnemonicos.slice(0, 5).map((x: any) => cleanSummary(x, '', 120)).filter(Boolean) : []),
-    questoesProvaveis: Array.isArray(raw?.questoesProvaveis) ? raw.questoesProvaveis.slice(0, 6).map((x: any) => cleanSummary(x, '', 140)).filter(Boolean) : [],
+    revisaoRapida: Array.isArray(raw?.revisaoRapida) ? raw.revisaoRapida.slice(0, 8).map((x: any) => cleanSummary(x, '', 110)).filter(Boolean) : [],
+    pegadinhas: Array.isArray(raw?.pegadinhas) ? raw.pegadinhas.slice(0, 6).map((x: any) => cleanSummary(x, '', 110)).filter(Boolean) : [],
+    mnemônicos: Array.isArray(raw?.mnemônicos) ? raw.mnemônicos.slice(0, 5).map((x: any) => cleanSummary(x, '', 110)).filter(Boolean) : (Array.isArray(raw?.mnemonicos) ? raw.mnemonicos.slice(0, 5).map((x: any) => cleanSummary(x, '', 110)).filter(Boolean) : []),
+    questoesProvaveis: Array.isArray(raw?.questoesProvaveis) ? raw.questoesProvaveis.slice(0, 6).map((x: any) => cleanSummary(x, '', 120)).filter(Boolean) : [],
   }
 }
 
@@ -121,12 +123,12 @@ Retorne SOMENTE JSON válido neste formato:
   "resumo":"resumo objetivo do tema em até 2 linhas",
   "nodes":[
     {
-      "titulo":"2 a 4 palavras",
-      "resumo":"explicação curta em até 9 palavras",
+      "titulo":"1 a 3 palavras",
+      "resumo":"explicação curta em até 7 palavras",
       "prioridade":"Alta|Média|Baixa",
-      "palavrasChave":["termo curto","termo curto"],
+      "palavrasChave":["termo","termo"],
       "filhos":[
-        {"titulo":"2 a 4 palavras","resumo":"explicação curta","palavrasChave":["termo","termo"],"filhos":[]}
+        {"titulo":"1 a 3 palavras","resumo":"explicação curta","palavrasChave":["termo","termo"],"filhos":[]}
       ]
     }
   ],
@@ -137,22 +139,22 @@ Retorne SOMENTE JSON válido neste formato:
 }
 
 REGRAS OBRIGATÓRIAS PARA O MAPA VISUAL:
-- O título de cada bloco principal deve ter no máximo 4 palavras.
-- O título de cada subtópico deve ter no máximo 4 palavras.
+- O título de cada bloco principal deve ter no máximo 3 palavras.
+- O título de cada subtópico deve ter no máximo 3 palavras.
+- Use palavras soltas, não frases.
 - Não use numeração nos títulos. Proibido: "1.", "2.", "3.", "I -".
-- Não use frases longas nos títulos.
-- Não use títulos como "Classificação dos atos administrativos quanto ao conteúdo".
+- Não use títulos longos como "Classificação dos atos administrativos quanto ao conteúdo".
 - Prefira: "Classificação", "Atributos", "Poderes", "Controle", "Responsabilidade".
-- Coloque detalhes no resumo e nas palavras-chave, não no título.
-- Gere entre 6 e 8 blocos principais.
+- Coloque detalhes apenas no resumo e nas palavras-chave.
+- Gere entre 5 e 7 blocos principais.
 - Cada bloco deve ter de 2 a 3 subtópicos.
-- Palavras-chave devem ter no máximo 3 palavras cada.
+- Palavras-chave devem ter no máximo 2 palavras cada.
 - Foque em memorização, revisão e prova.
 - Se houver banca, adapte ao estilo dela.
 - Não invente lei específica se não tiver contexto suficiente.
 - Português do Brasil.`
 
-    const raw = await callAI({ prompt, provider, maxTokens: 5000, systemPrompt: 'Responda somente JSON válido, sem markdown. Use títulos muito curtos próprios para mapa mental visual.', useCache: false, action: 'mind_map', queueJobId: params.queueJobId })
+    const raw = await callAI({ prompt, provider, maxTokens: 4200, systemPrompt: 'Responda somente JSON válido, sem markdown. Use títulos extremamente curtos próprios para mapa mental visual.', useCache: false, action: 'mind_map', queueJobId: params.queueJobId })
     const data = normalize(parseAIJson<any>(raw), params.tema)
     const id = crypto.randomUUID()
     const title = data.titulo || `Mapa Mental — ${params.tema}`
