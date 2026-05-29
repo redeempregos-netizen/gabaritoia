@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Upload, Search, FileText, Target } from 'lucide-react'
+import { AlertTriangle, Loader2, Upload, Search, FileText, Target } from 'lucide-react'
 
 const DIFS = ['Fácil', 'Média', 'Difícil']
 const TIPOS = ['MULTIPLE_CHOICE', 'TRUE_FALSE']
@@ -28,6 +28,12 @@ interface Question {
   basedOn?: string
   isOriginal?: boolean
   aiProvider?: string
+}
+
+type LastError = {
+  message: string
+  action: string
+  details?: Record<string, any>
 }
 
 function parseOrigin(q: Question) {
@@ -104,6 +110,8 @@ export default function GerarPage() {
   const [useWebSearch, setUseWebSearch] = useState(false)
   const [webQuery, setWebQuery] = useState('')
   const [webResults, setWebResults] = useState<any[]>([])
+  const [lastError, setLastError] = useState<LastError | null>(null)
+  const [reportingError, setReportingError] = useState(false)
 
   useEffect(() => {
     async function carregarUsuario() {
@@ -135,6 +143,39 @@ export default function GerarPage() {
     }
     carregarUsuario()
   }, [])
+
+  function handleError(message: string, action: string, details?: Record<string, any>) {
+    const err = { message, action, details }
+    setLastError(err)
+    toast.error(message)
+  }
+
+  async function reportarErro() {
+    if (!lastError) return
+    setReportingError(true)
+    try {
+      const res = await fetch('/api/report-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: lastError.message,
+          action: lastError.action,
+          page: 'Gerador de Questões',
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+          details: lastError.details,
+        }),
+      })
+      if (!res.ok) throw new Error('Falha ao reportar')
+      toast.success('Erro reportado ao administrador')
+      setLastError(null)
+    } catch {
+      toast.error('Não foi possível reportar o erro')
+    } finally {
+      setReportingError(false)
+    }
+  }
 
   function aplicarTextoDoEdital(raw: string) {
     const cleaned = raw.replace(/\s{3,}/g, ' ').substring(0, 8000)
@@ -177,7 +218,7 @@ export default function GerarPage() {
   async function buscarWebContexto() {
     if (!isAdmin) return []
     const q = (webQuery || editalRef || `${banca} ${cargo} ${area} concurso questões edital`).trim()
-    if (!q) { toast.error('Informe uma busca para usar a SerpAPI'); return [] }
+    if (!q) { handleError('Informe uma busca para usar a SerpAPI', 'search_web_validation', { webQuery, editalRef, banca, cargo, area }); return [] }
     setSearchingWeb(true)
     try {
       const res = await fetch('/api/search/web', {
@@ -186,12 +227,12 @@ export default function GerarPage() {
         body: JSON.stringify({ query: q, maxResults: 5 }),
       })
       const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Erro na busca web'); return [] }
+      if (!res.ok) { handleError(data.error || 'Erro na busca web', 'search_web', { status: res.status, query: q, response: data }); return [] }
       setWebResults(data.results || [])
       toast.success(data.cached ? 'Referências recuperadas do cache' : 'Referências encontradas na web')
       return data.results || []
-    } catch {
-      toast.error('Erro na busca web')
+    } catch (e) {
+      handleError('Erro na busca web', 'search_web_exception', { error: (e as Error).message, query: q })
       return []
     } finally {
       setSearchingWeb(false)
@@ -204,6 +245,7 @@ export default function GerarPage() {
     setLoading(true)
     setQuestions([])
     setAnswered({})
+    setLastError(null)
     try {
       const results = isAdmin && useWebSearch ? await buscarWebContexto() : []
       const webContext = results.length ? `REFERÊNCIAS PÚBLICAS ENCONTRADAS NA WEB:\n${results.map((r: any, i: number) => `${i + 1}. ${r.title}\nFonte: ${r.displayedLink || r.source || r.link}\nResumo: ${r.snippet}`).join('\n\n')}` : ''
@@ -215,17 +257,21 @@ export default function GerarPage() {
         editalText.trim() ? `TRECHO EXTRAÍDO DO EDITAL ORIGINAL: ${editalText.trim()}` : '',
       ].filter(Boolean).join('\n\n')
 
+      const payload = { banca, area, cargo, education, difficulty, type, format, quantity, provider, editalText: contextoEdital || undefined }
       const res = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ banca, area, cargo, education, difficulty, type, format, quantity, provider, editalText: contextoEdital || undefined }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Erro ao gerar'); return }
+      if (!res.ok) {
+        handleError(data.error || 'Erro ao gerar', 'generate_question', { status: res.status, payload, response: data })
+        return
+      }
       setQuestions(data.questions)
       toast.success(`${data.questions.length} questão(ões) gerada(s)!`)
-    } catch {
-      toast.error('Erro ao gerar questão')
+    } catch (e) {
+      handleError('Erro ao gerar questão', 'generate_question_exception', { error: (e as Error).message, banca, area, cargo, quantity })
     } finally {
       setLoading(false)
     }
@@ -236,12 +282,15 @@ export default function GerarPage() {
 
     setAnswered(prev => ({ ...prev, [q.id]: idx }))
     try {
-      await fetch('/api/ai/answer', {
+      const res = await fetch('/api/ai/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ questionId: q.id, selectedIdx: idx }),
       })
-    } catch {}
+      if (!res.ok) handleError('Erro ao registrar resposta', 'answer_question', { status: res.status, questionId: q.id, selectedIdx: idx })
+    } catch (e) {
+      handleError('Erro ao registrar resposta', 'answer_question_exception', { error: (e as Error).message, questionId: q.id, selectedIdx: idx })
+    }
   }
 
   return (
@@ -327,6 +376,23 @@ export default function GerarPage() {
         </div>
 
         <div>
+          {lastError && (
+            <div className="card p-4 mb-4 border-red-500/30 bg-red-500/10">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={18} className="text-red-300 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <div className="font-semibold text-red-200 text-sm">Ocorreu um erro</div>
+                  <div className="text-xs text-red-100/80 mt-1">{lastError.message}</div>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <button type="button" onClick={gerar} className="btn-secondary text-xs">Tentar novamente</button>
+                    <button type="button" onClick={reportarErro} disabled={reportingError} className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100 disabled:opacity-50">
+                      {reportingError ? 'Reportando...' : 'Reportar erro'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {loading && <div className="card p-8 text-center"><Loader2 size={32} className="animate-spin text-brand-400 mx-auto mb-4" /><div className="text-zinc-400 text-sm">Gerando questões...</div></div>}
           {!loading && questions.length === 0 && <div className="card p-12 text-center"><div className="text-4xl mb-4">✦</div><div className="text-zinc-300 font-medium mb-1">Configure e gere sua questão</div><div className="text-zinc-500 text-sm">A IA cria com origem, gabarito e comentário detalhado</div></div>}
           {questions.map(q => {
@@ -334,7 +400,6 @@ export default function GerarPage() {
             const isTF = q.type === 'TRUE_FALSE'
             const origin = parseOrigin(q)
             const errou = sel !== undefined && sel !== q.correctIndex
-            const acertou = sel === q.correctIndex
             const correctLabel = isTF ? (q.correctIndex === 0 ? 'Certo' : 'Errado') : 'ABCDE'[q.correctIndex]
             return (
               <div key={q.id} className="card p-5 mb-4 overflow-hidden">
