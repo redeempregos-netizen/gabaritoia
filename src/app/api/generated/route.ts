@@ -32,6 +32,7 @@ export async function GET() {
       hoursPerDay: true,
       level: true,
       planJson: true,
+      daysCompleted: true,
       createdAt: true,
     },
   })
@@ -98,7 +99,12 @@ export async function POST(req: NextRequest) {
             source: body.source || 'ambos',
             materias: body.materias || [],
             cronograma: Array.isArray(plan) ? plan : [],
-            progresso: {},
+            progresso: {
+              diasConcluidos: [],
+              questoesGeradas: 0,
+              totalDias: Array.isArray(plan) ? plan.length : 0,
+              ultimaAtualizacao: new Date().toISOString(),
+            },
           },
           flashcards: [],
           daysCompleted: {},
@@ -107,6 +113,52 @@ export async function POST(req: NextRequest) {
       })
 
       return NextResponse.json({ ok: true, plan: saved })
+    }
+
+    if (action === 'update_question_plan_progress') {
+      const planId = String(body.planId || '')
+      const dayNumber = Number(body.dayNumber)
+      const generated = Math.max(0, Number(body.generated || 0))
+      if (!planId || !dayNumber) return NextResponse.json({ error: 'Plano ou dia inválido.' }, { status: 400 })
+
+      const existing = await prisma.studyPlan.findFirst({ where: { id: planId, userId: session.userId }, select: { planJson: true, daysCompleted: true } })
+      if (!existing) return NextResponse.json({ error: 'Plano não encontrado.' }, { status: 404 })
+
+      const planJson: any = existing.planJson || {}
+      const previousProgress = planJson.progresso || {}
+      const previousDays = Array.isArray(previousProgress.diasConcluidos) ? previousProgress.diasConcluidos : []
+      const diasConcluidos = Array.from(new Set([...previousDays, dayNumber])).sort((a: any, b: any) => Number(a) - Number(b))
+      const totalDias = Array.isArray(planJson.cronograma) ? planJson.cronograma.length : previousProgress.totalDias || diasConcluidos.length
+      const questoesGeradas = Number(previousProgress.questoesGeradas || 0) + generated
+      const progresso = {
+        ...previousProgress,
+        diasConcluidos,
+        questoesGeradas,
+        totalDias,
+        percentual: totalDias ? Math.round((diasConcluidos.length / totalDias) * 100) : 0,
+        ultimaAtualizacao: new Date().toISOString(),
+        historico: [
+          ...(Array.isArray(previousProgress.historico) ? previousProgress.historico : []),
+          { dia: dayNumber, questoesGeradas: generated, data: new Date().toISOString() },
+        ].slice(-100),
+      }
+
+      const daysCompleted: any = existing.daysCompleted || {}
+      daysCompleted[String(dayNumber)] = {
+        completed: true,
+        questionsGenerated: (Number(daysCompleted[String(dayNumber)]?.questionsGenerated || 0) + generated),
+        completedAt: new Date().toISOString(),
+      }
+
+      await prisma.studyPlan.update({
+        where: { id: planId },
+        data: {
+          planJson: { ...planJson, progresso },
+          daysCompleted,
+        },
+      })
+
+      return NextResponse.json({ ok: true, progresso, daysCompleted })
     }
 
     if (action !== 'delete_item') {
