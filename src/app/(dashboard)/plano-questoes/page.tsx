@@ -10,6 +10,7 @@ type DayPlan = {
   data: string
   diaSemana: string
   turno: string
+  horasPorDia: number
   foco: string
   metaQuestoes: number
   tipo: string
@@ -41,6 +42,7 @@ export default function PlanoQuestoesPage() {
   const [cargo, setCargo] = useState('')
   const [examDate, setExamDate] = useState('')
   const [questionsPerDay, setQuestionsPerDay] = useState(30)
+  const [hoursPerDay, setHoursPerDay] = useState(2)
   const [materiasText, setMateriasText] = useState(DEFAULT_MATERIAS)
   const [source, setSource] = useState<'geradas' | 'cadernos' | 'ambos'>('ambos')
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5])
@@ -74,6 +76,7 @@ export default function PlanoQuestoesPage() {
     setCargo('')
     setExamDate('')
     setQuestionsPerDay(30)
+    setHoursPerDay(2)
     setMateriasText(DEFAULT_MATERIAS)
     setSource('ambos')
     setSelectedDays([1, 2, 3, 4, 5])
@@ -90,6 +93,7 @@ export default function PlanoQuestoesPage() {
     if (!cargo.trim()) { toast.error('Informe o cargo'); return }
     if (!materias.length) { toast.error('Informe pelo menos uma matéria'); return }
     if (!selectedDays.length) { toast.error('Escolha pelo menos um dia da semana'); return }
+    if (!hoursPerDay || hoursPerDay < 0.5) { toast.error('Informe quantas horas por dia vai estudar'); return }
 
     planLockRef.current = true
     setLoading(true)
@@ -111,24 +115,26 @@ export default function PlanoQuestoesPage() {
         const isSimulado = count % 7 === 0
         const materia = materias[studyIndex % materias.length]
         const materia2 = materias[(studyIndex + 1) % materias.length]
+        const adjustedQuestions = Math.max(5, Math.round(Number(questionsPerDay || 30) * Math.max(0.5, Number(hoursPerDay || 2)) / 2))
 
         rows.push({
           dia: count,
           data: formatDate(d),
           diaSemana: diaSemanaLabel(d),
           turno,
+          horasPorDia: Number(hoursPerDay),
           foco: isSimulado ? `Simulado misto: ${materias.slice(0, 4).join(', ')}` : isReview ? `Revisão de erros: ${materia} + ${materia2}` : materia,
-          metaQuestoes: isSimulado ? Math.max(questionsPerDay, 40) : isReview ? Math.max(15, Math.round(questionsPerDay * 0.7)) : questionsPerDay,
+          metaQuestoes: isSimulado ? Math.max(adjustedQuestions, 40) : isReview ? Math.max(15, Math.round(adjustedQuestions * 0.7)) : adjustedQuestions,
           tipo: isSimulado ? 'Simulado' : isReview ? 'Revisão' : 'Questões novas',
           observacao: isSimulado
-            ? `Resolver em tempo cronometrado no estilo ${banca}. Corrigir todas as erradas.`
+            ? `Resolver em tempo cronometrado no estilo ${banca}. Separar ${hoursPerDay}h para simulado e correção das erradas.`
             : isReview
-              ? 'Refazer questões erradas e ler comentários antes de avançar.'
+              ? `Usar ${hoursPerDay}h para refazer questões erradas e ler comentários antes de avançar.`
               : source === 'cadernos'
-                ? 'Usar questões dos PDFs importados no módulo Cadernos.'
+                ? `Usar ${hoursPerDay}h com questões dos PDFs importados no módulo Cadernos.`
                 : source === 'geradas'
-                  ? 'Usar questões criadas pelo Gerador de Questões com IA.'
-                  : 'Combinar questões dos PDFs importados com questões criadas pela IA.',
+                  ? `Usar ${hoursPerDay}h com questões criadas pelo Gerador de Questões com IA.`
+                  : `Usar ${hoursPerDay}h combinando PDFs importados com questões criadas pela IA.`,
         })
         studyIndex++
       }
@@ -175,7 +181,7 @@ export default function PlanoQuestoesPage() {
             type: 'MULTIPLE_CHOICE',
             format: 'Estilo banca',
             quantity,
-            editalText: `REFERÊNCIA DO PLANO DE QUESTÕES: ${cargo}\nDIA DO PLANO: ${day.dia}\nDATA: ${day.data}\nDIA DA SEMANA: ${day.diaSemana}\nTURNO DE ESTUDO: ${day.turno}\nTIPO: ${day.tipo}\nFOCO: ${day.foco}\nORIENTAÇÃO: ${day.observacao}`,
+            editalText: `REFERÊNCIA DO PLANO DE QUESTÕES: ${cargo}\nDIA DO PLANO: ${day.dia}\nDATA: ${day.data}\nDIA DA SEMANA: ${day.diaSemana}\nTURNO DE ESTUDO: ${day.turno}\nHORAS DE ESTUDO NO DIA: ${day.horasPorDia}h\nTIPO: ${day.tipo}\nFOCO: ${day.foco}\nORIENTAÇÃO: ${day.observacao}`,
           }),
         })
         const data = await res.json()
@@ -199,6 +205,7 @@ export default function PlanoQuestoesPage() {
   }
 
   const totalQuestoes = plan.reduce((acc, d) => acc + d.metaQuestoes, 0)
+  const totalHoras = plan.reduce((acc, d) => acc + Number(d.horasPorDia || 0), 0)
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
@@ -236,10 +243,17 @@ export default function PlanoQuestoesPage() {
               {TURNOS.map(t => <button key={t} type="button" onClick={() => setTurno(t)} className={`chip ${turno === t ? 'chip-active' : ''}`}>{t}</button>)}
             </div>
           </div>
-          <div>
-            <label className="label">Questões por dia</label>
-            <input className="input" type="number" min={5} max={200} value={questionsPerDay} onChange={e => setQuestionsPerDay(Number(e.target.value))} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Horas por dia</label>
+              <input className="input" type="number" min={0.5} max={12} step={0.5} value={hoursPerDay} onChange={e => setHoursPerDay(Number(e.target.value))} />
+            </div>
+            <div>
+              <label className="label">Questões base/dia</label>
+              <input className="input" type="number" min={5} max={200} value={questionsPerDay} onChange={e => setQuestionsPerDay(Number(e.target.value))} />
+            </div>
           </div>
+          <p className="text-xs text-zinc-600 -mt-2">A meta diária é ajustada conforme as horas. Ex.: 2h usa a meta base; 4h dobra a meta.</p>
           <div>
             <label className="label">Matérias / tópicos</label>
             <textarea className="input min-h-[140px] py-3" value={materiasText} onChange={e => setMateriasText(e.target.value)} />
@@ -275,9 +289,10 @@ export default function PlanoQuestoesPage() {
 
           {!!plan.length && (
             <>
-              <div className="grid md:grid-cols-3 gap-3">
+              <div className="grid md:grid-cols-4 gap-3">
                 <div className="card p-4"><div className="text-xs text-zinc-500">Dias de plano</div><div className="font-heading text-2xl font-bold text-white">{plan.length}</div></div>
                 <div className="card p-4"><div className="text-xs text-zinc-500">Meta total</div><div className="font-heading text-2xl font-bold text-brand-300">{totalQuestoes}</div></div>
+                <div className="card p-4"><div className="text-xs text-zinc-500">Horas totais</div><div className="font-heading text-2xl font-bold text-green-300">{totalHoras}h</div></div>
                 <div className="card p-4"><div className="text-xs text-zinc-500">Turno</div><div className="font-heading text-lg font-bold text-white truncate">{turno}</div></div>
               </div>
 
@@ -306,12 +321,12 @@ export default function PlanoQuestoesPage() {
                             <div className="w-10 h-10 rounded-2xl bg-brand-500/10 border border-brand-500/20 text-brand-300 flex items-center justify-center font-bold text-xs">D{day.dia}</div>
                             <div>
                               <div className="font-semibold text-sm text-zinc-100">{day.foco}</div>
-                              <div className="text-xs text-zinc-500 mt-1">{day.data} · {day.diaSemana} · {day.turno} · {day.tipo}</div>
+                              <div className="text-xs text-zinc-500 mt-1">{day.data} · {day.diaSemana} · {day.turno} · {day.horasPorDia}h · {day.tipo}</div>
                             </div>
                           </div>
                           <div className="flex flex-col sm:flex-row md:flex-col gap-2 md:items-end">
                             <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold text-brand-300 whitespace-nowrap">
-                              {day.metaQuestoes} questões
+                              {day.metaQuestoes} questões · {day.horasPorDia}h
                             </div>
                             <button
                               onClick={() => gerarQuestoesDoDia(day)}
