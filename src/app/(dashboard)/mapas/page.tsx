@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Brain, FileDown, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { AlertTriangle, Brain, FileDown, Image as ImageIcon, Loader2 } from 'lucide-react'
 import { createAIQueueJob, getAIQueueStatus, type AIQueueStatus } from '@/lib/aiQueueClient'
 
 type MindMap = { id: string; title: string; topic: string; data: any; createdAt: string }
@@ -13,6 +13,12 @@ type VisualNode = {
   prioridade?: string
   palavrasChave?: string[]
   children: VisualNode[]
+}
+
+type LastError = {
+  message: string
+  action: string
+  details?: Record<string, any>
 }
 
 function clampText(text: string, max = 42) {
@@ -181,6 +187,8 @@ export default function MapasPage() {
   const [maps, setMaps] = useState<MindMap[]>([])
   const [active, setActive] = useState<MindMap | null>(null)
   const [view, setView] = useState<'visual' | 'estrutura'>('visual')
+  const [lastError, setLastError] = useState<LastError | null>(null)
+  const [reportingError, setReportingError] = useState(false)
 
   useEffect(() => {
     fetch('/api/admin/stats').then(r => r.json()).then(data => {
@@ -202,6 +210,38 @@ export default function MapasPage() {
     return () => clearInterval(timer)
   }, [queue?.id, loading])
 
+  function handleError(message: string, action: string, details?: Record<string, any>) {
+    setLastError({ message, action, details })
+    toast.error(message)
+  }
+
+  async function reportarErro() {
+    if (!lastError) return
+    setReportingError(true)
+    try {
+      const res = await fetch('/api/report-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: lastError.message,
+          action: lastError.action,
+          page: 'Mapas Mentais',
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+          details: lastError.details,
+        }),
+      })
+      if (!res.ok) throw new Error('Falha ao reportar')
+      toast.success('Erro reportado ao administrador')
+      setLastError(null)
+    } catch {
+      toast.error('Não foi possível reportar o erro')
+    } finally {
+      setReportingError(false)
+    }
+  }
+
   async function loadMaps() {
     const data = await fetch('/api/mindmaps').then(r => r.json()).catch(() => null)
     if (data?.mindMaps) setMaps(data.mindMaps)
@@ -211,22 +251,29 @@ export default function MapasPage() {
     if (!tema.trim()) return toast.error('Informe o tema do mapa mental')
     setLoading(true)
     setQueue(null)
+    setLastError(null)
+    let job: AIQueueStatus | null = null
+    const payload = { tema, banca, cargo, nivel, objetivo, contexto, provider, queueJobId: '' }
     try {
-      const job = await createAIQueueJob('mind_map', provider)
+      job = await createAIQueueJob('mind_map', provider)
       setQueue(job)
+      payload.queueJobId = job.id
       const res = await fetch('/api/mindmaps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tema, banca, cargo, nivel, objetivo, contexto, provider, queueJobId: job.id }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Erro ao gerar mapa mental'); return }
+      if (!res.ok) {
+        handleError(data.error || 'Erro ao gerar mapa mental', 'generate_mind_map', { status: res.status, payload, response: data, provider, queueJobId: job.id })
+        return
+      }
       setActive(data.mindMap)
       setView('visual')
       await loadMaps()
       toast.success('Mapa mental gerado!')
     } catch (e) {
-      toast.error((e as Error).message || 'Erro ao gerar mapa')
+      handleError((e as Error).message || 'Erro ao gerar mapa', 'generate_mind_map_exception', { error: (e as Error).message, tema, banca, cargo, nivel, objetivo, provider, queueJobId: job?.id })
     } finally {
       setLoading(false)
       setQueue(null)
@@ -263,20 +310,24 @@ export default function MapasPage() {
       a.href = png
       a.download = `${(active.title || 'mapa-mental').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`
       a.click()
-    } catch {
-      toast.error('Erro ao exportar PNG')
+    } catch (e) {
+      handleError('Erro ao exportar PNG', 'export_mind_map_png', { error: (e as Error).message, activeId: active?.id, title: active?.title })
     }
   }
 
   async function exportSVG() {
     if (!active || !svg) return
-    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${(active.title || 'mapa-mental').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.svg`
-    a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${(active.title || 'mapa-mental').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.svg`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      handleError('Erro ao exportar SVG', 'export_mind_map_svg', { error: (e as Error).message, activeId: active?.id, title: active?.title })
+    }
   }
 
   return (
@@ -325,6 +376,24 @@ export default function MapasPage() {
         </div>
 
         <div className="space-y-4">
+          {lastError && (
+            <div className="card p-4 border-red-500/30 bg-red-500/10">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={18} className="text-red-300 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <div className="font-semibold text-red-200 text-sm">Ocorreu um erro</div>
+                  <div className="text-xs text-red-100/80 mt-1">{lastError.message}</div>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <button type="button" onClick={gerar} className="btn-secondary text-xs">Tentar novamente</button>
+                    <button type="button" onClick={reportarErro} disabled={reportingError} className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100 disabled:opacity-50">
+                      {reportingError ? 'Reportando...' : 'Reportar erro'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {queue && loading && <div className="card p-4 text-sm text-zinc-300">Status: {queue.status}</div>}
 
           {!active && <div className="card p-10 text-center text-zinc-500">Nenhum mapa selecionado.</div>}
