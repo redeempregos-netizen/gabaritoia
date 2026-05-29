@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, Brain, FileDown, Image as ImageIcon, Loader2 } from 'lucide-react'
 import { createAIQueueJob, getAIQueueStatus, type AIQueueStatus } from '@/lib/aiQueueClient'
+import { MindMapViewer } from './MindMapViewer'
 
 type MindMap = { id: string; title: string; topic: string; data: any; createdAt: string }
 
@@ -414,9 +415,7 @@ export default function MapasPage() {
               </div>
 
               {view === 'visual' ? (
-                <div className="card overflow-auto p-2 bg-black/20">
-                  <div className="min-w-[1000px]" dangerouslySetInnerHTML={{ __html: svg }} />
-                </div>
+                <MindMapViewer svg={svg} />
               ) : (
                 <div className="card p-5">
                   <div className="font-heading font-bold mb-4">Estrutura do mapa</div>
