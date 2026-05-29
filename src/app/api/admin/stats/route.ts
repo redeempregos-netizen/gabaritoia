@@ -7,6 +7,13 @@ import type { AIProvider } from '@/types'
 
 async function ensureCreditRenewalColumn() {
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_renewed_at TIMESTAMP(3);`)
+  await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMP(3);`)
+}
+
+function addDays(days: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return date
 }
 
 async function getAIUsageSummary() {
@@ -137,7 +144,13 @@ export async function GET(req: NextRequest) {
         "creditsUsed" AS "creditsUsed",
         "createdAt" AS "createdAt",
         streak,
-        credits_renewed_at AS "creditsRenewedAt"
+        credits_renewed_at AS "creditsRenewedAt",
+        plan_expires_at AS "planExpiresAt",
+        CASE
+          WHEN plan_expires_at IS NULL THEN false
+          WHEN plan_expires_at < NOW() THEN true
+          ELSE false
+        END AS "planExpired"
       FROM users
       ORDER BY "createdAt" DESC
       LIMIT 50;
@@ -173,7 +186,7 @@ export async function POST(req: NextRequest) {
   await ensureCreditRenewalColumn()
 
   const body = await req.json()
-  const { action, provider, key, model, enabled, maxQtd, defaultProvider, monthlyFreeCredits, userId, role, plan, credits } = body
+  const { action, provider, key, model, enabled, maxQtd, defaultProvider, monthlyFreeCredits, userId, role, plan, credits, planDurationDays, clearPlanExpiration } = body
 
   if (action === 'save_api_key') {
     const encryptedKey = key && !key.startsWith('••') ? encryptSecret(String(key).trim()) : undefined
@@ -227,6 +240,14 @@ export async function POST(req: NextRequest) {
       where: { id: userId },
       data,
     })
+
+    if (clearPlanExpiration) {
+      await prisma.$executeRawUnsafe(`UPDATE users SET plan_expires_at = NULL WHERE id = $1`, userId)
+    } else if (planDurationDays !== undefined) {
+      const days = Math.max(1, Number(planDurationDays) || 30)
+      await prisma.$executeRawUnsafe(`UPDATE users SET plan_expires_at = $1 WHERE id = $2`, addDays(days), userId)
+    }
+
     return NextResponse.json({ ok: true })
   }
 
