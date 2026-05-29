@@ -329,6 +329,7 @@ export default function GeradosPage() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    {isQuestionPlan && <a href={`/plano-questoes?id=${plan.id}`} className="rounded-xl bg-green-600 hover:bg-green-500 text-white px-3 py-2 text-xs font-semibold">Continuar plano</a>}
                     <button className="btn-secondary text-xs" onClick={() => setOpenPlan(isOpen ? null : plan.id)}>{isOpen ? 'Fechar' : isQuestionPlan ? 'Detalhes' : 'Ver'}</button>
                     <button className="btn-secondary text-xs flex items-center gap-1" onClick={() => exportPlanPDF(plan)}><FileDown size={14} /> PDF</button>
                     <button disabled={deletingThis} className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-xs flex items-center gap-1 disabled:opacity-50" onClick={() => deleteItem('plan', plan.id)}>{deletingThis ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir</button>
