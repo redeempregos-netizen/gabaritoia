@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { callAI } from '@/lib/ai'
+import { encryptSecret } from '@/lib/secrets'
 import type { AIProvider } from '@/types'
 
 async function getAIUsageSummary() {
@@ -155,10 +156,12 @@ export async function POST(req: NextRequest) {
   const { action, provider, key, model, enabled, maxQtd, defaultProvider, userId, role, plan } = body
 
   if (action === 'save_api_key') {
+    const encryptedKey = key && !key.startsWith('••') ? encryptSecret(String(key).trim()) : undefined
+
     await prisma.apiKey.upsert({
       where: { provider },
-      create: { provider, keyHash: key, model: model || 'default', isEnabled: enabled ?? true },
-      update: { ...(key && !key.startsWith('••') && { keyHash: key }), ...(model && { model }), isEnabled: enabled ?? true },
+      create: { provider, keyHash: encryptedKey || '', model: model || 'default', isEnabled: enabled ?? true },
+      update: { ...(encryptedKey && { keyHash: encryptedKey }), ...(model && { model }), isEnabled: enabled ?? true },
     })
     return NextResponse.json({ ok: true })
   }
