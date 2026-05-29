@@ -20,6 +20,37 @@ function clampText(text: string, max = 42) {
   return clean.length > max ? clean.slice(0, max - 1) + '…' : clean
 }
 
+function wrapText(text: string, maxChars = 24, maxLines = 2) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!clean) return ['']
+  const words = clean.split(' ')
+  const lines: string[] = []
+  let line = ''
+
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word
+    if (next.length > maxChars && line) {
+      lines.push(line)
+      line = word
+    } else {
+      line = next
+    }
+    if (lines.length === maxLines) break
+  }
+
+  if (lines.length < maxLines && line) lines.push(line)
+  const used = lines.join(' ')
+  if (used.length < clean.length && lines.length) {
+    lines[lines.length - 1] = clampText(lines[lines.length - 1], Math.max(8, maxChars - 1))
+  }
+  return lines.slice(0, maxLines)
+}
+
+function svgTextLines(lines: string[], x: number, y: number, opts: { fill: string; fontSize: number; weight?: number | string; anchor?: string; lineHeight?: number }) {
+  const lineHeight = opts.lineHeight || Math.round(opts.fontSize * 1.25)
+  return `<text x="${x}" y="${y}" fill="${opts.fill}" font-size="${opts.fontSize}" font-family="Arial, sans-serif" font-weight="${opts.weight || 400}" text-anchor="${opts.anchor || 'start'}">${lines.map((line, i) => `<tspan x="${x}" dy="${i === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`).join('')}</text>`
+}
+
 function toVisualNodes(data: any): VisualNode[] {
   return (Array.isArray(data?.nodes) ? data.nodes : []).map((n: any) => ({
     title: n.titulo || 'Tópico',
@@ -54,26 +85,26 @@ function escapeXml(s: string) {
 
 function buildMindMapSvg(data: any) {
   const title = data?.titulo || 'Mapa Mental'
-  const nodes = toVisualNodes(data).slice(0, 8)
-  const W = 1400
-  const H = 900
+  const nodes = toVisualNodes(data).slice(0, 6)
+  const W = 1600
+  const H = 1000
   const cx = W / 2
   const cy = H / 2
-  const radiusX = 460
-  const radiusY = 280
-  const branchW = 250
-  const branchH = 88
-  const subW = 170
-  const subH = 52
+  const radiusX = 515
+  const radiusY = 310
+  const branchW = 330
+  const branchH = 112
+  const subW = 230
+  const subH = 68
 
   const parts: string[] = []
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`)
   parts.push(`<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#18181b"/></linearGradient><linearGradient id="center" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c3aed"/><stop offset="1" stop-color="#a855f7"/></linearGradient><filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.35"/></filter></defs>`)
   parts.push(`<rect width="${W}" height="${H}" rx="34" fill="url(#bg)"/>`)
-  parts.push(`<circle cx="1180" cy="80" r="170" fill="#7c3aed" opacity="0.12"/><circle cx="150" cy="780" r="190" fill="#22c55e" opacity="0.08"/>`)
-  parts.push(`<text x="56" y="70" fill="#a78bfa" font-size="24" font-family="Arial" font-weight="700">GabaritoIA • Mapa Mental</text>`)
+  parts.push(`<circle cx="1340" cy="90" r="190" fill="#7c3aed" opacity="0.12"/><circle cx="150" cy="840" r="205" fill="#22c55e" opacity="0.08"/>`)
+  parts.push(`<text x="56" y="70" fill="#a78bfa" font-size="24" font-family="Arial, sans-serif" font-weight="700">GabaritoIA • Mapa Mental</text>`)
 
-  parts.push(`<g filter="url(#shadow)"><rect x="${cx - 180}" y="${cy - 62}" width="360" height="124" rx="28" fill="url(#center)"/><text x="${cx}" y="${cy - 10}" fill="#fff" font-size="26" font-family="Arial" font-weight="800" text-anchor="middle">${escapeXml(clampText(title, 28))}</text><text x="${cx}" y="${cy + 24}" fill="#ede9fe" font-size="16" font-family="Arial" text-anchor="middle">Tema central de revisão</text></g>`)
+  parts.push(`<g filter="url(#shadow)"><rect x="${cx - 220}" y="${cy - 68}" width="440" height="136" rx="30" fill="url(#center)"/>${svgTextLines(wrapText(title, 28, 2), cx, cy - 18, { fill: '#fff', fontSize: 25, weight: 800, anchor: 'middle', lineHeight: 30 })}<text x="${cx}" y="${cy + 44}" fill="#ede9fe" font-size="16" font-family="Arial, sans-serif" text-anchor="middle">Tema central de revisão</text></g>`)
 
   nodes.forEach((node, i) => {
     const angle = -Math.PI / 2 + (Math.PI * 2 * i) / Math.max(nodes.length, 1)
@@ -82,23 +113,23 @@ function buildMindMapSvg(data: any) {
     const bx = x - branchW / 2
     const by = y - branchH / 2
     const accent = colorByPriority(node.prioridade)
-    const ctrlX = cx + Math.cos(angle) * 230
-    const ctrlY = cy + Math.sin(angle) * 140
+    const ctrlX = cx + Math.cos(angle) * 250
+    const ctrlY = cy + Math.sin(angle) * 155
     parts.push(`<path d="M ${cx} ${cy} Q ${ctrlX} ${ctrlY} ${x} ${y}" fill="none" stroke="${accent}" stroke-width="5" stroke-linecap="round" opacity="0.75"/>`)
-    parts.push(`<g filter="url(#shadow)"><rect x="${bx}" y="${by}" width="${branchW}" height="${branchH}" rx="18" fill="#fff"/><rect x="${bx}" y="${by}" width="8" height="${branchH}" rx="4" fill="${accent}"/><text x="${bx + 22}" y="${by + 30}" fill="#18181b" font-size="18" font-family="Arial" font-weight="800">${escapeXml(clampText(node.title, 24))}</text><text x="${bx + 22}" y="${by + 55}" fill="#52525b" font-size="12" font-family="Arial">${escapeXml(clampText(node.resumo || '', 34))}</text><text x="${bx + 22}" y="${by + 74}" fill="${accent}" font-size="11" font-family="Arial" font-weight="700">Prioridade ${escapeXml(node.prioridade || 'Média')}</text></g>`)
+    parts.push(`<g filter="url(#shadow)"><rect x="${bx}" y="${by}" width="${branchW}" height="${branchH}" rx="18" fill="#fff"/><rect x="${bx}" y="${by}" width="8" height="${branchH}" rx="4" fill="${accent}"/>${svgTextLines(wrapText(node.title, 27, 2), bx + 24, by + 31, { fill: '#18181b', fontSize: 18, weight: 800, lineHeight: 22 })}<text x="${bx + 24}" y="${by + 72}" fill="#52525b" font-size="12" font-family="Arial, sans-serif">${escapeXml(clampText(node.resumo || '', 42))}</text><text x="${bx + 24}" y="${by + 94}" fill="${accent}" font-size="11" font-family="Arial, sans-serif" font-weight="700">Prioridade ${escapeXml(node.prioridade || 'Média')}</text></g>`)
 
-    node.children.slice(0, 3).forEach((child, ci) => {
+    node.children.slice(0, 2).forEach((child, ci) => {
       const side = Math.cos(angle) >= 0 ? 1 : -1
-      const sx = x + side * 200
-      const sy = y + (ci - 1) * 74
+      const sx = x + side * 245
+      const sy = y + (ci - 0.5) * 86
       const sbx = sx - subW / 2
       const sby = sy - subH / 2
-      parts.push(`<path d="M ${x + side * branchW / 2} ${y} C ${x + side * 90} ${y} ${sx - side * 95} ${sy} ${sx - side * subW / 2} ${sy}" fill="none" stroke="#94a3b8" stroke-width="2.2" stroke-linecap="round" opacity="0.7"/>`)
-      parts.push(`<rect x="${sbx}" y="${sby}" width="${subW}" height="${subH}" rx="14" fill="#27272a" stroke="#3f3f46"/><text x="${sx}" y="${sy - 4}" fill="#f4f4f5" font-size="13" font-family="Arial" font-weight="700" text-anchor="middle">${escapeXml(clampText(child.title, 20))}</text><text x="${sx}" y="${sy + 15}" fill="#a1a1aa" font-size="10" font-family="Arial" text-anchor="middle">${escapeXml(clampText((child.palavrasChave || []).join(' • '), 24))}</text>`)
+      parts.push(`<path d="M ${x + side * branchW / 2} ${y} C ${x + side * 105} ${y} ${sx - side * 105} ${sy} ${sx - side * subW / 2} ${sy}" fill="none" stroke="#94a3b8" stroke-width="2.2" stroke-linecap="round" opacity="0.7"/>`)
+      parts.push(`<rect x="${sbx}" y="${sby}" width="${subW}" height="${subH}" rx="14" fill="#27272a" stroke="#3f3f46"/>${svgTextLines(wrapText(child.title, 24, 2), sx, sy - 12, { fill: '#f4f4f5', fontSize: 13, weight: 700, anchor: 'middle', lineHeight: 16 })}<text x="${sx}" y="${sy + 24}" fill="#a1a1aa" font-size="10" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(clampText((child.palavrasChave || []).join(' • '), 30))}</text>`)
     })
   })
 
-  parts.push(`<text x="${W - 56}" y="${H - 42}" fill="#71717a" font-size="16" font-family="Arial" text-anchor="end">Gerado com IA para revisão de concurso</text>`)
+  parts.push(`<text x="${W - 56}" y="${H - 42}" fill="#71717a" font-size="16" font-family="Arial, sans-serif" text-anchor="end">Gerado com IA para revisão de concurso</text>`)
   parts.push(`</svg>`)
   return parts.join('')
 }
@@ -202,8 +233,8 @@ export default function MapasPage() {
       img.src = url
     })
     const canvas = document.createElement('canvas')
-    canvas.width = 1400
-    canvas.height = 900
+    canvas.width = 1600
+    canvas.height = 1000
     const ctx = canvas.getContext('2d')!
     ctx.drawImage(img, 0, 0)
     URL.revokeObjectURL(url)
@@ -219,92 +250,100 @@ export default function MapasPage() {
       a.download = `${(active.title || 'mapa-mental').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`
       a.click()
     } catch {
-      toast.error('Não consegui exportar a imagem')
+      toast.error('Erro ao exportar PNG')
     }
   }
 
-  async function exportPDF() {
-    if (!active) return
-    const { default: jsPDF } = await import('jspdf')
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-    const png = await svgToPngDataUrl(svg)
-    doc.setFillColor(15, 23, 42)
-    doc.rect(0, 0, 297, 210, 'F')
-    doc.addImage(png, 'PNG', 8, 8, 281, 181)
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(9)
-    doc.text('GabaritoIA • PDF Premium de Mapa Mental', 14, 200)
-
-    doc.addPage('portrait')
-    let y = 16
-    const add = (txt: string, size = 10, bold = false) => {
-      doc.setFontSize(size)
-      doc.setFont('helvetica', bold ? 'bold' : 'normal')
-      doc.setTextColor(bold ? 24 : 63, bold ? 24 : 63, bold ? 27 : 70)
-      const lines = doc.splitTextToSize(String(txt || ''), 180)
-      lines.forEach((line: string) => { if (y > 280) { doc.addPage(); y = 14 } doc.text(line, 14, y); y += size * 0.45 + 2 })
-    }
-    const walk = (n: any, lvl = 0) => {
-      add(`${'  '.repeat(lvl)}${lvl ? '• ' : ''}${n.titulo || ''}`, lvl ? 10 : 13, lvl === 0)
-      if (n.resumo) add(`${'  '.repeat(lvl + 1)}${n.resumo}`, 9)
-      ;(n.filhos || []).forEach((k: any) => walk(k, lvl + 1))
-    }
-    add('Resumo e estrutura do mapa', 16, true)
-    add(active.data?.resumo || '', 10)
-    y += 4
-    ;(active.data?.nodes || []).forEach((n: any) => walk(n))
-    if (active.data?.pegadinhas?.length) { y += 4; add('Pegadinhas de prova', 13, true); active.data.pegadinhas.forEach((p: string) => add(`• ${p}`, 9)) }
-    if (active.data?.revisaoRapida?.length) { y += 4; add('Revisão rápida', 13, true); active.data.revisaoRapida.forEach((p: string) => add(`• ${p}`, 9)) }
-    if (active.data?.questoesProvaveis?.length) { y += 4; add('Como pode cair', 13, true); active.data.questoesProvaveis.forEach((p: string) => add(`• ${p}`, 9)) }
-    doc.save(`${(active.title || 'mapa-mental').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-premium.pdf`)
+  async function exportSVG() {
+    if (!active || !svg) return
+    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${(active.title || 'mapa-mental').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.svg`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="mb-6">
-        <h1 className="font-heading text-2xl font-bold">🧠 Mapas Mentais</h1>
-        <p className="text-zinc-400 text-sm mt-1">Crie mapas mentais visuais para revisar conteúdos de concurso com IA.</p>
+    <div className="p-4 md:p-6 max-w-6xl mx-auto">
+      <div className="mb-8 rounded-3xl border border-brand-500/20 bg-gradient-to-br from-brand-500/10 via-zinc-900 to-zinc-950 p-5 md:p-7">
+        <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-xs text-brand-200 mb-3">
+          <Brain size={13} /> GabaritoIA Visual
+        </div>
+        <h1 className="font-heading text-2xl md:text-3xl font-bold">Mapas Mentais com IA</h1>
+        <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Crie mapas mentais visuais para revisar conteúdo de concursos e exporte em imagem.</p>
       </div>
 
       <div className="grid lg:grid-cols-[360px_1fr] gap-6">
-        <div className="space-y-4">
-          <div className="card p-5 space-y-4">
-            <div><label className="label">Tema principal</label><input className="input" placeholder="Ex: Atos Administrativos" value={tema} onChange={e => setTema(e.target.value)} /></div>
-            <div><label className="label">Banca</label><input className="input" placeholder="Ex: FGV, Cebraspe, FCC" value={banca} onChange={e => setBanca(e.target.value)} /></div>
-            <div><label className="label">Cargo</label><input className="input" placeholder="Ex: Analista Administrativo" value={cargo} onChange={e => setCargo(e.target.value)} /></div>
-            <div><label className="label">Nível</label><div className="flex gap-2">{['Iniciante','Intermediário','Avançado'].map(n => <button key={n} onClick={() => setNivel(n)} className={`chip ${nivel === n ? 'chip-active' : ''}`}>{n}</button>)}</div></div>
-            <div><label className="label">Objetivo</label><div className="flex flex-wrap gap-2">{['Revisão rápida','Aprofundamento','Reta final','Memorização'].map(n => <button key={n} onClick={() => setObjetivo(n)} className={`chip ${objetivo === n ? 'chip-active' : ''}`}>{n}</button>)}</div></div>
-            <div><label className="label">Contexto extra ou trecho do edital</label><textarea className="input min-h-28" placeholder="Cole aqui um trecho do edital, material ou conteúdo que quer transformar em mapa mental..." value={contexto} onChange={e => setContexto(e.target.value)} /></div>
-            <div><label className="label">Provedor IA</label><div className="flex flex-wrap gap-2">{availableProviders.map(p => <button key={p} onClick={() => setProvider(p)} className={`chip ${provider === p ? 'chip-active' : ''}`}>{p}</button>)}</div></div>
+        <div className="card p-5 space-y-4 h-fit">
+          <div>
+            <label className="label">Tema central</label>
+            <input className="input" placeholder="Ex: Atos Administrativos" value={tema} onChange={e => setTema(e.target.value)} />
           </div>
-
-          {queue && <div className="rounded-xl border border-brand-500/20 bg-brand-500/10 p-4 text-sm text-brand-100"><Loader2 size={16} className="inline animate-spin" /> {queue.processing ? 'Criando mapa mental...' : `Você está em ${queue.position}º na fila`}</div>}
-          <button onClick={gerar} disabled={loading || !tema.trim()} className="w-full bg-gradient-to-r from-brand-600 to-purple-600 text-white font-bold rounded-xl px-6 py-3.5 disabled:opacity-40 flex items-center justify-center gap-2">{loading ? <><Loader2 size={16} className="animate-spin" />Gerando...</> : '🧠 Gerar mapa visual'}</button>
-
-          {maps.length > 0 && <div className="card p-4"><div className="text-xs font-bold text-brand-300 mb-3">Mapas salvos</div><div className="space-y-2 max-h-72 overflow-y-auto">{maps.map(m => <button key={m.id} onClick={() => { setActive(m); setView('visual') }} className="w-full text-left rounded-xl border border-white/10 bg-black/20 p-3 text-xs"><div className="font-semibold text-zinc-100">{m.title}</div><div className="text-zinc-500">{new Date(m.createdAt).toLocaleDateString('pt-BR')}</div></button>)}</div></div>}
+          <div>
+            <label className="label">Banca</label>
+            <input className="input" placeholder="Ex: FGV, CEBRASPE, FCC" value={banca} onChange={e => setBanca(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Cargo / concurso</label>
+            <input className="input" placeholder="Ex: Técnico Administrativo" value={cargo} onChange={e => setCargo(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Nível</label>
+            <div className="flex flex-wrap gap-2">{['Básico','Intermediário','Avançado'].map(n => <button key={n} onClick={() => setNivel(n)} className={`chip ${nivel === n ? 'chip-active' : ''}`}>{n}</button>)}</div>
+          </div>
+          <div>
+            <label className="label">Objetivo</label>
+            <div className="flex flex-wrap gap-2">{['Revisão rápida','Pré-prova','Aprofundamento'].map(o => <button key={o} onClick={() => setObjetivo(o)} className={`chip ${objetivo === o ? 'chip-active' : ''}`}>{o}</button>)}</div>
+          </div>
+          <div>
+            <label className="label">Contexto opcional</label>
+            <textarea className="input min-h-[110px] py-3" placeholder="Cole tópicos do edital ou pontos importantes..." value={contexto} onChange={e => setContexto(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Provedor de IA</label>
+            <div className="flex flex-wrap gap-2">{availableProviders.map(p => <button key={p} onClick={() => setProvider(p)} className={`chip ${provider === p ? 'chip-active' : ''}`}>{p}</button>)}</div>
+          </div>
+          <button onClick={gerar} disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
+            {loading ? <><Loader2 size={16} className="animate-spin" />Gerando...</> : <><Brain size={16} /> Gerar mapa mental</>}
+          </button>
         </div>
 
-        <div>
-          {!active ? <div className="card p-12 text-center text-zinc-500"><Brain size={42} className="mx-auto mb-4 text-brand-400" /><div className="font-heading font-bold text-zinc-200">Crie seu primeiro mapa mental visual</div><div className="text-sm mt-2">A IA organiza o conteúdo e o sistema transforma em imagem de mapa mental.</div></div> : <div className="space-y-5">
-            <div className="card p-5 flex flex-col gap-4">
-              <div className="flex justify-between gap-3">
-                <div><h2 className="font-heading font-bold">{data.titulo || active.title}</h2><div className="text-sm text-zinc-400 mt-1">{data.resumo}</div></div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => setView('visual')} className={`chip ${view === 'visual' ? 'chip-active' : ''}`}>Mapa visual</button>
-                <button onClick={() => setView('estrutura')} className={`chip ${view === 'estrutura' ? 'chip-active' : ''}`}>Estrutura</button>
-                <button onClick={exportPNG} className="btn-secondary text-xs flex items-center gap-1"><ImageIcon size={14} /> PNG</button>
-                <button onClick={exportPDF} className="btn-secondary text-xs flex items-center gap-1"><FileDown size={14} /> PDF Premium</button>
-                <a href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`} download={`${(active.title || 'mapa-mental').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.svg`} className="btn-secondary text-xs flex items-center gap-1"><Download size={14} /> SVG</a>
-              </div>
-            </div>
+        <div className="space-y-4">
+          {queue && loading && <div className="card p-4 text-sm text-zinc-300">Status: {queue.status} · {queue.progress}%</div>}
 
-            {view === 'visual' ? <div className="card p-3 overflow-auto bg-zinc-950"><div className="min-w-[900px]" dangerouslySetInnerHTML={{ __html: svg }} /></div> : <div className="space-y-3">{(data.nodes || []).map((n: any, i: number) => <NodeView key={i} node={n} />)}</div>}
+          {!active && <div className="card p-10 text-center text-zinc-500">Nenhum mapa selecionado.</div>}
 
-            {data.pegadinhas?.length > 0 && <div className="card p-5"><div className="text-xs font-bold text-amber-300 mb-3">Pegadinhas de prova</div><div className="space-y-2">{data.pegadinhas.map((p: string, i: number) => <div key={i} className="text-sm text-zinc-300">⚠ {p}</div>)}</div></div>}
-            {data.revisaoRapida?.length > 0 && <div className="card p-5"><div className="text-xs font-bold text-brand-300 mb-3">Revisão rápida</div><div className="space-y-2">{data.revisaoRapida.map((p: string, i: number) => <div key={i} className="text-sm text-zinc-300">• {p}</div>)}</div></div>}
-            {data.questoesProvaveis?.length > 0 && <div className="card p-5"><div className="text-xs font-bold text-green-300 mb-3">Como pode cair</div><div className="space-y-2">{data.questoesProvaveis.map((p: string, i: number) => <div key={i} className="text-sm text-zinc-300">🎯 {p}</div>)}</div></div>}
-          </div>}
+          {active && (
+            <>
+              <div className="card p-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="font-heading font-bold text-zinc-100">{active.title}</div>
+                  <div className="text-xs text-zinc-500">{active.topic}</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => setView('visual')} className={`btn-secondary text-xs ${view === 'visual' ? 'border-brand-500 text-brand-200' : ''}`}>Visual</button>
+                  <button onClick={() => setView('estrutura')} className={`btn-secondary text-xs ${view === 'estrutura' ? 'border-brand-500 text-brand-200' : ''}`}>Estrutura</button>
+                  <button onClick={exportPNG} className="btn-secondary text-xs flex items-center gap-1"><ImageIcon size={13} /> PNG</button>
+                  <button onClick={exportSVG} className="btn-secondary text-xs flex items-center gap-1"><FileDown size={13} /> SVG</button>
+                </div>
+              </div>
+
+              {view === 'visual' ? (
+                <div className="card overflow-auto p-2 bg-black/20">
+                  <div className="min-w-[900px]" dangerouslySetInnerHTML={{ __html: svg }} />
+                </div>
+              ) : (
+                <div className="card p-5">
+                  <div className="font-heading font-bold mb-4">Estrutura do mapa</div>
+                  {Array.isArray(data.nodes) ? data.nodes.map((n: any, i: number) => <NodeView key={i} node={n} />) : <div className="text-zinc-500">Sem estrutura.</div>}
+                </div>
+              )}
+            </>
+          )}
+
+          {!!maps.length && <div className="card p-4"><div className="font-heading font-bold mb-3">Mapas recentes</div><div className="grid sm:grid-cols-2 gap-2">{maps.slice(0,6).map(m => <button key={m.id} onClick={() => setActive(m)} className="text-left rounded-xl border border-white/10 p-3 hover:border-brand-500/40"><div className="font-semibold text-sm text-zinc-200 truncate">{m.title}</div><div className="text-xs text-zinc-500 truncate">{m.topic}</div></button>)}</div></div>}
         </div>
       </div>
     </div>
