@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, FileDown, FileText, HelpCircle, Trash2 } from 'lucide-react'
+import { Loader2, FileDown, FileText, HelpCircle, Trash2, Search, SlidersHorizontal } from 'lucide-react'
 
 interface PlanItem {
   id: string
@@ -31,6 +31,10 @@ interface QuestionItem {
   createdAt: string
 }
 
+function uniqueValues<T>(items: T[], getter: (item: T) => string | undefined | null) {
+  return Array.from(new Set(items.map(getter).map(v => String(v || '').trim()).filter(Boolean))).sort()
+}
+
 export default function GeradosPage() {
   const [loading, setLoading] = useState(true)
   const [plans, setPlans] = useState<PlanItem[]>([])
@@ -38,6 +42,12 @@ export default function GeradosPage() {
   const [tab, setTab] = useState<'planos' | 'questoes'>('planos')
   const [openPlan, setOpenPlan] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [filterBanca, setFilterBanca] = useState('')
+  const [filterCargo, setFilterCargo] = useState('')
+  const [filterArea, setFilterArea] = useState('')
+  const [filterDifficulty, setFilterDifficulty] = useState('')
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
 
   useEffect(() => { load() }, [])
 
@@ -54,9 +64,11 @@ export default function GeradosPage() {
   }
 
   async function deleteItem(type: 'plan' | 'question', id: string) {
+    const key = `${type}:${id}`
+    if (deleting === key) return toast.info('Este item já está sendo excluído')
     const label = type === 'plan' ? 'este plano/projeto' : 'esta questão'
     if (!confirm(`Tem certeza que deseja excluir ${label}?`)) return
-    setDeleting(`${type}:${id}`)
+    setDeleting(key)
     try {
       const res = await fetch('/api/generated', {
         method: 'POST',
@@ -139,6 +151,47 @@ export default function GeradosPage() {
     doc.save(`${plan.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`)
   }
 
+  const filteredQuestions = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return questions
+      .filter(q => {
+        if (filterBanca && q.banca !== filterBanca) return false
+        if (filterCargo && (q.cargo || '') !== filterCargo) return false
+        if (filterArea && q.area !== filterArea) return false
+        if (filterDifficulty && q.difficulty !== filterDifficulty) return false
+        if (term && !`${q.enunciado} ${q.comentario} ${q.banca} ${q.area} ${q.cargo || ''} ${q.subtopic || ''}`.toLowerCase().includes(term)) return false
+        return true
+      })
+      .sort((a, b) => sortOrder === 'desc'
+        ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )
+  }, [questions, search, filterBanca, filterCargo, filterArea, filterDifficulty, sortOrder])
+
+  const filteredPlans = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return plans
+      .filter(p => !term || `${p.title} ${p.banca || ''} ${p.cargo || ''}`.toLowerCase().includes(term))
+      .sort((a, b) => sortOrder === 'desc'
+        ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )
+  }, [plans, search, sortOrder])
+
+  const bancas = useMemo(() => uniqueValues(questions, q => q.banca), [questions])
+  const cargos = useMemo(() => uniqueValues(questions, q => q.cargo), [questions])
+  const areas = useMemo(() => uniqueValues(questions, q => q.area), [questions])
+  const dificuldades = useMemo(() => uniqueValues(questions, q => q.difficulty), [questions])
+
+  function limparFiltros() {
+    setSearch('')
+    setFilterBanca('')
+    setFilterCargo('')
+    setFilterArea('')
+    setFilterDifficulty('')
+    setSortOrder('desc')
+  }
+
   async function exportQuestionsPDF() {
     const { default: jsPDF } = await import('jspdf')
     const doc = new jsPDF()
@@ -156,10 +209,10 @@ export default function GeradosPage() {
     }
 
     addLine('GabaritoIA - Questões Geradas', 16, true)
-    addLine(`Total: ${questions.length} questão(ões)`, 10)
+    addLine(`Total: ${filteredQuestions.length} questão(ões)`, 10)
     y += 3
 
-    questions.forEach((q, idx) => {
+    filteredQuestions.forEach((q, idx) => {
       addLine(`${idx + 1}. [${q.banca}] ${q.area} - ${q.difficulty}`, 11, true)
       addLine(q.enunciado)
       ;(q.options || []).forEach((op, i) => addLine(`${'ABCDE'[i] || i + 1}) ${op}`))
@@ -168,7 +221,7 @@ export default function GeradosPage() {
       y += 3
     })
 
-    doc.save('gabaritoia-questoes-geradas.pdf')
+    doc.save('gabaritoia-questoes-filtradas.pdf')
   }
 
   if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-brand-400" size={32} /></div>
@@ -180,15 +233,40 @@ export default function GeradosPage() {
         <p className="text-zinc-400 text-sm mt-1">Tudo que você gerou com IA fica salvo aqui para consultar, exportar ou excluir.</p>
       </div>
 
+      <div className="card p-4 mb-6 space-y-3">
+        <div className="flex items-center gap-2 text-xs font-bold text-brand-300 uppercase tracking-wider"><SlidersHorizontal size={14} /> Filtros</div>
+        <div className="grid md:grid-cols-3 gap-3">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-3 text-zinc-500" />
+            <input className="input pl-9" placeholder="Buscar por texto, banca, cargo ou área" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <select className="input" value={sortOrder} onChange={e => setSortOrder(e.target.value as 'desc' | 'asc')} style={{ colorScheme: 'dark' }}>
+            <option value="desc">Mais recentes primeiro</option>
+            <option value="asc">Mais antigos primeiro</option>
+          </select>
+          <button type="button" onClick={limparFiltros} className="btn-secondary">Limpar filtros</button>
+        </div>
+
+        {tab === 'questoes' && (
+          <div className="grid md:grid-cols-4 gap-3">
+            <select className="input" value={filterBanca} onChange={e => setFilterBanca(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Todas as bancas</option>{bancas.map(v => <option key={v} value={v}>{v}</option>)}</select>
+            <select className="input" value={filterCargo} onChange={e => setFilterCargo(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Todos os cargos</option>{cargos.map(v => <option key={v} value={v}>{v}</option>)}</select>
+            <select className="input" value={filterArea} onChange={e => setFilterArea(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Todas as áreas</option>{areas.map(v => <option key={v} value={v}>{v}</option>)}</select>
+            <select className="input" value={filterDifficulty} onChange={e => setFilterDifficulty(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Todas as dificuldades</option>{dificuldades.map(v => <option key={v} value={v}>{v}</option>)}</select>
+          </div>
+        )}
+      </div>
+
       <div className="flex gap-2 mb-6 overflow-x-auto">
-        <button onClick={() => setTab('planos')} className={`chip ${tab === 'planos' ? 'chip-active' : ''}`}>Planos / Edital Pro ({plans.length})</button>
-        <button onClick={() => setTab('questoes')} className={`chip ${tab === 'questoes' ? 'chip-active' : ''}`}>Questões ({questions.length})</button>
+        <button onClick={() => setTab('planos')} className={`chip ${tab === 'planos' ? 'chip-active' : ''}`}>Planos / Edital Pro ({filteredPlans.length}/{plans.length})</button>
+        <button onClick={() => setTab('questoes')} className={`chip ${tab === 'questoes' ? 'chip-active' : ''}`}>Questões ({filteredQuestions.length}/{questions.length})</button>
       </div>
 
       {tab === 'planos' && (
         <div className="space-y-4">
           {plans.length === 0 && <div className="card p-8 text-center text-zinc-500">Nenhum plano gerado ainda.</div>}
-          {plans.map(plan => {
+          {!!plans.length && filteredPlans.length === 0 && <div className="card p-8 text-center text-zinc-500">Nenhum plano encontrado com esses filtros.</div>}
+          {filteredPlans.map(plan => {
             const data = plan.planJson || {}
             const isOpen = openPlan === plan.id
             const deletingThis = deleting === `plan:${plan.id}`
@@ -230,11 +308,12 @@ export default function GeradosPage() {
       {tab === 'questoes' && (
         <div>
           <div className="flex justify-end mb-4">
-            <button onClick={exportQuestionsPDF} disabled={!questions.length} className="btn-secondary text-xs flex items-center gap-1"><FileDown size={14} /> Exportar todas em PDF</button>
+            <button onClick={exportQuestionsPDF} disabled={!filteredQuestions.length} className="btn-secondary text-xs flex items-center gap-1"><FileDown size={14} /> Exportar filtradas em PDF</button>
           </div>
           {questions.length === 0 && <div className="card p-8 text-center text-zinc-500">Nenhuma questão gerada salva ainda. As novas questões geradas passarão a aparecer aqui.</div>}
+          {!!questions.length && filteredQuestions.length === 0 && <div className="card p-8 text-center text-zinc-500">Nenhuma questão encontrada com esses filtros.</div>}
           <div className="space-y-4">
-            {questions.map((q, idx) => {
+            {filteredQuestions.map((q, idx) => {
               const deletingThis = deleting === `question:${q.id}`
               return (
                 <div key={q.id} className="card p-5">
@@ -243,7 +322,7 @@ export default function GeradosPage() {
                       <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-300 flex items-center justify-center"><HelpCircle size={18} /></div>
                       <div>
                         <div className="text-xs text-brand-300 font-bold">{idx + 1}. {q.banca} · {q.area} · {q.difficulty}</div>
-                        <div className="text-[11px] text-zinc-500">{new Date(q.createdAt).toLocaleDateString('pt-BR')}</div>
+                        <div className="text-[11px] text-zinc-500">{q.cargo ? `${q.cargo} · ` : ''}{new Date(q.createdAt).toLocaleDateString('pt-BR')}</div>
                       </div>
                     </div>
                     <button disabled={deletingThis} className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-xs flex items-center gap-1 disabled:opacity-50" onClick={() => deleteItem('question', q.id)}>{deletingThis ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir</button>
