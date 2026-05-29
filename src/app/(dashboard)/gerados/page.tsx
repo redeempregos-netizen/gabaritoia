@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, FileDown, FileText, HelpCircle, Trash2, Search, SlidersHorizontal } from 'lucide-react'
+import { Loader2, FileDown, FileText, HelpCircle, Trash2, Search, SlidersHorizontal, BarChart3 } from 'lucide-react'
 
 interface PlanItem {
   id: string
@@ -33,6 +33,20 @@ interface QuestionItem {
 
 function uniqueValues<T>(items: T[], getter: (item: T) => string | undefined | null) {
   return Array.from(new Set(items.map(getter).map(v => String(v || '').trim()).filter(Boolean))).sort()
+}
+
+function getQuestionPlanStats(plan: PlanItem) {
+  const data = plan.planJson || {}
+  const progresso = data.progresso || {}
+  const cronograma = Array.isArray(data.cronograma) ? data.cronograma : []
+  const totalDias = Number(progresso.totalDias || cronograma.length || 0)
+  const diasConcluidos = Array.isArray(progresso.diasConcluidos) ? progresso.diasConcluidos.length : 0
+  const percentual = Number(progresso.percentual || (totalDias ? Math.round((diasConcluidos / totalDias) * 100) : 0))
+  const questoesGeradas = Number(progresso.questoesGeradas || 0)
+  const horasTotais = cronograma.reduce((acc: number, d: any) => acc + Number(d.horasPorDia || 0), 0)
+  const questoesPrevistas = cronograma.reduce((acc: number, d: any) => acc + Number(d.metaQuestoes || 0), 0)
+  const status = percentual >= 100 ? 'Concluído' : percentual > 0 ? 'Em andamento' : 'Não iniciado'
+  return { totalDias, diasConcluidos, percentual, questoesGeradas, horasTotais, questoesPrevistas, status, cronograma }
 }
 
 export default function GeradosPage() {
@@ -95,6 +109,7 @@ export default function GeradosPage() {
     const { default: jsPDF } = await import('jspdf')
     const doc = new jsPDF()
     const data = plan.planJson || {}
+    const isQuestionPlan = data?.tipo === 'plano_questoes'
     let y = 14
     const pageH = doc.internal.pageSize.height
 
@@ -109,12 +124,23 @@ export default function GeradosPage() {
       }
     }
 
-    addLine('GabaritoIA - Plano de Estudos', 16, true)
+    addLine(isQuestionPlan ? 'GabaritoIA - Plano de Questões' : 'GabaritoIA - Plano de Estudos', 16, true)
     addLine(plan.title, 12, true)
-    addLine(`Banca: ${plan.banca || data?.banca?.nome || 'Não informado'}`)
-    addLine(`Cargo: ${plan.cargo || data?.identificacao?.cargo || 'Não informado'}`)
+    addLine(`Banca: ${plan.banca || data?.banca?.nome || data?.banca || 'Não informado'}`)
+    addLine(`Cargo: ${plan.cargo || data?.identificacao?.cargo || data?.cargo || 'Não informado'}`)
     addLine(`Gerado em: ${new Date(plan.createdAt).toLocaleDateString('pt-BR')}`)
     y += 3
+
+    if (isQuestionPlan) {
+      const stats = getQuestionPlanStats(plan)
+      addLine('Progresso', 13, true)
+      addLine(`${stats.percentual}% concluído | ${stats.diasConcluidos}/${stats.totalDias} dias | ${stats.questoesGeradas} questões geradas | ${stats.horasTotais}h previstas`)
+      y += 3
+      addLine('Cronograma', 13, true)
+      stats.cronograma.forEach((d: any) => addLine(`Dia ${d.dia} - ${d.data} - ${d.turno} - ${d.horasPorDia}h - ${d.metaQuestoes} questões - ${d.foco}`))
+      doc.save(`${plan.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`)
+      return
+    }
 
     if (Array.isArray(data.materias)) {
       addLine('Matérias', 13, true)
@@ -171,7 +197,7 @@ export default function GeradosPage() {
   const filteredPlans = useMemo(() => {
     const term = search.trim().toLowerCase()
     return plans
-      .filter(p => !term || `${p.title} ${p.banca || ''} ${p.cargo || ''}`.toLowerCase().includes(term))
+      .filter(p => !term || `${p.title} ${p.banca || ''} ${p.cargo || ''} ${p.planJson?.tipo || ''}`.toLowerCase().includes(term))
       .sort((a, b) => sortOrder === 'desc'
         ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -268,35 +294,81 @@ export default function GeradosPage() {
           {!!plans.length && filteredPlans.length === 0 && <div className="card p-8 text-center text-zinc-500">Nenhum plano encontrado com esses filtros.</div>}
           {filteredPlans.map(plan => {
             const data = plan.planJson || {}
+            const isQuestionPlan = data?.tipo === 'plano_questoes'
+            const stats = isQuestionPlan ? getQuestionPlanStats(plan) : null
             const isOpen = openPlan === plan.id
             const deletingThis = deleting === `plan:${plan.id}`
             return (
               <div key={plan.id} className="card p-5">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="flex gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-brand-500/10 text-brand-300 flex items-center justify-center"><FileText size={20} /></div>
-                    <div>
-                      <div className="font-heading font-bold text-sm">{plan.title}</div>
-                      <div className="text-xs text-zinc-500 mt-1">{plan.banca || data?.banca?.nome || 'Banca não informada'} · {plan.cargo || 'Cargo não informado'} · {new Date(plan.createdAt).toLocaleDateString('pt-BR')}</div>
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+                  <div className="flex gap-3 flex-1">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isQuestionPlan ? 'bg-green-500/10 text-green-300' : 'bg-brand-500/10 text-brand-300'}`}>{isQuestionPlan ? <BarChart3 size={20} /> : <FileText size={20} />}</div>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-heading font-bold text-sm">{plan.title}</div>
+                        {isQuestionPlan && <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-300">Plano de Questões</span>}
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-1">{plan.banca || data?.banca?.nome || data?.banca || 'Banca não informada'} · {plan.cargo || data?.cargo || 'Cargo não informado'} · {new Date(plan.createdAt).toLocaleDateString('pt-BR')}</div>
+                      {isQuestionPlan && stats && (
+                        <div className="mt-3 max-w-xl">
+                          <div className="flex flex-wrap gap-2 text-xs text-zinc-400 mb-2">
+                            <span>{stats.percentual}% concluído</span>
+                            <span>•</span>
+                            <span>{stats.diasConcluidos}/{stats.totalDias} dias</span>
+                            <span>•</span>
+                            <span>{stats.questoesGeradas} questões geradas</span>
+                            <span>•</span>
+                            <span>{stats.horasTotais}h previstas</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+                            <div className="h-full bg-green-500" style={{ width: `${stats.percentual}%` }} />
+                          </div>
+                          <div className="text-[11px] text-zinc-500 mt-1">Status: {stats.status} · Meta prevista: {stats.questoesPrevistas} questões</div>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button className="btn-secondary text-xs" onClick={() => setOpenPlan(isOpen ? null : plan.id)}>{isOpen ? 'Fechar' : 'Ver'}</button>
+                    <button className="btn-secondary text-xs" onClick={() => setOpenPlan(isOpen ? null : plan.id)}>{isOpen ? 'Fechar' : isQuestionPlan ? 'Detalhes' : 'Ver'}</button>
                     <button className="btn-secondary text-xs flex items-center gap-1" onClick={() => exportPlanPDF(plan)}><FileDown size={14} /> PDF</button>
                     <button disabled={deletingThis} className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-xs flex items-center gap-1 disabled:opacity-50" onClick={() => deleteItem('plan', plan.id)}>{deletingThis ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir</button>
                   </div>
                 </div>
                 {isOpen && (
                   <div className="mt-4 border-t border-white/[0.07] pt-4 space-y-3">
-                    <div className="text-sm"><strong>Foco:</strong> {data?.banca?.foco || 'Não informado'}</div>
-                    <div>
-                      <div className="text-xs font-bold text-brand-300 mb-2">Matérias</div>
-                      <div className="flex flex-wrap gap-2">{(data.materias || []).map((m: any, i: number) => <span key={i} className="chip text-xs">{m.nome || m.materia}</span>)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-brand-300 mb-2">Flashcards</div>
-                      <div className="grid md:grid-cols-2 gap-2">{(data.flashcards || []).slice(0, 6).map((f: any, i: number) => <div key={i} className="bg-black/20 rounded-xl p-3 text-xs"><div className="font-semibold text-zinc-200">{f.pergunta}</div><div className="text-zinc-500 mt-1">{f.resposta}</div></div>)}</div>
-                    </div>
+                    {isQuestionPlan && stats ? (
+                      <>
+                        <div className="grid md:grid-cols-4 gap-3">
+                          <div className="bg-black/20 rounded-xl p-3 text-xs"><div className="text-zinc-500">Progresso</div><div className="text-lg font-bold text-green-300">{stats.percentual}%</div></div>
+                          <div className="bg-black/20 rounded-xl p-3 text-xs"><div className="text-zinc-500">Dias</div><div className="text-lg font-bold text-white">{stats.diasConcluidos}/{stats.totalDias}</div></div>
+                          <div className="bg-black/20 rounded-xl p-3 text-xs"><div className="text-zinc-500">Questões geradas</div><div className="text-lg font-bold text-brand-300">{stats.questoesGeradas}</div></div>
+                          <div className="bg-black/20 rounded-xl p-3 text-xs"><div className="text-zinc-500">Horas previstas</div><div className="text-lg font-bold text-white">{stats.horasTotais}h</div></div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-brand-300 mb-2">Cronograma</div>
+                          <div className="grid md:grid-cols-2 gap-2">
+                            {stats.cronograma.slice(0, 12).map((d: any) => (
+                              <div key={d.dia} className="bg-black/20 rounded-xl p-3 text-xs">
+                                <div className="font-semibold text-zinc-200">D{d.dia} · {d.foco}</div>
+                                <div className="text-zinc-500 mt-1">{d.data} · {d.turno} · {d.horasPorDia}h · {d.metaQuestoes} questões</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-sm"><strong>Foco:</strong> {data?.banca?.foco || 'Não informado'}</div>
+                        <div>
+                          <div className="text-xs font-bold text-brand-300 mb-2">Matérias</div>
+                          <div className="flex flex-wrap gap-2">{(data.materias || []).map((m: any, i: number) => <span key={i} className="chip text-xs">{m.nome || m.materia}</span>)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-brand-300 mb-2">Flashcards</div>
+                          <div className="grid md:grid-cols-2 gap-2">{(data.flashcards || []).slice(0, 6).map((f: any, i: number) => <div key={i} className="bg-black/20 rounded-xl p-3 text-xs"><div className="font-semibold text-zinc-200">{f.pergunta}</div><div className="text-zinc-500 mt-1">{f.resposta}</div></div>)}</div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
