@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, CheckCircle2, ExternalLink, Loader2, RotateCcw, Sparkles, Target } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -45,6 +45,14 @@ function diaSemanaLabel(date: Date) {
   return WEEK_DAYS.find(d => d.key === date.getDay())?.label || 'Dia'
 }
 
+function dateInputValue(value: any) {
+  if (!value) return ''
+  const text = String(value)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) return text.slice(0, 10)
+  return ''
+}
+
 export default function PlanoQuestoesPage() {
   const [banca, setBanca] = useState('')
   const [cargo, setCargo] = useState('')
@@ -56,6 +64,7 @@ export default function PlanoQuestoesPage() {
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5])
   const [turno, setTurno] = useState('Noite')
   const [loading, setLoading] = useState(false)
+  const [loadingSaved, setLoadingSaved] = useState(false)
   const [savingPlan, setSavingPlan] = useState(false)
   const [savedPlanId, setSavedPlanId] = useState<string | null>(null)
   const [progress, setProgress] = useState<PlanProgress>({ diasConcluidos: [], questoesGeradas: 0, totalDias: 0, percentual: 0 })
@@ -67,6 +76,59 @@ export default function PlanoQuestoesPage() {
 
   const materias = useMemo(() => materiasText.split('\n').map(s => s.trim()).filter(Boolean), [materiasText])
 
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('id')
+    if (id) carregarPlanoSalvo(id)
+  }, [])
+
+  async function carregarPlanoSalvo(id: string) {
+    setLoadingSaved(true)
+    try {
+      const res = await fetch(`/api/generated?planId=${encodeURIComponent(id)}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.plan) {
+        toast.error(data.error || 'Plano salvo não encontrado')
+        return
+      }
+
+      const saved = data.plan
+      const json = saved.planJson || {}
+      const cronograma: DayPlan[] = Array.isArray(json.cronograma) ? json.cronograma : []
+      const progresso = json.progresso || {}
+      const daysCompleted = saved.daysCompleted || {}
+      const generatedByDay: Record<number, number> = {}
+
+      Object.entries(daysCompleted).forEach(([key, value]: any) => {
+        generatedByDay[Number(key)] = Number(value?.questionsGenerated || 0)
+      })
+
+      setSavedPlanId(saved.id)
+      setBanca(json.banca || saved.banca || '')
+      setCargo(json.cargo || saved.cargo || '')
+      setExamDate(dateInputValue(json.examDate || saved.examDate))
+      setSelectedDays(Array.isArray(json.selectedDays) ? json.selectedDays.map(Number) : [1, 2, 3, 4, 5])
+      setTurno(json.turno || 'Noite')
+      setHoursPerDay(Number(json.hoursPerDay || saved.hoursPerDay || 2))
+      setQuestionsPerDay(Number(json.questionsPerDay || 30))
+      setSource(['geradas', 'cadernos', 'ambos'].includes(json.source) ? json.source : 'ambos')
+      setMateriasText(Array.isArray(json.materias) && json.materias.length ? json.materias.join('\n') : (saved.editalText || DEFAULT_MATERIAS))
+      setPlan(cronograma)
+      setGeneratedDays(generatedByDay)
+      setProgress({
+        diasConcluidos: Array.isArray(progresso.diasConcluidos) ? progresso.diasConcluidos.map(Number) : [],
+        questoesGeradas: Number(progresso.questoesGeradas || 0),
+        totalDias: Number(progresso.totalDias || cronograma.length || 0),
+        percentual: Number(progresso.percentual || 0),
+        ultimaAtualizacao: progresso.ultimaAtualizacao,
+      })
+      toast.success('Plano carregado para continuar')
+    } catch {
+      toast.error('Erro ao carregar plano salvo')
+    } finally {
+      setLoadingSaved(false)
+    }
+  }
+
   function toggleDay(day: number) {
     setSelectedDays(prev => {
       if (prev.includes(day)) return prev.filter(d => d !== day)
@@ -75,7 +137,7 @@ export default function PlanoQuestoesPage() {
   }
 
   function resetarPlano() {
-    if (loading || generatingDay !== null || planLockRef.current || savingPlan) {
+    if (loading || generatingDay !== null || planLockRef.current || savingPlan || loadingSaved) {
       toast.info('Aguarde a geração atual finalizar')
       return
     }
@@ -155,7 +217,7 @@ export default function PlanoQuestoesPage() {
   }
 
   function gerarPlano() {
-    if (planLockRef.current || loading || savingPlan) {
+    if (planLockRef.current || loading || savingPlan || loadingSaved) {
       toast.info('Já existe uma geração de plano em andamento')
       return
     }
@@ -345,11 +407,11 @@ export default function PlanoQuestoesPage() {
             <p className="text-xs text-zinc-600 mt-2">Essa escolha orienta o cronograma. O botão de gerar usa IA e salva em Meus Gerados.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button onClick={gerarPlano} disabled={loading || planLockRef.current || savingPlan} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
-              {(loading || savingPlan) && <Loader2 size={16} className="animate-spin" />}
-              {loading ? 'Gerando plano...' : savingPlan ? 'Salvando...' : 'Gerar plano'}
+            <button onClick={gerarPlano} disabled={loading || planLockRef.current || savingPlan || loadingSaved} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
+              {(loading || savingPlan || loadingSaved) && <Loader2 size={16} className="animate-spin" />}
+              {loadingSaved ? 'Carregando...' : loading ? 'Gerando plano...' : savingPlan ? 'Salvando...' : 'Gerar plano'}
             </button>
-            <button onClick={resetarPlano} type="button" disabled={loading || generatingDay !== null || savingPlan} className="btn-secondary w-full flex items-center justify-center gap-2 h-11 disabled:opacity-50">
+            <button onClick={resetarPlano} type="button" disabled={loading || generatingDay !== null || savingPlan || loadingSaved} className="btn-secondary w-full flex items-center justify-center gap-2 h-11 disabled:opacity-50">
               <RotateCcw size={15} /> Resetar
             </button>
           </div>
@@ -368,7 +430,7 @@ export default function PlanoQuestoesPage() {
           {!plan.length && (
             <div className="card p-10 text-center text-zinc-500">
               <CalendarDays size={34} className="mx-auto mb-3 text-zinc-600" />
-              Preencha os dados para criar uma trilha diária de questões.
+              {loadingSaved ? 'Carregando plano salvo...' : 'Preencha os dados para criar uma trilha diária de questões.'}
             </div>
           )}
 
@@ -402,7 +464,7 @@ export default function PlanoQuestoesPage() {
                     <Link href="/gerados" className="rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
                       <ExternalLink size={13} /> Meus Gerados
                     </Link>
-                    <button onClick={resetarPlano} disabled={loading || generatingDay !== null || savingPlan} className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 flex items-center gap-1.5 disabled:opacity-50">
+                    <button onClick={resetarPlano} disabled={loading || generatingDay !== null || savingPlan || loadingSaved} className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 flex items-center gap-1.5 disabled:opacity-50">
                       <RotateCcw size={13} /> Resetar tudo
                     </button>
                   </div>
