@@ -17,6 +17,14 @@ type DayPlan = {
   observacao: string
 }
 
+type PlanProgress = {
+  diasConcluidos: number[]
+  questoesGeradas: number
+  totalDias: number
+  percentual: number
+  ultimaAtualizacao?: string
+}
+
 const DEFAULT_MATERIAS = 'Português\nDireito Administrativo\nDireito Constitucional\nInformática\nRaciocínio Lógico'
 const WEEK_DAYS = [
   { key: 1, label: 'Segunda' },
@@ -50,6 +58,7 @@ export default function PlanoQuestoesPage() {
   const [loading, setLoading] = useState(false)
   const [savingPlan, setSavingPlan] = useState(false)
   const [savedPlanId, setSavedPlanId] = useState<string | null>(null)
+  const [progress, setProgress] = useState<PlanProgress>({ diasConcluidos: [], questoesGeradas: 0, totalDias: 0, percentual: 0 })
   const [generatingDay, setGeneratingDay] = useState<number | null>(null)
   const [generatedDays, setGeneratedDays] = useState<Record<number, number>>({})
   const [plan, setPlan] = useState<DayPlan[]>([])
@@ -74,6 +83,7 @@ export default function PlanoQuestoesPage() {
     setGeneratedDays({})
     setGeneratingDay(null)
     setSavedPlanId(null)
+    setProgress({ diasConcluidos: [], questoesGeradas: 0, totalDias: 0, percentual: 0 })
     dayLocksRef.current = {}
     setBanca('')
     setCargo('')
@@ -116,12 +126,32 @@ export default function PlanoQuestoesPage() {
         return
       }
       setSavedPlanId(data.plan?.id || null)
+      setProgress({ diasConcluidos: [], questoesGeradas: 0, totalDias: rows.length, percentual: 0, ultimaAtualizacao: new Date().toISOString() })
       toast.success('Plano gerado e salvo em Meus Gerados')
     } catch {
       toast.error('Plano gerado, mas não foi salvo em Meus Gerados')
     } finally {
       setSavingPlan(false)
     }
+  }
+
+  async function atualizarProgresso(day: DayPlan, generated: number) {
+    if (!savedPlanId || generated <= 0) return
+    try {
+      const res = await fetch('/api/generated', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_question_plan_progress',
+          planId: savedPlanId,
+          dayNumber: day.dia,
+          generated,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return
+      if (data.progresso) setProgress(data.progresso)
+    } catch {}
   }
 
   function gerarPlano() {
@@ -138,6 +168,7 @@ export default function PlanoQuestoesPage() {
     planLockRef.current = true
     setLoading(true)
     setSavedPlanId(null)
+    setProgress({ diasConcluidos: [], questoesGeradas: 0, totalDias: 0, percentual: 0 })
     setGeneratedDays({})
     dayLocksRef.current = {}
     setTimeout(() => {
@@ -181,6 +212,7 @@ export default function PlanoQuestoesPage() {
       }
 
       setPlan(rows)
+      setProgress({ diasConcluidos: [], questoesGeradas: 0, totalDias: rows.length, percentual: 0 })
       setLoading(false)
       planLockRef.current = false
       salvarPlanoGerado(rows)
@@ -235,7 +267,8 @@ export default function PlanoQuestoesPage() {
       }
 
       if (created > 0) {
-        toast.success(`${created} questão(ões) gerada(s) e salvas em Meus Gerados`)
+        await atualizarProgresso(day, created)
+        toast.success(`${created} questão(ões) gerada(s). Dia ${day.dia} marcado como concluído.`)
       }
     } catch {
       toast.error('Erro ao gerar questões do dia')
@@ -247,6 +280,8 @@ export default function PlanoQuestoesPage() {
 
   const totalQuestoes = plan.reduce((acc, d) => acc + d.metaQuestoes, 0)
   const totalHoras = plan.reduce((acc, d) => acc + Number(d.horasPorDia || 0), 0)
+  const diasConcluidos = progress.diasConcluidos || []
+  const progressoPercentual = progress.percentual || (plan.length ? Math.round((diasConcluidos.length / plan.length) * 100) : 0)
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
@@ -323,7 +358,7 @@ export default function PlanoQuestoesPage() {
         <div className="space-y-4">
           {savedPlanId && (
             <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <span>Plano salvo em Meus Gerados.</span>
+              <span>Plano salvo em Meus Gerados. Progresso: {progressoPercentual}%.</span>
               <Link href="/gerados" className="rounded-xl border border-green-400/20 bg-green-500/10 px-3 py-2 text-xs font-semibold text-green-100 flex items-center gap-1.5 w-fit">
                 <ExternalLink size={13} /> Abrir Meus Gerados
               </Link>
@@ -340,10 +375,21 @@ export default function PlanoQuestoesPage() {
           {!!plan.length && (
             <>
               <div className="grid md:grid-cols-4 gap-3">
-                <div className="card p-4"><div className="text-xs text-zinc-500">Dias de plano</div><div className="font-heading text-2xl font-bold text-white">{plan.length}</div></div>
-                <div className="card p-4"><div className="text-xs text-zinc-500">Meta total</div><div className="font-heading text-2xl font-bold text-brand-300">{totalQuestoes}</div></div>
+                <div className="card p-4"><div className="text-xs text-zinc-500">Dias concluídos</div><div className="font-heading text-2xl font-bold text-white">{diasConcluidos.length}/{plan.length}</div></div>
+                <div className="card p-4"><div className="text-xs text-zinc-500">Questões geradas</div><div className="font-heading text-2xl font-bold text-brand-300">{progress.questoesGeradas || 0}</div></div>
                 <div className="card p-4"><div className="text-xs text-zinc-500">Horas totais</div><div className="font-heading text-2xl font-bold text-green-300">{totalHoras}h</div></div>
-                <div className="card p-4"><div className="text-xs text-zinc-500">Turno</div><div className="font-heading text-lg font-bold text-white truncate">{turno}</div></div>
+                <div className="card p-4"><div className="text-xs text-zinc-500">Progresso</div><div className="font-heading text-2xl font-bold text-white">{progressoPercentual}%</div></div>
+              </div>
+
+              <div className="card p-4">
+                <div className="flex items-center justify-between text-xs text-zinc-500 mb-2">
+                  <span>Progresso do plano</span>
+                  <span>{diasConcluidos.length} de {plan.length} dias</span>
+                </div>
+                <div className="h-3 rounded-full bg-zinc-800 overflow-hidden">
+                  <div className="h-full bg-brand-500 transition-all" style={{ width: `${progressoPercentual}%` }} />
+                </div>
+                <div className="text-xs text-zinc-500 mt-2">Meta total prevista: {totalQuestoes} questões.</div>
               </div>
 
               <div className="card overflow-hidden">
@@ -364,13 +410,17 @@ export default function PlanoQuestoesPage() {
                 <div className="divide-y divide-white/[0.05]">
                   {plan.map(day => {
                     const generated = generatedDays[day.dia] || 0
+                    const completed = diasConcluidos.includes(day.dia)
                     return (
                       <div key={day.dia} className="p-4 hover:bg-white/[0.02] transition-colors">
                         <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
                           <div className="flex gap-3">
-                            <div className="w-10 h-10 rounded-2xl bg-brand-500/10 border border-brand-500/20 text-brand-300 flex items-center justify-center font-bold text-xs">D{day.dia}</div>
+                            <div className={`w-10 h-10 rounded-2xl border flex items-center justify-center font-bold text-xs ${completed ? 'bg-green-500/10 border-green-500/20 text-green-300' : 'bg-brand-500/10 border-brand-500/20 text-brand-300'}`}>{completed ? '✓' : `D${day.dia}`}</div>
                             <div>
-                              <div className="font-semibold text-sm text-zinc-100">{day.foco}</div>
+                              <div className="font-semibold text-sm text-zinc-100 flex flex-wrap items-center gap-2">
+                                {day.foco}
+                                {completed && <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-300">Concluído</span>}
+                              </div>
                               <div className="text-xs text-zinc-500 mt-1">{day.data} · {day.diaSemana} · {day.turno} · {day.horasPorDia}h · {day.tipo}</div>
                             </div>
                           </div>
@@ -384,7 +434,7 @@ export default function PlanoQuestoesPage() {
                               className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50"
                             >
                               {generatingDay === day.dia ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                              {generatingDay === day.dia ? 'Gerando...' : generated > 0 ? `Gerar mais (${generated} feitas)` : 'Gerar questões do dia'}
+                              {generatingDay === day.dia ? 'Gerando...' : completed ? `Gerar mais (${generated} feitas)` : generated > 0 ? `Gerar mais (${generated} feitas)` : 'Gerar questões do dia'}
                             </button>
                           </div>
                         </div>
