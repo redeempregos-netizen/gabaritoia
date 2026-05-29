@@ -48,6 +48,8 @@ export default function PlanoQuestoesPage() {
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5])
   const [turno, setTurno] = useState('Noite')
   const [loading, setLoading] = useState(false)
+  const [savingPlan, setSavingPlan] = useState(false)
+  const [savedPlanId, setSavedPlanId] = useState<string | null>(null)
   const [generatingDay, setGeneratingDay] = useState<number | null>(null)
   const [generatedDays, setGeneratedDays] = useState<Record<number, number>>({})
   const [plan, setPlan] = useState<DayPlan[]>([])
@@ -64,13 +66,14 @@ export default function PlanoQuestoesPage() {
   }
 
   function resetarPlano() {
-    if (loading || generatingDay !== null || planLockRef.current) {
+    if (loading || generatingDay !== null || planLockRef.current || savingPlan) {
       toast.info('Aguarde a geração atual finalizar')
       return
     }
     setPlan([])
     setGeneratedDays({})
     setGeneratingDay(null)
+    setSavedPlanId(null)
     dayLocksRef.current = {}
     setBanca('')
     setCargo('')
@@ -84,8 +87,45 @@ export default function PlanoQuestoesPage() {
     toast.success('Plano resetado')
   }
 
+  async function salvarPlanoGerado(rows: DayPlan[]) {
+    if (!rows.length) return
+    setSavingPlan(true)
+    try {
+      const res = await fetch('/api/generated', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_question_plan',
+          title: `Plano de Questões — ${cargo}`,
+          banca,
+          cargo,
+          examDate,
+          hoursPerDay,
+          questionsPerDay,
+          selectedDays,
+          turno,
+          source,
+          materias,
+          materiasText,
+          plan: rows,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error || 'Plano gerado, mas não foi salvo em Meus Gerados')
+        return
+      }
+      setSavedPlanId(data.plan?.id || null)
+      toast.success('Plano gerado e salvo em Meus Gerados')
+    } catch {
+      toast.error('Plano gerado, mas não foi salvo em Meus Gerados')
+    } finally {
+      setSavingPlan(false)
+    }
+  }
+
   function gerarPlano() {
-    if (planLockRef.current || loading) {
+    if (planLockRef.current || loading || savingPlan) {
       toast.info('Já existe uma geração de plano em andamento')
       return
     }
@@ -97,6 +137,7 @@ export default function PlanoQuestoesPage() {
 
     planLockRef.current = true
     setLoading(true)
+    setSavedPlanId(null)
     setGeneratedDays({})
     dayLocksRef.current = {}
     setTimeout(() => {
@@ -142,7 +183,7 @@ export default function PlanoQuestoesPage() {
       setPlan(rows)
       setLoading(false)
       planLockRef.current = false
-      toast.success('Plano de questões gerado')
+      salvarPlanoGerado(rows)
     }, 350)
   }
 
@@ -269,17 +310,26 @@ export default function PlanoQuestoesPage() {
             <p className="text-xs text-zinc-600 mt-2">Essa escolha orienta o cronograma. O botão de gerar usa IA e salva em Meus Gerados.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button onClick={gerarPlano} disabled={loading || planLockRef.current} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
-              {loading && <Loader2 size={16} className="animate-spin" />}
-              {loading ? 'Gerando plano...' : 'Gerar plano'}
+            <button onClick={gerarPlano} disabled={loading || planLockRef.current || savingPlan} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
+              {(loading || savingPlan) && <Loader2 size={16} className="animate-spin" />}
+              {loading ? 'Gerando plano...' : savingPlan ? 'Salvando...' : 'Gerar plano'}
             </button>
-            <button onClick={resetarPlano} type="button" disabled={loading || generatingDay !== null} className="btn-secondary w-full flex items-center justify-center gap-2 h-11 disabled:opacity-50">
+            <button onClick={resetarPlano} type="button" disabled={loading || generatingDay !== null || savingPlan} className="btn-secondary w-full flex items-center justify-center gap-2 h-11 disabled:opacity-50">
               <RotateCcw size={15} /> Resetar
             </button>
           </div>
         </div>
 
         <div className="space-y-4">
+          {savedPlanId && (
+            <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <span>Plano salvo em Meus Gerados.</span>
+              <Link href="/gerados" className="rounded-xl border border-green-400/20 bg-green-500/10 px-3 py-2 text-xs font-semibold text-green-100 flex items-center gap-1.5 w-fit">
+                <ExternalLink size={13} /> Abrir Meus Gerados
+              </Link>
+            </div>
+          )}
+
           {!plan.length && (
             <div className="card p-10 text-center text-zinc-500">
               <CalendarDays size={34} className="mx-auto mb-3 text-zinc-600" />
@@ -306,7 +356,7 @@ export default function PlanoQuestoesPage() {
                     <Link href="/gerados" className="rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
                       <ExternalLink size={13} /> Meus Gerados
                     </Link>
-                    <button onClick={resetarPlano} disabled={loading || generatingDay !== null} className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 flex items-center gap-1.5 disabled:opacity-50">
+                    <button onClick={resetarPlano} disabled={loading || generatingDay !== null || savingPlan} className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 flex items-center gap-1.5 disabled:opacity-50">
                       <RotateCcw size={13} /> Resetar tudo
                     </button>
                   </div>
