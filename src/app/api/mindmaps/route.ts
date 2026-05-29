@@ -86,6 +86,25 @@ export async function POST(req: NextRequest) {
       if (cfg?.value) provider = cfg.value as AIProvider
     }
 
+    const recentDuplicate = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT id, title, topic, data_json AS data, created_at AS "createdAt"
+      FROM mind_maps
+      WHERE user_id = $1
+        AND lower(trim(topic)) = lower(trim($2))
+        AND created_at > NOW() - INTERVAL '90 seconds'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, session.userId, params.tema)
+
+    if (recentDuplicate?.[0]) {
+      const row = recentDuplicate[0]
+      return NextResponse.json({
+        ok: true,
+        reused: true,
+        mindMap: { id: row.id, title: row.title, topic: row.topic, data: row.data, createdAt: row.createdAt },
+      })
+    }
+
     const prompt = `Crie um mapa mental VISUAL para estudo de concursos públicos.
 
 Tema: ${params.tema}
