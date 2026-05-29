@@ -8,6 +8,8 @@ import { toast } from 'sonner'
 type DayPlan = {
   dia: number
   data: string
+  diaSemana: string
+  turno: string
   foco: string
   metaQuestoes: number
   tipo: string
@@ -15,9 +17,23 @@ type DayPlan = {
 }
 
 const DEFAULT_MATERIAS = 'Português\nDireito Administrativo\nDireito Constitucional\nInformática\nRaciocínio Lógico'
+const WEEK_DAYS = [
+  { key: 1, label: 'Segunda' },
+  { key: 2, label: 'Terça' },
+  { key: 3, label: 'Quarta' },
+  { key: 4, label: 'Quinta' },
+  { key: 5, label: 'Sexta' },
+  { key: 6, label: 'Sábado' },
+  { key: 0, label: 'Domingo' },
+]
+const TURNOS = ['Manhã', 'Tarde', 'Noite']
 
 function formatDate(date: Date) {
   return date.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })
+}
+
+function diaSemanaLabel(date: Date) {
+  return WEEK_DAYS.find(d => d.key === date.getDay())?.label || 'Dia'
 }
 
 export default function PlanoQuestoesPage() {
@@ -27,12 +43,21 @@ export default function PlanoQuestoesPage() {
   const [questionsPerDay, setQuestionsPerDay] = useState(30)
   const [materiasText, setMateriasText] = useState(DEFAULT_MATERIAS)
   const [source, setSource] = useState<'geradas' | 'cadernos' | 'ambos'>('ambos')
+  const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5])
+  const [turno, setTurno] = useState('Noite')
   const [loading, setLoading] = useState(false)
   const [generatingDay, setGeneratingDay] = useState<number | null>(null)
   const [generatedDays, setGeneratedDays] = useState<Record<number, number>>({})
   const [plan, setPlan] = useState<DayPlan[]>([])
 
   const materias = useMemo(() => materiasText.split('\n').map(s => s.trim()).filter(Boolean), [materiasText])
+
+  function toggleDay(day: number) {
+    setSelectedDays(prev => {
+      if (prev.includes(day)) return prev.filter(d => d !== day)
+      return [...prev, day].sort((a, b) => a - b)
+    })
+  }
 
   function resetarPlano() {
     setPlan([])
@@ -44,6 +69,8 @@ export default function PlanoQuestoesPage() {
     setQuestionsPerDay(30)
     setMateriasText(DEFAULT_MATERIAS)
     setSource('ambos')
+    setSelectedDays([1, 2, 3, 4, 5])
+    setTurno('Noite')
     toast.success('Plano resetado')
   }
 
@@ -51,6 +78,7 @@ export default function PlanoQuestoesPage() {
     if (!banca.trim()) { toast.error('Informe a banca'); return }
     if (!cargo.trim()) { toast.error('Informe o cargo'); return }
     if (!materias.length) { toast.error('Informe pelo menos uma matéria'); return }
+    if (!selectedDays.length) { toast.error('Escolha pelo menos um dia da semana'); return }
 
     setLoading(true)
     setGeneratedDays({})
@@ -58,19 +86,24 @@ export default function PlanoQuestoesPage() {
       const today = new Date()
       const end = examDate ? new Date(`${examDate}T12:00:00`) : new Date(today.getTime() + 21 * 86400000)
       const diffDays = Math.max(7, Math.ceil((end.getTime() - today.getTime()) / 86400000))
-      const totalDays = Math.min(diffDays, 45)
       const rows: DayPlan[] = []
+      let studyIndex = 0
 
-      for (let i = 0; i < totalDays; i++) {
-        const d = new Date(today.getTime() + i * 86400000)
-        const isReview = (i + 1) % 5 === 0
-        const isSimulado = (i + 1) % 7 === 0
-        const materia = materias[i % materias.length]
-        const materia2 = materias[(i + 1) % materias.length]
+      for (let offset = 0; offset <= diffDays && rows.length < 45; offset++) {
+        const d = new Date(today.getTime() + offset * 86400000)
+        if (!selectedDays.includes(d.getDay())) continue
+
+        const count = studyIndex + 1
+        const isReview = count % 5 === 0
+        const isSimulado = count % 7 === 0
+        const materia = materias[studyIndex % materias.length]
+        const materia2 = materias[(studyIndex + 1) % materias.length]
 
         rows.push({
-          dia: i + 1,
+          dia: count,
           data: formatDate(d),
+          diaSemana: diaSemanaLabel(d),
+          turno,
           foco: isSimulado ? `Simulado misto: ${materias.slice(0, 4).join(', ')}` : isReview ? `Revisão de erros: ${materia} + ${materia2}` : materia,
           metaQuestoes: isSimulado ? Math.max(questionsPerDay, 40) : isReview ? Math.max(15, Math.round(questionsPerDay * 0.7)) : questionsPerDay,
           tipo: isSimulado ? 'Simulado' : isReview ? 'Revisão' : 'Questões novas',
@@ -84,7 +117,9 @@ export default function PlanoQuestoesPage() {
                   ? 'Usar questões criadas pelo Gerador de Questões com IA.'
                   : 'Combinar questões dos PDFs importados com questões criadas pela IA.',
         })
+        studyIndex++
       }
+
       setPlan(rows)
       setLoading(false)
       toast.success('Plano de questões gerado')
@@ -121,7 +156,7 @@ export default function PlanoQuestoesPage() {
             type: 'MULTIPLE_CHOICE',
             format: 'Estilo banca',
             quantity,
-            editalText: `REFERÊNCIA DO PLANO DE QUESTÕES: ${cargo}\nDIA: ${day.dia}\nDATA: ${day.data}\nTIPO: ${day.tipo}\nFOCO: ${day.foco}\nORIENTAÇÃO: ${day.observacao}`,
+            editalText: `REFERÊNCIA DO PLANO DE QUESTÕES: ${cargo}\nDIA DO PLANO: ${day.dia}\nDATA: ${day.data}\nDIA DA SEMANA: ${day.diaSemana}\nTURNO DE ESTUDO: ${day.turno}\nTIPO: ${day.tipo}\nFOCO: ${day.foco}\nORIENTAÇÃO: ${day.observacao}`,
           }),
         })
         const data = await res.json()
@@ -170,6 +205,18 @@ export default function PlanoQuestoesPage() {
             <input className="input" type="date" value={examDate} onChange={e => setExamDate(e.target.value)} />
           </div>
           <div>
+            <label className="label">Dias da semana que vai estudar</label>
+            <div className="flex flex-wrap gap-2">
+              {WEEK_DAYS.map(d => <button key={d.key} type="button" onClick={() => toggleDay(d.key)} className={`chip text-xs ${selectedDays.includes(d.key) ? 'chip-active' : ''}`}>{d.label}</button>)}
+            </div>
+          </div>
+          <div>
+            <label className="label">Turno de estudo</label>
+            <div className="flex flex-wrap gap-2">
+              {TURNOS.map(t => <button key={t} type="button" onClick={() => setTurno(t)} className={`chip ${turno === t ? 'chip-active' : ''}`}>{t}</button>)}
+            </div>
+          </div>
+          <div>
             <label className="label">Questões por dia</label>
             <input className="input" type="number" min={5} max={200} value={questionsPerDay} onChange={e => setQuestionsPerDay(Number(e.target.value))} />
           </div>
@@ -211,7 +258,7 @@ export default function PlanoQuestoesPage() {
               <div className="grid md:grid-cols-3 gap-3">
                 <div className="card p-4"><div className="text-xs text-zinc-500">Dias de plano</div><div className="font-heading text-2xl font-bold text-white">{plan.length}</div></div>
                 <div className="card p-4"><div className="text-xs text-zinc-500">Meta total</div><div className="font-heading text-2xl font-bold text-brand-300">{totalQuestoes}</div></div>
-                <div className="card p-4"><div className="text-xs text-zinc-500">Banca</div><div className="font-heading text-lg font-bold text-white truncate">{banca}</div></div>
+                <div className="card p-4"><div className="text-xs text-zinc-500">Turno</div><div className="font-heading text-lg font-bold text-white truncate">{turno}</div></div>
               </div>
 
               <div className="card overflow-hidden">
@@ -239,7 +286,7 @@ export default function PlanoQuestoesPage() {
                             <div className="w-10 h-10 rounded-2xl bg-brand-500/10 border border-brand-500/20 text-brand-300 flex items-center justify-center font-bold text-xs">D{day.dia}</div>
                             <div>
                               <div className="font-semibold text-sm text-zinc-100">{day.foco}</div>
-                              <div className="text-xs text-zinc-500 mt-1">{day.data} · {day.tipo}</div>
+                              <div className="text-xs text-zinc-500 mt-1">{day.data} · {day.diaSemana} · {day.turno} · {day.tipo}</div>
                             </div>
                           </div>
                           <div className="flex flex-col sm:flex-row md:flex-col gap-2 md:items-end">
