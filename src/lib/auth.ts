@@ -1,6 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
-import { prisma } from './prisma'
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET
@@ -8,6 +7,11 @@ function getJwtSecret() {
     throw new Error('JWT_SECRET ausente ou fraco. Configure uma chave com pelo menos 32 caracteres.')
   }
   return new TextEncoder().encode(secret)
+}
+
+async function getPrisma() {
+  const mod = await import('./prisma')
+  return mod.prisma
 }
 
 export interface SessionPayload {
@@ -26,6 +30,7 @@ export async function createSession(payload: SessionPayload): Promise<string> {
     .sign(getJwtSecret())
 
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+  const prisma = await getPrisma()
   await prisma.session.create({
     data: { userId: payload.userId, token, expiresAt },
   })
@@ -52,6 +57,7 @@ export async function getSession(): Promise<SessionPayload | null> {
 
   // Sempre busca o usuário atual no banco para evitar sessão antiga com plano antigo.
   // Isso permite que alterações feitas no admin/Supabase liberem o acesso imediatamente.
+  const prisma = await getPrisma()
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
     select: { id: true, email: true, role: true, plan: true },
@@ -69,6 +75,7 @@ export async function getSession(): Promise<SessionPayload | null> {
 }
 
 export async function deleteSession(token: string) {
+  const prisma = await getPrisma()
   await prisma.session.deleteMany({ where: { token } })
 }
 
