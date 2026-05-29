@@ -44,6 +44,46 @@ async function ensureTables() {
   `)
 }
 
+const KNOWN_BANCAS = [
+  'CEBRASPE', 'CESPE', 'FGV', 'FCC', 'CESGRANRIO', 'VUNESP', 'QUADRIX', 'IBFC', 'IDECAN',
+  'FUNDATEC', 'UNESC', 'OBJETIVA', 'AMEOSC', 'AVANÇA SP', 'IDHTEC', 'FEPESE', 'IGEDUC',
+  'ADVISE', 'FUNATEC', 'ITAME', 'FACET CONCURSOS', 'IVIN', 'FUNVAPI', 'CONSEP', 'EDUCA',
+  'FAFIPA', 'AOCP', 'INSTITUTO AOCP', 'CONSULPLAN', 'LEGALLE', 'FURB', 'INSTITUTO MAIS',
+  'SELECON', 'IADES', 'IBADE', 'INSTITUTO ACCESS', 'CETREDE', 'UPENET', 'NUCEPE', 'FUNDEP'
+]
+
+function normalizeExamText(text?: string | null) {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim()
+}
+
+function inferBancaFromExam(exam?: string | null) {
+  const normalized = normalizeExamText(exam)
+  if (!normalized) return ''
+
+  for (const banca of KNOWN_BANCAS) {
+    const b = normalizeExamText(banca)
+    if (new RegExp(`(^|\\s)${b.replace(/\s+/g, '\\s+')}($|\\s)`).test(normalized)) return banca
+  }
+
+  const beforeDash = String(exam || '').split(/[–—-]/)[0]?.trim()
+  if (beforeDash && beforeDash.length >= 3 && beforeDash.length <= 40 && /^[A-Za-zÀ-ú0-9 .]+$/.test(beforeDash)) {
+    return beforeDash.toUpperCase()
+  }
+
+  return ''
+}
+
+function normalizeBanca(row: any) {
+  const current = String(row.banca || '').trim()
+  if (current && !/não identificada/i.test(current)) return current
+  return inferBancaFromExam(row.exam) || 'Não identificada'
+}
+
 function normalizeCorrectIndex(row: any) {
   const options = Array.isArray(row.options) ? row.options : []
   const answer = String(row.correctAnswer || '').trim().toUpperCase()
@@ -92,7 +132,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     ORDER BY q.number ASC
   `, params.id, session.userId)
 
-  const normalizedQuestions = questions.map(q => ({ ...q, correctIndex: normalizeCorrectIndex(q) }))
+  const normalizedQuestions = questions.map(q => ({ ...q, banca: normalizeBanca(q), correctIndex: normalizeCorrectIndex(q) }))
   const answered = normalizedQuestions.filter(q => q.selectedIndex !== null && q.selectedIndex !== undefined).length
   const correct = normalizedQuestions.filter(q => q.isCorrect === true).length
 
