@@ -13,11 +13,33 @@ async function ensureGeneratedQuestionsTable() {
   `)
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
   await ensureGeneratedQuestionsTable()
+
+  const planId = req.nextUrl.searchParams.get('planId')
+  if (planId) {
+    const plan = await prisma.studyPlan.findFirst({
+      where: { id: planId, userId: session.userId },
+      select: {
+        id: true,
+        title: true,
+        banca: true,
+        cargo: true,
+        examDate: true,
+        hoursPerDay: true,
+        level: true,
+        editalText: true,
+        planJson: true,
+        daysCompleted: true,
+        createdAt: true,
+      },
+    })
+    if (!plan) return NextResponse.json({ error: 'Plano não encontrado.' }, { status: 404 })
+    return NextResponse.json({ ok: true, plan })
+  }
 
   const plans = await prisma.studyPlan.findMany({
     where: { userId: session.userId },
