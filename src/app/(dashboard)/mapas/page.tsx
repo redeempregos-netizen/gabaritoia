@@ -325,7 +325,7 @@ export default function MapasPage() {
         </div>
 
         <div className="space-y-4">
-          {queue && loading && <div className="card p-4 text-sm text-zinc-300">Status: {queue.status} · {queue.progress}%</div>}
+          {queue && loading && <div className="card p-4 text-sm text-zinc-300">Status: {queue.status}</div>}
 
           {!active && <div className="card p-10 text-center text-zinc-500">Nenhum mapa selecionado.</div>}
 
