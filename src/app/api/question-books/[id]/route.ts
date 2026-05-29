@@ -44,6 +44,24 @@ async function ensureTables() {
   `)
 }
 
+function normalizeCorrectIndex(row: any) {
+  const options = Array.isArray(row.options) ? row.options : []
+  const answer = String(row.correctAnswer || '').trim().toUpperCase()
+  const stored = Number(row.correctIndex)
+
+  if (options.length === 2) {
+    const o0 = String(options[0] || '').toLowerCase()
+    const o1 = String(options[1] || '').toLowerCase()
+    const isTrueFalse = (o0.includes('certo') || o0 === 'c') && (o1.includes('errado') || o1 === 'e')
+    if (isTrueFalse) {
+      if (answer === 'C' || answer === 'CERTO') return 0
+      if (answer === 'E' || answer === 'ERRADO') return 1
+    }
+  }
+
+  return Number.isFinite(stored) ? stored : -1
+}
+
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
@@ -74,10 +92,11 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     ORDER BY q.number ASC
   `, params.id, session.userId)
 
-  const answered = questions.filter(q => q.selectedIndex !== null && q.selectedIndex !== undefined).length
-  const correct = questions.filter(q => q.isCorrect === true).length
+  const normalizedQuestions = questions.map(q => ({ ...q, correctIndex: normalizeCorrectIndex(q) }))
+  const answered = normalizedQuestions.filter(q => q.selectedIndex !== null && q.selectedIndex !== undefined).length
+  const correct = normalizedQuestions.filter(q => q.isCorrect === true).length
 
-  return NextResponse.json({ ok: true, book, questions, stats: { answered, correct, total: questions.length } })
+  return NextResponse.json({ ok: true, book, questions: normalizedQuestions, stats: { answered, correct, total: normalizedQuestions.length } })
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -93,7 +112,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!questionId || Number.isNaN(selectedIndex)) return NextResponse.json({ error: 'Resposta inválida.' }, { status: 400 })
 
   const rows = await prisma.$queryRawUnsafe<any[]>(`
-    SELECT id, correct_index AS "correctIndex"
+    SELECT id, correct_answer AS "correctAnswer", correct_index AS "correctIndex", options_json AS options
     FROM imported_questions
     WHERE id = $1 AND book_id = $2 AND user_id = $3
     LIMIT 1
@@ -101,11 +120,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const question = rows[0]
   if (!question) return NextResponse.json({ error: 'Questão não encontrada.' }, { status: 404 })
 
-  const isCorrect = Number(question.correctIndex) === selectedIndex
+  const correctIndex = normalizeCorrectIndex(question)
+  const isCorrect = correctIndex === selectedIndex
   await prisma.$executeRawUnsafe(
     `INSERT INTO imported_question_answers (id, user_id, question_id, selected_index, is_correct) VALUES ($1,$2,$3,$4,$5)`,
     crypto.randomUUID(), session.userId, questionId, selectedIndex, isCorrect
   )
 
-  return NextResponse.json({ ok: true, isCorrect, correctIndex: question.correctIndex })
+  return NextResponse.json({ ok: true, isCorrect, correctIndex })
 }
