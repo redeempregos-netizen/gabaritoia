@@ -22,8 +22,8 @@ export default async function DashboardPage() {
   const total = answers.length
   const correct = answers.filter(a => a.isCorrect).length
   const pct = total ? Math.round(correct / total * 100) : 0
-  const today = new Date().toISOString().split('T')[0]
-  const todayAns = answers.filter(a => a.createdAt.toISOString().startsWith(today)).length
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+  const todayAns = answers.filter(a => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(a.createdAt) === today).length
 
   const areaMap: Record<string, { total: number; correct: number }> = {}
   answers.forEach(a => {
@@ -37,7 +37,7 @@ export default async function DashboardPage() {
     .sort((a, b) => b.pct - a.pct)
     .slice(0, 5)
 
-  const hour = new Date().getHours()
+  const hour = Number(new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }).format(new Date()))
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
   const firstName = user.name.split(' ')[0]
 
