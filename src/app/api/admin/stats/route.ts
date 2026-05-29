@@ -5,6 +5,10 @@ import { callAI } from '@/lib/ai'
 import { encryptSecret } from '@/lib/secrets'
 import type { AIProvider } from '@/types'
 
+async function ensureCreditRenewalColumn() {
+  await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_renewed_at TIMESTAMP(3);`)
+}
+
 async function getAIUsageSummary() {
   try {
     await prisma.$executeRawUnsafe(`
@@ -89,6 +93,8 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
   if (session.role !== 'ADMIN') return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 })
 
+  await ensureCreditRenewalColumn()
+
   const [apiKeys, configs] = await Promise.all([
     prisma.apiKey.findMany(),
     prisma.adminConfig.findMany(),
@@ -120,11 +126,22 @@ export async function GET(req: NextRequest) {
   const [todayAnswers, weekAnswers, recentUsers] = await Promise.all([
     prisma.answer.count({ where: { createdAt: { gte: today } } }),
     prisma.answer.count({ where: { createdAt: { gte: weekAgo } } }),
-    prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-      select: { id: true, name: true, email: true, role: true, plan: true, createdAt: true, streak: true },
-    }),
+    prisma.$queryRawUnsafe<any[]>(`
+      SELECT
+        id,
+        name,
+        email,
+        role,
+        plan,
+        credits,
+        credits_used AS "creditsUsed",
+        created_at AS "createdAt",
+        streak,
+        credits_renewed_at AS "creditsRenewedAt"
+      FROM users
+      ORDER BY created_at DESC
+      LIMIT 50;
+    `),
   ])
 
   return NextResponse.json({
@@ -142,6 +159,7 @@ export async function GET(req: NextRequest) {
     config: {
       maxQtd: Number(configMap.maxQtd || 10),
       defaultProvider: configMap.defaultProvider || 'claude',
+      monthlyFreeCredits: Number(configMap.monthlyFreeCredits || 1000),
     },
   })
 }
@@ -152,8 +170,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 })
   }
 
+  await ensureCreditRenewalColumn()
+
   const body = await req.json()
-  const { action, provider, key, model, enabled, maxQtd, defaultProvider, userId, role, plan } = body
+  const { action, provider, key, model, enabled, maxQtd, defaultProvider, monthlyFreeCredits, userId, role, plan, credits } = body
 
   if (action === 'save_api_key') {
     const encryptedKey = key && !key.startsWith('••') ? encryptSecret(String(key).trim()) : undefined
@@ -190,14 +210,22 @@ export async function POST(req: NextRequest) {
     if (defaultProvider) updates.push(
       prisma.adminConfig.upsert({ where: { key: 'defaultProvider' }, create: { key: 'defaultProvider', value: defaultProvider }, update: { value: defaultProvider } })
     )
+    if (monthlyFreeCredits !== undefined) updates.push(
+      prisma.adminConfig.upsert({ where: { key: 'monthlyFreeCredits' }, create: { key: 'monthlyFreeCredits', value: String(Math.max(0, Number(monthlyFreeCredits) || 0)) }, update: { value: String(Math.max(0, Number(monthlyFreeCredits) || 0)) } })
+    )
     await Promise.all(updates)
     return NextResponse.json({ ok: true })
   }
 
   if (action === 'update_user') {
+    const data: any = {}
+    if (role) data.role = role
+    if (plan) data.plan = plan
+    if (credits !== undefined) data.credits = Math.max(0, Number(credits) || 0)
+
     await prisma.user.update({
       where: { id: userId },
-      data: { ...(role && { role }), ...(plan && { plan }) },
+      data,
     })
     return NextResponse.json({ ok: true })
   }
