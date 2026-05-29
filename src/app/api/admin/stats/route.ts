@@ -134,12 +134,12 @@ export async function GET(req: NextRequest) {
         role,
         plan,
         credits,
-        credits_used AS "creditsUsed",
-        created_at AS "createdAt",
+        "creditsUsed" AS "creditsUsed",
+        "createdAt" AS "createdAt",
         streak,
         credits_renewed_at AS "creditsRenewedAt"
       FROM users
-      ORDER BY created_at DESC
+      ORDER BY "createdAt" DESC
       LIMIT 50;
     `),
   ])
