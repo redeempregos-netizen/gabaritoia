@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { getPlanLabel } from '@/lib/plans'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
-  History, Settings, LogOut, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target,
+  History, Settings, LogOut, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target, UserCircle,
   type LucideIcon
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -19,6 +19,7 @@ type NavItem = {
 
 const ADMIN_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
+  { href: '/conta',      label: 'Minha Conta',         icon: UserCircle },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
   { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Novo' },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
@@ -31,6 +32,7 @@ const ADMIN_NAV: NavItem[] = [
 
 const USER_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
+  { href: '/conta',      label: 'Minha Conta',         icon: UserCircle },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
   { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Novo' },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
