@@ -16,6 +16,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const userMobileNav = [
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
+    { href: '/conta', label: 'Minha Conta', emoji: '👤' },
     { href: '/gerar', label: 'Gerar Questão', emoji: '✦' },
     { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
     { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
@@ -28,6 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const adminMobileNav = [
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
+    { href: '/conta', label: 'Minha Conta', emoji: '👤' },
     { href: '/gerar', label: 'Gerar Questão', emoji: '✦' },
     { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
     { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
