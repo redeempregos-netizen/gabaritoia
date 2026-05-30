@@ -263,7 +263,7 @@ export default function PlanoQuestoesPage() {
           observacao: isSimulado
             ? `Resolver em tempo cronometrado no estilo ${banca}. Separar ${hoursPerDay}h para simulado e correção das erradas.`
             : isReview
-              ? `Usar ${hoursPerDay}h para refazer questões erradas e ler comentários antes de avançar.`
+              ? `Usar ${hoursPerDay}h para refazer questões erradas e ler comentários apenas depois de responder.`
               : source === 'cadernos'
                 ? `Usar ${hoursPerDay}h com questões dos PDFs importados no módulo Cadernos.`
                 : source === 'geradas'
@@ -330,7 +330,7 @@ export default function PlanoQuestoesPage() {
 
       if (created > 0) {
         await atualizarProgresso(day, created)
-        toast.success(`${created} questão(ões) gerada(s). Dia ${day.dia} marcado como concluído.`)
+        toast.success(`${created} questão(ões) gerada(s) e salvas em Meus Gerados para o aluno responder.`)
       }
     } catch {
       toast.error('Erro ao gerar questões do dia')
@@ -352,7 +352,7 @@ export default function PlanoQuestoesPage() {
           <Target size={13} /> Plano de resolução
         </div>
         <h1 className="font-heading text-2xl md:text-3xl font-bold">Plano de Estudos de Questões</h1>
-        <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Monte um cronograma, gere as questões do dia com IA, salve em Meus Gerados e desconte créditos apenas na geração real.</p>
+        <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Monte um cronograma, gere as questões do dia com IA, salve em Meus Gerados e deixe o aluno responder antes de ver o gabarito.</p>
       </div>
 
       <div className="grid lg:grid-cols-[380px_1fr] gap-6">
@@ -420,7 +420,7 @@ export default function PlanoQuestoesPage() {
         <div className="space-y-4">
           {savedPlanId && (
             <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <span>Plano salvo em Meus Gerados. Progresso: {progressoPercentual}%.</span>
+              <span>Plano salvo em Meus Gerados. Questões geradas: {progress.questoesGeradas || 0}. O aluno responde em Meus Gerados.</span>
               <Link href="/gerados" className="rounded-xl border border-green-400/20 bg-green-500/10 px-3 py-2 text-xs font-semibold text-green-100 flex items-center gap-1.5 w-fit">
                 <ExternalLink size={13} /> Abrir Meus Gerados
               </Link>
@@ -437,21 +437,21 @@ export default function PlanoQuestoesPage() {
           {!!plan.length && (
             <>
               <div className="grid md:grid-cols-4 gap-3">
-                <div className="card p-4"><div className="text-xs text-zinc-500">Dias concluídos</div><div className="font-heading text-2xl font-bold text-white">{diasConcluidos.length}/{plan.length}</div></div>
+                <div className="card p-4"><div className="text-xs text-zinc-500">Dias com questões</div><div className="font-heading text-2xl font-bold text-white">{diasConcluidos.length}/{plan.length}</div></div>
                 <div className="card p-4"><div className="text-xs text-zinc-500">Questões geradas</div><div className="font-heading text-2xl font-bold text-brand-300">{progress.questoesGeradas || 0}</div></div>
                 <div className="card p-4"><div className="text-xs text-zinc-500">Horas totais</div><div className="font-heading text-2xl font-bold text-green-300">{totalHoras}h</div></div>
-                <div className="card p-4"><div className="text-xs text-zinc-500">Progresso</div><div className="font-heading text-2xl font-bold text-white">{progressoPercentual}%</div></div>
+                <div className="card p-4"><div className="text-xs text-zinc-500">Progresso de geração</div><div className="font-heading text-2xl font-bold text-white">{progressoPercentual}%</div></div>
               </div>
 
               <div className="card p-4">
                 <div className="flex items-center justify-between text-xs text-zinc-500 mb-2">
-                  <span>Progresso do plano</span>
-                  <span>{diasConcluidos.length} de {plan.length} dias</span>
+                  <span>Progresso de geração do plano</span>
+                  <span>{diasConcluidos.length} de {plan.length} dias com questões geradas</span>
                 </div>
                 <div className="h-3 rounded-full bg-zinc-800 overflow-hidden">
                   <div className="h-full bg-brand-500 transition-all" style={{ width: `${progressoPercentual}%` }} />
                 </div>
-                <div className="text-xs text-zinc-500 mt-2">Meta total prevista: {totalQuestoes} questões.</div>
+                <div className="text-xs text-zinc-500 mt-2">Meta total prevista: {totalQuestoes} questões. A resolução acontece em Meus Gerados.</div>
               </div>
 
               <div className="card overflow-hidden">
@@ -481,7 +481,7 @@ export default function PlanoQuestoesPage() {
                             <div>
                               <div className="font-semibold text-sm text-zinc-100 flex flex-wrap items-center gap-2">
                                 {day.foco}
-                                {completed && <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-300">Concluído</span>}
+                                {completed && <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-300">Questões geradas</span>}
                               </div>
                               <div className="text-xs text-zinc-500 mt-1">{day.data} · {day.diaSemana} · {day.turno} · {day.horasPorDia}h · {day.tipo}</div>
                             </div>
@@ -496,7 +496,7 @@ export default function PlanoQuestoesPage() {
                               className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50"
                             >
                               {generatingDay === day.dia ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                              {generatingDay === day.dia ? 'Gerando...' : completed ? `Gerar mais (${generated} feitas)` : generated > 0 ? `Gerar mais (${generated} feitas)` : 'Gerar questões do dia'}
+                              {generatingDay === day.dia ? 'Gerando...' : generated > 0 ? `Gerar mais (${generated} salvas)` : 'Gerar questões do dia'}
                             </button>
                           </div>
                         </div>
@@ -504,7 +504,7 @@ export default function PlanoQuestoesPage() {
                           <CheckCircle2 size={13} className="text-green-400 mt-0.5 shrink-0" />
                           {day.observacao}
                         </div>
-                        {generated > 0 && <div className="mt-2 text-xs text-green-400">✓ {generated} questão(ões) deste dia salvas em Meus Gerados.</div>}
+                        {generated > 0 && <div className="mt-2 text-xs text-green-400">✓ {generated} questão(ões) deste dia salvas em Meus Gerados para o aluno responder.</div>}
                       </div>
                     )
                   })}
