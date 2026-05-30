@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, RefreshCw, Save } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, Save } from 'lucide-react'
 import { toast } from 'sonner'
 
 type UserRow = {
@@ -16,6 +16,26 @@ type UserRow = {
   creditsRenewedAt?: string | null
   planExpiresAt?: string | null
   planExpired?: boolean
+}
+
+type NewUserForm = {
+  name: string
+  email: string
+  password: string
+  role: string
+  plan: string
+  credits: string
+  validity: string
+}
+
+const defaultNewUser: NewUserForm = {
+  name: '',
+  email: '',
+  password: '',
+  role: 'USER',
+  plan: 'FREE',
+  credits: '1000',
+  validity: '30',
 }
 
 function formatDate(value?: string | null) {
@@ -36,6 +56,8 @@ export default function AdminUsuariosCreditos() {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [monthlyFreeCredits, setMonthlyFreeCredits] = useState(1000)
   const [savingConfig, setSavingConfig] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newUser, setNewUser] = useState<NewUserForm>(defaultNewUser)
 
   useEffect(() => { load() }, [])
 
@@ -58,6 +80,45 @@ export default function AdminUsuariosCreditos() {
       toast.error('Erro ao carregar usuários')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function createUser() {
+    setCreating(true)
+    try {
+      const payload: Record<string, string | number | boolean> = {
+        action: 'create_user',
+        name: newUser.name.trim(),
+        email: newUser.email.trim(),
+        password: newUser.password,
+        role: newUser.role,
+        plan: newUser.plan,
+        credits: Math.max(0, Number(newUser.credits) || 0),
+      }
+
+      if (newUser.validity === 'vitalicio') {
+        payload.clearPlanExpiration = true
+      } else {
+        payload.planDurationDays = Math.max(1, Number(newUser.validity) || 30)
+      }
+
+      const res = await fetch('/api/admin/stats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error || 'Erro ao criar usuário')
+        return
+      }
+      toast.success('Usuário criado com sucesso')
+      setNewUser(defaultNewUser)
+      await load()
+    } catch {
+      toast.error('Erro ao criar usuário')
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -110,6 +171,66 @@ export default function AdminUsuariosCreditos() {
 
   return (
     <div className="space-y-4">
+      <div className="card p-5">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h2 className="font-heading font-semibold text-sm text-brand-300">Adicionar usuário manualmente</h2>
+            <p className="text-xs text-zinc-500 mt-1">Crie contas direto pelo painel sem abrir o cadastro público.</p>
+          </div>
+          <Plus className="text-brand-400" size={18} />
+        </div>
+
+        <div className="grid md:grid-cols-3 xl:grid-cols-6 gap-3">
+          <div>
+            <label className="label">Nome</label>
+            <input className="input" value={newUser.name} onChange={e => setNewUser(prev => ({ ...prev, name: e.target.value }))} placeholder="Nome do usuário" />
+          </div>
+          <div>
+            <label className="label">E-mail</label>
+            <input className="input" type="email" value={newUser.email} onChange={e => setNewUser(prev => ({ ...prev, email: e.target.value }))} placeholder="email@exemplo.com" />
+          </div>
+          <div>
+            <label className="label">Senha inicial</label>
+            <input className="input" type="text" value={newUser.password} onChange={e => setNewUser(prev => ({ ...prev, password: e.target.value }))} placeholder="mín. 6 caracteres" />
+          </div>
+          <div>
+            <label className="label">Plano</label>
+            <select className="input" value={newUser.plan} onChange={e => setNewUser(prev => ({ ...prev, plan: e.target.value }))}>
+              <option value="FREE">Free</option>
+              <option value="CADERNOS_500">Cadernos 500</option>
+              <option value="PRO">Pro</option>
+              <option value="ENTERPRISE">Enterprise</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Validade</label>
+            <select className="input" value={newUser.validity} onChange={e => setNewUser(prev => ({ ...prev, validity: e.target.value }))}>
+              <option value="30">30 dias</option>
+              <option value="90">90 dias</option>
+              <option value="365">1 ano</option>
+              <option value="vitalicio">Vitalício</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Créditos</label>
+            <input className="input" type="number" min={0} value={newUser.credits} onChange={e => setNewUser(prev => ({ ...prev, credits: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label">Role</label>
+            <select className="input" value={newUser.role} onChange={e => setNewUser(prev => ({ ...prev, role: e.target.value }))}>
+              <option value="USER">Usuário</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+          </div>
+          <div className="md:col-span-2 xl:col-span-5 flex items-end">
+            <button onClick={createUser} disabled={creating} className="btn-primary h-11 w-full md:w-auto flex items-center justify-center gap-2">
+              {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+              Criar usuário
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="card p-5">
         <div className="grid md:grid-cols-[1fr_auto] gap-3 items-end">
           <div>
