@@ -12,39 +12,80 @@ function daysLeft(value?: Date | string | null) {
   return Math.ceil((new Date(value).getTime() - Date.now()) / 86400000)
 }
 
+function planOptions() {
+  return [
+    { id: 'mensal', label: 'Plano Mensal', days: 30, description: 'Acesso por 30 dias' },
+    { id: 'trimestral', label: 'Plano 90 dias', days: 90, description: 'Acesso por 3 meses' },
+    { id: 'anual', label: 'Plano Anual', days: 365, description: 'Acesso por 1 ano' },
+  ]
+}
+
 export async function GET() {
   const session = await getSession()
   if (!session?.userId) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
   await ensureColumns()
 
-  const rows = await prisma.$queryRawUnsafe<any[]>(`
-    SELECT id, name, email, role, plan, credits, "creditsUsed" AS "creditsUsed",
-      credits_renewed_at AS "creditsRenewedAt",
-      plan_expires_at AS "planExpiresAt"
-    FROM users
-    WHERE id = $1
-    LIMIT 1;
-  `, session.userId)
+  try {
+    const rows = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT id, name, email, role, plan, credits, "creditsUsed" AS "creditsUsed",
+        credits_renewed_at AS "creditsRenewedAt",
+        plan_expires_at AS "planExpiresAt"
+      FROM users
+      WHERE id = $1
+      LIMIT 1;
+    `, session.userId)
 
-  const user = rows[0]
-  if (!user) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
+    const user = rows[0]
+    if (!user) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
 
-  const left = daysLeft(user.planExpiresAt)
+    const left = daysLeft(user.planExpiresAt)
 
-  return NextResponse.json({
-    ok: true,
-    user: {
-      ...user,
-      planDaysLeft: left,
-      planExpired: left !== null && left < 0,
-    },
-    plans: [
-      { id: 'mensal', label: 'Plano Mensal', days: 30, description: 'Acesso por 30 dias' },
-      { id: 'trimestral', label: 'Plano 90 dias', days: 90, description: 'Acesso por 3 meses' },
-      { id: 'anual', label: 'Plano Anual', days: 365, description: 'Acesso por 1 ano' },
-    ],
-  })
+    return NextResponse.json({
+      ok: true,
+      user: {
+        id: user.id,
+        name: user.name || 'Usuário',
+        email: user.email,
+        role: user.role,
+        plan: user.plan || 'FREE',
+        credits: Number(user.credits || 0),
+        creditsUsed: Number(user.creditsUsed || 0),
+        creditsRenewedAt: user.creditsRenewedAt || null,
+        planExpiresAt: user.planExpiresAt || null,
+        planDaysLeft: left,
+        planExpired: left !== null && left < 0,
+      },
+      plans: planOptions(),
+    })
+  } catch (e) {
+    console.error('[account get]', e)
+
+    const fallback = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { id: true, name: true, email: true, role: true, plan: true, credits: true, creditsUsed: true },
+    }).catch(() => null)
+
+    if (!fallback) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
+
+    return NextResponse.json({
+      ok: true,
+      user: {
+        id: fallback.id,
+        name: fallback.name || 'Usuário',
+        email: fallback.email,
+        role: fallback.role,
+        plan: fallback.plan || 'FREE',
+        credits: Number(fallback.credits || 0),
+        creditsUsed: Number(fallback.creditsUsed || 0),
+        creditsRenewedAt: null,
+        planExpiresAt: null,
+        planDaysLeft: null,
+        planExpired: false,
+      },
+      plans: planOptions(),
+    })
+  }
 }
 
 export async function POST(req: NextRequest) {
