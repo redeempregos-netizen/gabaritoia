@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, CheckCircle, XCircle, RefreshCw, Save, Users, BarChart3, Zap, Settings, DollarSign, Brain } from 'lucide-react'
 import AdminUsuariosCreditos from './AdminUsuariosCreditos'
+import AdminPlanos from './AdminPlanos'
 
 const PROVIDERS = [
   { id: 'claude',      name: 'Claude (Anthropic)', icon: '🟠', models: ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001', 'claude-opus-4-6'] },
@@ -53,7 +54,7 @@ export default function AdminPage() {
   const [keys, setKeys] = useState<Record<string, string>>({})
   const [models, setModels] = useState<Record<string, string>>({})
   const [enabled, setEnabled] = useState<Record<string, boolean>>({})
-  const [activeTab, setActiveTab] = useState<'apis' | 'limites' | 'usuarios' | 'seguranca'>('apis')
+  const [activeTab, setActiveTab] = useState<'apis' | 'limites' | 'planos' | 'usuarios' | 'seguranca'>('apis')
   const [newAdminPass, setNewAdminPass] = useState('')
 
   useEffect(() => { loadData() }, [])
@@ -158,7 +159,7 @@ export default function AdminPage() {
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="font-heading text-2xl font-bold">⚙ Administração</h1>
-        <p className="text-zinc-400 text-sm mt-1">Gerencie APIs, limites e usuários da plataforma</p>
+        <p className="text-zinc-400 text-sm mt-1">Gerencie APIs, limites, planos e usuários da plataforma</p>
       </div>
 
       <Link href="/admin/ia-recursos" className="card p-4 mb-4 flex items-center gap-3 border border-brand-500/20 bg-brand-500/5 hover:bg-brand-500/10 transition-colors">
@@ -205,6 +206,7 @@ export default function AdminPage() {
         {[
           { id: 'apis', label: '🔑 APIs de IA' },
           { id: 'limites', label: '⚙ Limites' },
+          { id: 'planos', label: '💳 Planos' },
           { id: 'usuarios', label: '👥 Usuários' },
           { id: 'seguranca', label: '🔒 Segurança' },
         ].map(t => (
@@ -231,6 +233,8 @@ export default function AdminPage() {
       )}
 
       {activeTab === 'limites' && <div className="card p-6"><h2 className="font-heading font-semibold text-sm text-brand-300 mb-4">Máximo de questões por geração</h2><div className="flex flex-wrap gap-2 mb-6">{[1,2,3,4,5,6,7,8,9,10].map(n => <button key={n} onClick={() => setMaxQtd(n)} className={`w-10 h-10 rounded-xl border font-semibold text-sm transition-all ${maxQtd === n ? 'bg-brand-600 border-brand-600 text-white' : 'border-white/10 text-zinc-400 hover:border-brand-500 hover:text-brand-300'}`}>{n}</button>)}</div><p className="text-xs text-zinc-500 mb-6">Define quantas questões cada usuário pode gerar de uma vez.</p><button onClick={saveAll} disabled={saving} className="btn-primary flex items-center gap-2">{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}Salvar</button></div>}
+
+      {activeTab === 'planos' && <AdminPlanos />}
 
       {activeTab === 'usuarios' && <AdminUsuariosCreditos />}
 
