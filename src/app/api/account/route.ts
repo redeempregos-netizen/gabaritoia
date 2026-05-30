@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
@@ -45,4 +45,34 @@ export async function GET() {
       { id: 'anual', label: 'Plano Anual', days: 365, description: 'Acesso por 1 ano' },
     ],
   })
+}
+
+export async function POST(req: NextRequest) {
+  const session = await getSession()
+  if (!session?.userId) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
+
+  try {
+    const body = await req.json()
+    const name = String(body.name || '').trim()
+    const email = String(body.email || '').trim().toLowerCase()
+
+    if (name.length < 2) return NextResponse.json({ error: 'Informe um nome válido.' }, { status: 400 })
+    if (!/^\S+@\S+\.\S+$/.test(email)) return NextResponse.json({ error: 'Informe um e-mail válido.' }, { status: 400 })
+
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } })
+    if (existing && existing.id !== session.userId) {
+      return NextResponse.json({ error: 'Este e-mail já está em uso.' }, { status: 400 })
+    }
+
+    const user = await prisma.user.update({
+      where: { id: session.userId },
+      data: { name, email },
+      select: { id: true, name: true, email: true, role: true, plan: true },
+    })
+
+    return NextResponse.json({ ok: true, user, message: 'Dados atualizados com sucesso.' })
+  } catch (e) {
+    console.error('[account update]', e)
+    return NextResponse.json({ error: 'Não foi possível atualizar sua conta.' }, { status: 500 })
+  }
 }
