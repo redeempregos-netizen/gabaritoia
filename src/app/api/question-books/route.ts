@@ -3,6 +3,8 @@ import { createHash } from 'crypto'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+const PARSER_VERSION = 'question-book-parser-v4-clean-options'
+
 async function ensureTables() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS imported_question_books (
@@ -67,12 +69,13 @@ function cleanText(s: string) {
 }
 
 function sourceHash(text: string) {
-  return createHash('sha256').update(cleanText(text).replace(/\s+/g, ' ')).digest('hex')
+  return createHash('sha256').update(`${PARSER_VERSION}::${cleanText(text).replace(/\s+/g, ' ')}`).digest('hex')
 }
 
 function normalizeHash(value: unknown) {
   const h = String(value || '').trim().toLowerCase()
-  return /^[a-f0-9]{64}$/.test(h) ? h : ''
+  if (!/^[a-f0-9]{64}$/.test(h)) return ''
+  return createHash('sha256').update(`${PARSER_VERSION}::${h}`).digest('hex')
 }
 
 function letterToIndex(letter?: string | null) {
@@ -126,9 +129,16 @@ function removeFooter(s: string) {
     .trim()
 }
 
+function cutOptionNoise(s: string) {
+  return String(s || '')
+    .split(/Caderno de Questões Comentadas/i)[0]
+    .split(/Caderno de Questões\s*-/i)[0]
+    .replace(/\s+\d{1,4}\s+(?:Assinale|Julgue|Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Em relação|No ensino|Na abordagem|Marque|Preencha|Existem|Segundo|Para|Dentro|Como|Sobre o|Dos seguintes|Numa|O seguinte|Assinale a opção)\b[\s\S]*$/i, '')
+}
+
 function cleanOptionText(s: string) {
-  let out = removeFooter(s)
-  out = out.replace(/\s+\d{1,4}\s+(?:Assinale|Julgue|Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Em relação|No ensino|Na abordagem|Marque|Preencha|Existem)\b[\s\S]*$/i, '')
+  let out = cutOptionNoise(s)
+  out = removeFooter(out)
   return cleanText(out)
 }
 
@@ -166,14 +176,14 @@ function cleanStatement(q: string, number: number) {
   if (afterFooter) return cleanText(afterFooter)
 
   const afterNumber = number
-    ? s.match(new RegExp(`(?:^|\\s)${number}\\s+(Assinale|Julgue|Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Em relação|No ensino|Na abordagem|Marque|Preencha|Existem)[\\s\\S]*$`, 'i'))?.[0]
+    ? s.match(new RegExp(`(?:^|\\s)${number}\\s+(Assinale|Julgue|Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Em relação|No ensino|Na abordagem|Marque|Preencha|Existem|Segundo|Para|Dentro|Como|Dos seguintes|Numa|O seguinte)[\\s\\S]*$`, 'i'))?.[0]
     : ''
-  if (afterNumber) return cleanText(afterNumber.replace(new RegExp(`^\s*${number}\s+`), ''))
+  if (afterNumber) return cleanText(afterNumber.replace(new RegExp(`^\\s*${number}\\s+`), ''))
 
   s = s.replace(/ID:\s*[^|\n]+\|\s*T[ÓO]PICO:\s*[^|\n]+\|\s*PROVA:\s*[^\n]+/i, '')
   s = s.replace(/ID:\s*[^\n]+/i, '')
   s = s.replace(/Alternativas[\s\S]*$/i, '')
-  if (number) s = s.replace(new RegExp(`^\s*${number}\s+`), '')
+  if (number) s = s.replace(new RegExp(`^\\s*${number}\\s+`), '')
   return cleanText(s)
 }
 
