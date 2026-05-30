@@ -123,8 +123,10 @@ export async function POST(req: NextRequest) {
             cronograma: Array.isArray(plan) ? plan : [],
             progresso: {
               diasConcluidos: [],
+              diasComQuestoes: [],
               questoesGeradas: 0,
               totalDias: Array.isArray(plan) ? plan.length : 0,
+              percentual: 0,
               ultimaAtualizacao: new Date().toISOString(),
             },
           },
@@ -148,28 +150,30 @@ export async function POST(req: NextRequest) {
 
       const planJson: any = existing.planJson || {}
       const previousProgress = planJson.progresso || {}
-      const previousDays = Array.isArray(previousProgress.diasConcluidos) ? previousProgress.diasConcluidos : []
-      const diasConcluidos = Array.from(new Set([...previousDays, dayNumber])).sort((a: any, b: any) => Number(a) - Number(b))
-      const totalDias = Array.isArray(planJson.cronograma) ? planJson.cronograma.length : previousProgress.totalDias || diasConcluidos.length
+      const previousGeneratedDays = Array.isArray(previousProgress.diasComQuestoes) ? previousProgress.diasComQuestoes : []
+      const diasComQuestoes = Array.from(new Set([...previousGeneratedDays, dayNumber])).sort((a: any, b: any) => Number(a) - Number(b))
+      const diasConcluidos = Array.isArray(previousProgress.diasConcluidos) ? previousProgress.diasConcluidos : []
+      const totalDias = Array.isArray(planJson.cronograma) ? planJson.cronograma.length : previousProgress.totalDias || diasComQuestoes.length
       const questoesGeradas = Number(previousProgress.questoesGeradas || 0) + generated
       const progresso = {
         ...previousProgress,
         diasConcluidos,
+        diasComQuestoes,
         questoesGeradas,
         totalDias,
         percentual: totalDias ? Math.round((diasConcluidos.length / totalDias) * 100) : 0,
         ultimaAtualizacao: new Date().toISOString(),
         historico: [
           ...(Array.isArray(previousProgress.historico) ? previousProgress.historico : []),
-          { dia: dayNumber, questoesGeradas: generated, data: new Date().toISOString() },
+          { dia: dayNumber, questoesGeradas: generated, data: new Date().toISOString(), status: 'geradas_para_resolver' },
         ].slice(-100),
       }
 
       const daysCompleted: any = existing.daysCompleted || {}
       daysCompleted[String(dayNumber)] = {
-        completed: true,
+        completed: false,
         questionsGenerated: (Number(daysCompleted[String(dayNumber)]?.questionsGenerated || 0) + generated),
-        completedAt: new Date().toISOString(),
+        generatedAt: new Date().toISOString(),
       }
 
       await prisma.studyPlan.update({
