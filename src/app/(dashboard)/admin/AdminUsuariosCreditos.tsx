@@ -28,14 +28,21 @@ type NewUserForm = {
   validity: string
 }
 
+const PLAN_OPTIONS = [
+  { value: 'FREE', label: 'Teste', credits: 300, validity: '7' },
+  { value: 'CADERNOS_500', label: 'Básico', credits: 1000, validity: '30' },
+  { value: 'PRO', label: 'Pro', credits: 3000, validity: '30' },
+  { value: 'ENTERPRISE', label: 'Premium', credits: 8000, validity: '30' },
+]
+
 const defaultNewUser: NewUserForm = {
   name: '',
   email: '',
   password: '',
   role: 'USER',
   plan: 'FREE',
-  credits: '1000',
-  validity: '30',
+  credits: '300',
+  validity: '7',
 }
 
 function formatDate(value?: string | null) {
@@ -45,8 +52,19 @@ function formatDate(value?: string | null) {
 
 function daysLeft(value?: string | null) {
   if (!value) return null
-  const diff = Math.ceil((new Date(value).getTime() - Date.now()) / 86400000)
-  return diff
+  return Math.ceil((new Date(value).getTime() - Date.now()) / 86400000)
+}
+
+function getPlanLabel(plan: string) {
+  return PLAN_OPTIONS.find(option => option.value === plan)?.label || plan
+}
+
+function getPlanCredits(plan: string) {
+  return PLAN_OPTIONS.find(option => option.value === plan)?.credits || 0
+}
+
+function getPlanValidity(plan: string) {
+  return PLAN_OPTIONS.find(option => option.value === plan)?.validity || '30'
 }
 
 export default function AdminUsuariosCreditos() {
@@ -81,6 +99,15 @@ export default function AdminUsuariosCreditos() {
     } finally {
       setLoading(false)
     }
+  }
+
+  function changeNewUserPlan(plan: string) {
+    setNewUser(prev => ({
+      ...prev,
+      plan,
+      credits: String(getPlanCredits(plan)),
+      validity: getPlanValidity(plan),
+    }))
   }
 
   async function createUser() {
@@ -144,6 +171,12 @@ export default function AdminUsuariosCreditos() {
     }
   }
 
+  async function applyPlanToUser(user: UserRow, plan: string) {
+    const credits = getPlanCredits(plan)
+    const validity = getPlanValidity(plan)
+    await updateUser(user.id, { plan, credits, planDurationDays: Number(validity) })
+  }
+
   async function saveMonthlyConfig() {
     setSavingConfig(true)
     try {
@@ -195,16 +228,14 @@ export default function AdminUsuariosCreditos() {
           </div>
           <div>
             <label className="label">Plano</label>
-            <select className="input" value={newUser.plan} onChange={e => setNewUser(prev => ({ ...prev, plan: e.target.value }))}>
-              <option value="FREE">Free</option>
-              <option value="CADERNOS_500">Cadernos 500</option>
-              <option value="PRO">Pro</option>
-              <option value="ENTERPRISE">Enterprise</option>
+            <select className="input" value={newUser.plan} onChange={e => changeNewUserPlan(e.target.value)}>
+              {PLAN_OPTIONS.map(plan => <option key={plan.value} value={plan.value}>{plan.label}</option>)}
             </select>
           </div>
           <div>
             <label className="label">Validade</label>
             <select className="input" value={newUser.validity} onChange={e => setNewUser(prev => ({ ...prev, validity: e.target.value }))}>
+              <option value="7">7 dias</option>
               <option value="30">30 dias</option>
               <option value="90">90 dias</option>
               <option value="365">1 ano</option>
@@ -294,12 +325,10 @@ export default function AdminUsuariosCreditos() {
                       </select>
                     </td>
                     <td className="px-4 py-3">
-                      <select className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none" value={user.plan} onChange={e => updateUser(user.id, { plan: e.target.value })}>
-                        <option value="FREE">Free</option>
-                        <option value="PRO">Pro</option>
-                        <option value="ENTERPRISE">Enterprise</option>
-                        <option value="CADERNOS_500">Cadernos 500</option>
+                      <select className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none min-w-[130px]" value={user.plan} onChange={e => updateUser(user.id, { plan: e.target.value })}>
+                        {PLAN_OPTIONS.map(plan => <option key={plan.value} value={plan.value}>{plan.label}</option>)}
                       </select>
+                      <div className="text-[11px] text-zinc-500 mt-1">{getPlanLabel(user.plan)}</div>
                     </td>
                     <td className="px-4 py-3 text-xs">
                       <div className={expired ? 'text-red-300 font-semibold' : 'text-zinc-300'}>{formatDate(user.planExpiresAt)}</div>
@@ -310,6 +339,7 @@ export default function AdminUsuariosCreditos() {
                         <button disabled={saving === user.id} onClick={() => updateUser(user.id, { planDurationDays: 30 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 hover:border-brand-500/50 hover:text-brand-200 disabled:opacity-50">30 dias</button>
                         <button disabled={saving === user.id} onClick={() => updateUser(user.id, { planDurationDays: 90 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 hover:border-brand-500/50 hover:text-brand-200 disabled:opacity-50">90 dias</button>
                         <button disabled={saving === user.id} onClick={() => updateUser(user.id, { planDurationDays: 365 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 hover:border-brand-500/50 hover:text-brand-200 disabled:opacity-50">1 ano</button>
+                        <button disabled={saving === user.id} onClick={() => applyPlanToUser(user, user.plan)} className="rounded-lg border border-brand-500/20 bg-brand-500/10 px-2 py-1 text-[11px] text-brand-200 disabled:opacity-50">Aplicar créditos</button>
                         <button disabled={saving === user.id} onClick={() => updateUser(user.id, { clearPlanExpiration: true })} className="rounded-lg border border-green-500/20 bg-green-500/10 px-2 py-1 text-[11px] text-green-300 disabled:opacity-50">Vitalício</button>
                       </div>
                     </td>
