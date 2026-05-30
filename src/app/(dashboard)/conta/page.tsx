@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, Save, ShieldCheck, CalendarDays, Zap, CreditCard, LockKeyhole } from 'lucide-react'
+import { Loader2, Save, ShieldCheck, CalendarDays, Zap, CreditCard, LockKeyhole, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 type AccountUser = {
@@ -10,6 +10,10 @@ type AccountUser = {
   email: string
   role: string
   plan: string
+  planName?: string
+  planPrice?: string
+  planCredits?: number
+  planValidityDays?: number
   credits: number
   creditsUsed: number
   creditsRenewedAt?: string | null
@@ -18,7 +22,15 @@ type AccountUser = {
   planExpired?: boolean
 }
 
-type PlanOption = { id: string; label: string; days: number; description: string }
+type PlanOption = {
+  id: string
+  name: string
+  price: string
+  credits: number
+  validityDays: number
+  active: boolean
+  description: string
+}
 
 function formatDate(value?: string | null) {
   if (!value) return 'Sem vencimento'
@@ -33,9 +45,10 @@ function nextCreditRenewal(value?: string | null) {
 }
 
 const CHECKOUT_LINKS: Record<string, string> = {
-  mensal: '#',
-  trimestral: '#',
-  anual: '#',
+  FREE: '#',
+  CADERNOS_500: '#',
+  PRO: '#',
+  ENTERPRISE: '#',
 }
 
 export default function MinhaContaPage() {
@@ -117,6 +130,8 @@ export default function MinhaContaPage() {
 
   const expired = Boolean(user.planExpired)
   const daysLeft: number | null = typeof user.planDaysLeft === 'number' ? user.planDaysLeft : null
+  const creditLimit = Number(user.planCredits || 0)
+  const creditPercent = creditLimit > 0 ? Math.min(100, Math.round((user.credits / creditLimit) * 100)) : 0
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
@@ -131,7 +146,8 @@ export default function MinhaContaPage() {
       <div className="grid md:grid-cols-3 gap-4">
         <div className="card p-5">
           <div className="flex items-center gap-2 text-zinc-400 text-xs mb-2"><CreditCard size={14} /> Plano atual</div>
-          <div className="font-heading text-2xl font-bold text-white">{user.plan}</div>
+          <div className="font-heading text-2xl font-bold text-white">{user.planName || user.plan}</div>
+          <div className="text-xs text-zinc-500 mt-1">Código: {user.plan}</div>
           <div className={expired ? 'text-red-300 text-sm mt-2' : 'text-green-300 text-sm mt-2'}>{expired ? 'Plano expirado' : 'Plano ativo'}</div>
         </div>
         <div className="card p-5">
@@ -143,6 +159,43 @@ export default function MinhaContaPage() {
           <div className="flex items-center gap-2 text-zinc-400 text-xs mb-2"><Zap size={14} /> Créditos</div>
           <div className="font-heading text-2xl font-bold text-amber-300">{user.credits}</div>
           <div className="text-zinc-500 text-sm mt-2">Usados: {user.creditsUsed || 0}</div>
+          {creditLimit > 0 && (
+            <div className="mt-3">
+              <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+                <div className="h-full bg-amber-400" style={{ width: `${creditPercent}%` }} />
+              </div>
+              <div className="text-[11px] text-zinc-500 mt-1">Limite do plano: {creditLimit} créditos</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="card p-5">
+        <div className="mb-4">
+          <h2 className="font-heading font-bold text-lg">Planos disponíveis</h2>
+          <p className="text-xs text-zinc-500 mt-1">Esses planos são configurados manualmente pelo administrador.</p>
+        </div>
+        <div className="grid md:grid-cols-4 gap-3">
+          {plans.map(plan => {
+            const current = plan.id === user.plan
+            return (
+              <div key={plan.id} className={`rounded-2xl border p-4 ${current ? 'border-brand-500/50 bg-brand-500/10' : 'border-white/10 bg-zinc-900/60'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-heading font-bold text-white">{plan.name}</div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5">{plan.validityDays} dias</div>
+                  </div>
+                  {current && <span className="rounded-full bg-green-500/10 px-2 py-1 text-[10px] text-green-300">Atual</span>}
+                </div>
+                <div className="mt-4 text-2xl font-black text-brand-300">R$ {plan.price}</div>
+                <div className="mt-2 text-sm text-zinc-300">{plan.credits.toLocaleString('pt-BR')} créditos</div>
+                <div className="text-xs text-zinc-500 mt-2 min-h-[34px]">{plan.description}</div>
+                <a href={CHECKOUT_LINKS[plan.id] || '#'} className={`mt-4 inline-flex w-full items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold ${current ? 'bg-zinc-800 text-zinc-400 cursor-default' : 'bg-brand-600 hover:bg-brand-500 text-white'}`}>
+                  {current ? 'Plano atual' : 'Escolher plano'}
+                </a>
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -190,27 +243,9 @@ export default function MinhaContaPage() {
         </div>
       </div>
 
-      <div className="card p-5">
-        <div className="mb-4">
-          <h2 className="font-heading font-bold text-lg">Comprar ou renovar plano</h2>
-          <p className="text-xs text-zinc-500 mt-1">Escolha uma opção para renovar seu acesso. Configure os links de checkout depois.</p>
-        </div>
-        <div className="grid md:grid-cols-3 gap-3">
-          {plans.map(plan => (
-            <div key={plan.id} className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
-              <div className="font-heading font-bold text-white">{plan.label}</div>
-              <div className="text-sm text-zinc-400 mt-1">{plan.description}</div>
-              <div className="text-xs text-zinc-500 mt-3">{plan.days} dias de acesso</div>
-              <a href={CHECKOUT_LINKS[plan.id] || '#'} className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-brand-600 hover:bg-brand-500 px-3 py-2 text-sm font-semibold text-white">
-                Escolher plano
-              </a>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs text-amber-100">
-        Próxima renovação de créditos: {nextCreditRenewal(user.creditsRenewedAt)}. Os créditos gratuitos renovam automaticamente a cada 30 dias quando você acessa a plataforma.
+      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs text-amber-100 flex items-start gap-2">
+        <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+        <span>Próxima renovação de créditos: {nextCreditRenewal(user.creditsRenewedAt)}. Os créditos gratuitos renovam automaticamente a cada 30 dias quando você acessa a plataforma.</span>
       </div>
     </div>
   )
