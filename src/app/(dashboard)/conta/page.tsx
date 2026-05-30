@@ -115,8 +115,8 @@ export default function MinhaContaPage() {
   if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-brand-400" size={32} /></div>
   if (!user) return <div className="p-8 text-zinc-400">Não foi possível carregar sua conta.</div>
 
-  const expired = user.planExpired
-  const daysLeft = user.planDaysLeft
+  const expired = Boolean(user.planExpired)
+  const daysLeft: number | null = typeof user.planDaysLeft === 'number' ? user.planDaysLeft : null
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
