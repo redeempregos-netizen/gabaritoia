@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { callAI } from '@/lib/ai'
@@ -186,7 +187,47 @@ export async function POST(req: NextRequest) {
   await ensureCreditRenewalColumn()
 
   const body = await req.json()
-  const { action, provider, key, model, enabled, maxQtd, defaultProvider, monthlyFreeCredits, userId, role, plan, credits, planDurationDays, clearPlanExpiration } = body
+  const { action, provider, key, model, enabled, maxQtd, defaultProvider, monthlyFreeCredits, userId, role, plan, credits, planDurationDays, clearPlanExpiration, name, email, password } = body
+
+  if (action === 'create_user') {
+    const safeName = String(name || '').trim()
+    const normalizedEmail = String(email || '').trim().toLowerCase()
+    const safePassword = String(password || '')
+    const safeRole = String(role || 'USER')
+    const safePlan = String(plan || 'FREE')
+    const safeCredits = Math.max(0, Number(credits) || 0)
+
+    if (safeName.length < 2) return NextResponse.json({ error: 'Informe o nome do usuário.' }, { status: 400 })
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) return NextResponse.json({ error: 'Informe um e-mail válido.' }, { status: 400 })
+    if (safePassword.length < 6) return NextResponse.json({ error: 'A senha precisa ter pelo menos 6 caracteres.' }, { status: 400 })
+    if (!['USER', 'ADMIN'].includes(safeRole)) return NextResponse.json({ error: 'Role inválida.' }, { status: 400 })
+    if (!['FREE', 'PRO', 'ENTERPRISE', 'CADERNOS_500'].includes(safePlan)) return NextResponse.json({ error: 'Plano inválido.' }, { status: 400 })
+
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } })
+    if (existing) return NextResponse.json({ error: 'Este e-mail já está cadastrado.' }, { status: 409 })
+
+    const passwordHash = await bcrypt.hash(safePassword, 12)
+    const user = await prisma.user.create({
+      data: {
+        name: safeName,
+        email: normalizedEmail,
+        passwordHash,
+        role: safeRole as any,
+        plan: safePlan as any,
+        credits: safeCredits,
+      },
+      select: { id: true, name: true, email: true, role: true, plan: true, credits: true },
+    })
+
+    if (clearPlanExpiration) {
+      await prisma.$executeRawUnsafe(`UPDATE users SET plan_expires_at = NULL WHERE id = $1`, user.id)
+    } else if (planDurationDays !== undefined) {
+      const days = Math.max(1, Number(planDurationDays) || 30)
+      await prisma.$executeRawUnsafe(`UPDATE users SET plan_expires_at = $1 WHERE id = $2`, addDays(days), user.id)
+    }
+
+    return NextResponse.json({ ok: true, user })
+  }
 
   if (action === 'save_api_key') {
     const encryptedKey = key && !key.startsWith('••') ? encryptSecret(String(key).trim()) : undefined
