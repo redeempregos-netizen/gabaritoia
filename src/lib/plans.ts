@@ -19,6 +19,7 @@ export const PLAN_CREDIT_AMOUNT: Record<string, number> = {
 export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
   FREE: [
     '/dashboard',
+    '/conta',
     '/cadernos',
     '/gerar',
     '/plano-questoes',
@@ -27,6 +28,7 @@ export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
   ],
   [PLAN_CADERNOS_500]: [
     '/dashboard',
+    '/conta',
     '/cadernos',
     '/gerar',
     '/plano-questoes',
@@ -35,6 +37,7 @@ export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
   ],
   [PLAN_CADERNOS_QUESTOES]: [
     '/dashboard',
+    '/conta',
     '/cadernos',
     '/gerar',
     '/plano-questoes',
