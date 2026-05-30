@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+const DEFAULT_PLANS = [
+  { id: 'FREE', name: 'Teste', price: '19,90', credits: 300, validityDays: 7, active: true, description: 'Plano de entrada para testar o sistema.' },
+  { id: 'CADERNOS_500', name: 'Básico', price: '29,90', credits: 1000, validityDays: 30, active: true, description: 'Para uso leve e estudo inicial.' },
+  { id: 'PRO', name: 'Pro', price: '47,00', credits: 3000, validityDays: 30, active: true, description: 'Plano principal para estudar com frequência.' },
+  { id: 'ENTERPRISE', name: 'Premium', price: '97,00', credits: 8000, validityDays: 30, active: true, description: 'Para uso pesado com mais créditos.' },
+]
+
 async function ensureColumns() {
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMP(3);`).catch(() => null)
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_renewed_at TIMESTAMP(3);`).catch(() => null)
@@ -12,12 +19,30 @@ function daysLeft(value?: Date | string | null) {
   return Math.ceil((new Date(value).getTime() - Date.now()) / 86400000)
 }
 
-function planOptions() {
-  return [
-    { id: 'mensal', label: 'Plano Mensal', days: 30, description: 'Acesso por 30 dias' },
-    { id: 'trimestral', label: 'Plano 90 dias', days: 90, description: 'Acesso por 3 meses' },
-    { id: 'anual', label: 'Plano Anual', days: 365, description: 'Acesso por 1 ano' },
-  ]
+function normalizePlans(value?: string | null) {
+  try {
+    const parsed = value ? JSON.parse(value) : DEFAULT_PLANS
+    if (!Array.isArray(parsed)) return DEFAULT_PLANS
+    return DEFAULT_PLANS.map(defaultPlan => {
+      const found = parsed.find((p: any) => p?.id === defaultPlan.id) || {}
+      return {
+        ...defaultPlan,
+        name: String(found.name || defaultPlan.name),
+        price: String(found.price || defaultPlan.price),
+        credits: Math.max(0, Number(found.credits ?? defaultPlan.credits) || 0),
+        validityDays: Math.max(1, Number(found.validityDays ?? defaultPlan.validityDays) || defaultPlan.validityDays),
+        active: found.active !== false,
+        description: String(found.description || defaultPlan.description),
+      }
+    })
+  } catch {
+    return DEFAULT_PLANS
+  }
+}
+
+async function getConfiguredPlans() {
+  const saved = await prisma.adminConfig.findUnique({ where: { key: 'planSettings' } }).catch(() => null)
+  return normalizePlans(saved?.value)
 }
 
 export async function GET() {
@@ -39,6 +64,9 @@ export async function GET() {
     const user = rows[0]
     if (!user) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
 
+    const allPlans = await getConfiguredPlans()
+    const activePlans = allPlans.filter(plan => plan.active)
+    const currentPlan = allPlans.find(plan => plan.id === (user.plan || 'FREE')) || DEFAULT_PLANS[0]
     const left = daysLeft(user.planExpiresAt)
 
     return NextResponse.json({
@@ -49,6 +77,10 @@ export async function GET() {
         email: user.email,
         role: user.role,
         plan: user.plan || 'FREE',
+        planName: currentPlan.name,
+        planPrice: currentPlan.price,
+        planCredits: currentPlan.credits,
+        planValidityDays: currentPlan.validityDays,
         credits: Number(user.credits || 0),
         creditsUsed: Number(user.creditsUsed || 0),
         creditsRenewedAt: user.creditsRenewedAt || null,
@@ -56,35 +88,11 @@ export async function GET() {
         planDaysLeft: left,
         planExpired: left !== null && left < 0,
       },
-      plans: planOptions(),
+      plans: activePlans,
     })
   } catch (e) {
     console.error('[account get]', e)
-
-    const fallback = await prisma.user.findUnique({
-      where: { id: session.userId },
-      select: { id: true, name: true, email: true, role: true, plan: true, credits: true, creditsUsed: true },
-    }).catch(() => null)
-
-    if (!fallback) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
-
-    return NextResponse.json({
-      ok: true,
-      user: {
-        id: fallback.id,
-        name: fallback.name || 'Usuário',
-        email: fallback.email,
-        role: fallback.role,
-        plan: fallback.plan || 'FREE',
-        credits: Number(fallback.credits || 0),
-        creditsUsed: Number(fallback.creditsUsed || 0),
-        creditsRenewedAt: null,
-        planExpiresAt: null,
-        planDaysLeft: null,
-        planExpired: false,
-      },
-      plans: planOptions(),
-    })
+    return NextResponse.json({ error: 'Não foi possível carregar sua conta.' }, { status: 500 })
   }
 }
 
