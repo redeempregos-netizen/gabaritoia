@@ -4,17 +4,40 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { callAI } from '@/lib/ai'
 import { encryptSecret } from '@/lib/secrets'
+import { normalizePlan, PLAN_CREDIT_AMOUNT, PLAN_FREE } from '@/lib/plans'
 import type { AIProvider } from '@/types'
+
+const DEFAULT_PLAN_DAYS: Record<string, number> = {
+  FREE: 7,
+  CADERNOS_500: 30,
+  PRO: 30,
+  ENTERPRISE: 30,
+}
 
 async function ensureCreditRenewalColumn() {
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_renewed_at TIMESTAMP(3);`)
+  await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_started_at TIMESTAMP(3);`)
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMP(3);`)
 }
 
 function addDays(days: number) {
   const date = new Date()
-  date.setDate(date.getDate() + days)
+  date.setDate(date.getDate() + Math.max(1, Number(days) || 1))
   return date
+}
+
+async function getPlanDays(plan: string) {
+  const saved = await prisma.adminConfig.findUnique({ where: { key: 'planSettings' } }).catch(() => null)
+  if (saved?.value) {
+    try {
+      const plans = JSON.parse(saved.value)
+      if (Array.isArray(plans)) {
+        const found = plans.find((p: any) => normalizePlan(p?.id) === plan)
+        if (found?.validityDays) return Math.max(1, Number(found.validityDays) || DEFAULT_PLAN_DAYS[plan] || 30)
+      }
+    } catch {}
+  }
+  return DEFAULT_PLAN_DAYS[plan] || 30
 }
 
 async function getAIUsageSummary() {
@@ -146,6 +169,7 @@ export async function GET(req: NextRequest) {
         "createdAt" AS "createdAt",
         streak,
         credits_renewed_at AS "creditsRenewedAt",
+        plan_started_at AS "planStartedAt",
         plan_expires_at AS "planExpiresAt",
         CASE
           WHEN plan_expires_at IS NULL THEN false
@@ -193,9 +217,9 @@ export async function POST(req: NextRequest) {
     const safeName = String(name || '').trim()
     const normalizedEmail = String(email || '').trim().toLowerCase()
     const safePassword = String(password || '')
-    const safeRole = String(role || 'USER')
-    const safePlan = String(plan || 'FREE')
-    const safeCredits = Math.max(0, Number(credits) || 0)
+    const safeRole = String(role || 'USER').toUpperCase()
+    const safePlan = normalizePlan(plan || 'FREE')
+    const safeCredits = credits !== undefined ? Math.max(0, Number(credits) || 0) : (PLAN_CREDIT_AMOUNT[safePlan] ?? PLAN_CREDIT_AMOUNT[PLAN_FREE])
 
     if (safeName.length < 2) return NextResponse.json({ error: 'Informe o nome do usuário.' }, { status: 400 })
     if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) return NextResponse.json({ error: 'Informe um e-mail válido.' }, { status: 400 })
@@ -220,10 +244,10 @@ export async function POST(req: NextRequest) {
     })
 
     if (clearPlanExpiration) {
-      await prisma.$executeRawUnsafe(`UPDATE users SET plan_expires_at = NULL WHERE id = $1`, user.id)
-    } else if (planDurationDays !== undefined) {
-      const days = Math.max(1, Number(planDurationDays) || 30)
-      await prisma.$executeRawUnsafe(`UPDATE users SET plan_expires_at = $1 WHERE id = $2`, addDays(days), user.id)
+      await prisma.$executeRawUnsafe(`UPDATE users SET plan_started_at = NOW(), plan_expires_at = NULL WHERE id = $1`, user.id)
+    } else {
+      const days = planDurationDays !== undefined ? Math.max(1, Number(planDurationDays) || 30) : await getPlanDays(safePlan)
+      await prisma.$executeRawUnsafe(`UPDATE users SET plan_started_at = NOW(), plan_expires_at = $1 WHERE id = $2`, addDays(days), user.id)
     }
 
     return NextResponse.json({ ok: true, user })
@@ -272,21 +296,33 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === 'update_user') {
-    const data: any = {}
-    if (role) data.role = role
-    if (plan) data.plan = plan
-    if (credits !== undefined) data.credits = Math.max(0, Number(credits) || 0)
+    if (!userId) return NextResponse.json({ error: 'Usuário inválido.' }, { status: 400 })
 
-    await prisma.user.update({
-      where: { id: userId },
-      data,
-    })
+    const currentRows = await prisma.$queryRawUnsafe<any[]>(`SELECT id, plan FROM users WHERE id = $1 LIMIT 1;`, userId)
+    const current = currentRows[0]
+    if (!current) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
+
+    const currentPlan = normalizePlan(current.plan)
+    const nextPlan = plan ? normalizePlan(plan) : currentPlan
+    const planChanged = !!plan && nextPlan !== currentPlan
+
+    const data: any = {}
+    if (role) data.role = String(role).toUpperCase()
+    if (plan) data.plan = nextPlan
+    if (credits !== undefined) {
+      data.credits = Math.max(0, Number(credits) || 0)
+    } else if (planChanged) {
+      data.credits = PLAN_CREDIT_AMOUNT[nextPlan] ?? PLAN_CREDIT_AMOUNT[PLAN_FREE]
+      data.creditsUsed = 0
+    }
+
+    await prisma.user.update({ where: { id: userId }, data })
 
     if (clearPlanExpiration) {
-      await prisma.$executeRawUnsafe(`UPDATE users SET plan_expires_at = NULL WHERE id = $1`, userId)
-    } else if (planDurationDays !== undefined) {
-      const days = Math.max(1, Number(planDurationDays) || 30)
-      await prisma.$executeRawUnsafe(`UPDATE users SET plan_expires_at = $1 WHERE id = $2`, addDays(days), userId)
+      await prisma.$executeRawUnsafe(`UPDATE users SET plan_started_at = NOW(), plan_expires_at = NULL WHERE id = $1`, userId)
+    } else if (plan) {
+      const days = planDurationDays !== undefined ? Math.max(1, Number(planDurationDays) || 30) : await getPlanDays(nextPlan)
+      await prisma.$executeRawUnsafe(`UPDATE users SET plan_started_at = NOW(), plan_expires_at = $1 WHERE id = $2`, addDays(days), userId)
     }
 
     return NextResponse.json({ ok: true })
