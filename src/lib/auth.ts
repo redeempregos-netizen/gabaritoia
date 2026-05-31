@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
+import { normalizePlan, PLAN_CREDIT_AMOUNT, PLAN_FREE } from './plans'
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET
@@ -47,9 +48,16 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
   }
 }
 
-async function renewMonthlyCreditsIfNeeded(userId: string) {
+async function ensureUserPlanColumns() {
   const prisma = await getPrisma()
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_renewed_at TIMESTAMP(3);`).catch(() => null)
+  await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_started_at TIMESTAMP(3);`).catch(() => null)
+  await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMP(3);`).catch(() => null)
+}
+
+async function renewMonthlyCreditsIfNeeded(userId: string) {
+  const prisma = await getPrisma()
+  await ensureUserPlanColumns()
 
   const rows = await prisma.$queryRawUnsafe<any[]>(`
     SELECT credits_renewed_at AS "creditsRenewedAt"
@@ -75,6 +83,45 @@ async function renewMonthlyCreditsIfNeeded(userId: string) {
   `, monthlyCredits, userId).catch((e) => console.error('[monthly credit renewal]', e))
 }
 
+async function getFreshUserWithPlanStatus(userId: string) {
+  const prisma = await getPrisma()
+  await ensureUserPlanColumns()
+
+  const rows = await prisma.$queryRawUnsafe<any[]>(`
+    SELECT id, email, role, plan, plan_expires_at AS "planExpiresAt"
+    FROM users
+    WHERE id = $1
+    LIMIT 1;
+  `, userId).catch(() => [])
+
+  const user = rows?.[0]
+  if (!user) return null
+
+  const normalizedPlan = normalizePlan(user.plan)
+  const expiresAt = user.planExpiresAt ? new Date(user.planExpiresAt) : null
+  const expired = expiresAt && expiresAt.getTime() < Date.now()
+
+  if (expired && normalizedPlan !== PLAN_FREE) {
+    await prisma.$executeRawUnsafe(`
+      UPDATE users
+      SET plan = $1,
+          credits = $2,
+          "creditsUsed" = 0,
+          plan_started_at = NOW(),
+          plan_expires_at = NOW() + INTERVAL '7 days'
+      WHERE id = $3;
+    `, PLAN_FREE, PLAN_CREDIT_AMOUNT[PLAN_FREE], user.id).catch((e) => console.error('[plan expiry downgrade]', e))
+
+    return {
+      ...user,
+      plan: PLAN_FREE,
+      planExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    }
+  }
+
+  return { ...user, plan: normalizedPlan, planExpiresAt: expiresAt }
+}
+
 export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = cookies()
   const token = cookieStore.get('gaia-session')?.value
@@ -85,14 +132,7 @@ export async function getSession(): Promise<SessionPayload | null> {
 
   await renewMonthlyCreditsIfNeeded(session.userId)
 
-  // Sempre busca o usuário atual no banco para evitar sessão antiga com plano antigo.
-  // Isso permite que alterações feitas no admin/Supabase liberem o acesso imediatamente.
-  const prisma = await getPrisma()
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { id: true, email: true, role: true, plan: true },
-  }).catch(() => null)
-
+  const user = await getFreshUserWithPlanStatus(session.userId)
   if (!user) return null
 
   return {
