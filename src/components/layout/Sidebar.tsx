@@ -37,6 +37,9 @@ const USER_NAV: NavItem[] = [
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
   { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Upgrade', upgradeText: 'Básico+' },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen, badge: 'Upgrade', upgradeText: 'Pro+' },
+  { href: '/edital',     label: 'Edital Verticalizado', icon: FileText, badge: 'Upgrade', upgradeText: 'Pro+' },
+  { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket, badge: 'Upgrade', upgradeText: 'Premium' },
+  { href: '/mapas',      label: 'Mapas Mentais',        icon: Brain, badge: 'Upgrade', upgradeText: 'Premium' },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
 ]
 
@@ -138,26 +141,17 @@ export function Sidebar({ user }: SidebarProps) {
             </Link>
           )
         })}
-
-        {user.role === 'ADMIN' && (
-          <>
-            <div className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-3 mt-3 mb-2">Admin</div>
-            <Link href="/admin" className={cn('sidebar-item', pathname === '/admin' && 'sidebar-item-active')}>
-              <Settings size={15} />
-              <span className="text-xs">Administração</span>
-            </Link>
-            <Link href="/admin/custos" className={cn('sidebar-item', pathname.startsWith('/admin/custos') && 'sidebar-item-active')}>
-              <DollarSign size={15} />
-              <span className="text-xs">Custos IA</span>
-            </Link>
-          </>
-        )}
       </nav>
 
-      <div className="px-3 pb-4 border-t border-white/[0.07] pt-3">
-        <button onClick={handleLogout} className="sidebar-item w-full text-left text-red-400 hover:bg-red-500/10 hover:text-red-300">
-          <LogOut size={15} />
-          <span className="text-xs">Sair da conta</span>
+      <div className="px-3 py-3 border-t border-white/[0.07] space-y-1">
+        {user.role === 'ADMIN' && (
+          <>
+            <Link href="/admin/assinaturas" className="sidebar-item"><DollarSign size={15} /><span className="text-xs">Assinaturas</span></Link>
+            <Link href="/admin/settings" className="sidebar-item"><Settings size={15} /><span className="text-xs">Admin</span></Link>
+          </>
+        )}
+        <button onClick={handleLogout} className="sidebar-item w-full text-red-400 hover:bg-red-500/10 hover:text-red-300">
+          <LogOut size={15} /><span className="text-xs">Sair</span>
         </button>
       </div>
     </aside>
