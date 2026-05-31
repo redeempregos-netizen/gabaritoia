@@ -103,7 +103,7 @@ export default function LoginPage() {
             Entrar no Gabarito<span className="text-brand-400">IA</span>
           </div>
           <p className="text-zinc-400 text-sm mb-6 leading-relaxed">
-            Acesse sua conta para usar Cadernos PDF e Gerar Questões.
+            Acesse sua conta para usar os recursos liberados no seu plano.
           </p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -135,7 +135,7 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 rounded-xl border border-brand-500/20 bg-brand-500/10 p-3 text-xs text-brand-100 leading-relaxed">
-            Novos usuários recebem 1000 créditos para começar.
+            Os créditos e recursos disponíveis dependem do plano contratado.
           </div>
 
           <p className="text-center text-xs text-zinc-500 mt-5">
