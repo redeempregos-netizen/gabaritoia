@@ -3,9 +3,9 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronRight, LogOut, Menu, X, Zap } from 'lucide-react'
+import { ChevronRight, Lock, LogOut, Menu, X, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getPlanLabel } from '@/lib/plans'
+import { canAccessRoute, getPlanLabel } from '@/lib/plans'
 
 type MobileItem = {
   href: string
@@ -29,7 +29,8 @@ export function MobileShell({ user, nav }: MobileShellProps) {
   const [open, setOpen] = useState(false)
   const [credits, setCredits] = useState<number | null>(null)
 
-  const bottomNav = useMemo(() => nav.slice(0, 4), [nav])
+  const navWithLock = useMemo(() => nav.map(item => ({ ...item, locked: user.role !== 'ADMIN' && !canAccessRoute(user.plan, item.href) })), [nav, user.plan, user.role])
+  const bottomNav = useMemo(() => navWithLock.filter(item => !item.locked).slice(0, 4), [navWithLock])
 
   useEffect(() => {
     fetch('/api/credits')
@@ -119,20 +120,20 @@ export function MobileShell({ user, nav }: MobileShellProps) {
 
             <nav className="p-3 space-y-1">
               <div className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-3 py-2">Menu completo</div>
-              {nav.map(item => {
-                const active = pathname === item.href || pathname.startsWith(item.href + '/')
+              {navWithLock.map(item => {
+                const active = !item.locked && (pathname === item.href || pathname.startsWith(item.href + '/'))
                 return (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={item.locked ? '/conta' : item.href}
                     className={cn(
                       'flex items-center gap-3 rounded-2xl px-3 py-3 text-sm transition-colors border',
-                      active ? 'bg-brand-500/10 border-brand-500/20 text-brand-200' : 'bg-zinc-900/40 border-white/[0.06] text-zinc-300 active:bg-zinc-800'
+                      active ? 'bg-brand-500/10 border-brand-500/20 text-brand-200' : item.locked ? 'bg-amber-500/5 border-amber-500/15 text-zinc-300 active:bg-amber-500/10' : 'bg-zinc-900/40 border-white/[0.06] text-zinc-300 active:bg-zinc-800'
                     )}
                   >
                     <span className="text-lg w-6 text-center">{item.emoji}</span>
                     <span className="flex-1 font-medium">{item.label}</span>
-                    <ChevronRight size={15} className="text-zinc-600" />
+                    {item.locked ? <Lock size={15} className="text-amber-400" /> : <ChevronRight size={15} className="text-zinc-600" />}
                   </Link>
                 )
               })}
