@@ -99,10 +99,27 @@ export default function GeradosPage() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error(data.error || 'Erro ao salvar resposta'); return }
-      setQuestions(prev => prev.map(q => q.id === questionId ? { ...q, selectedIdx: optionIndex, isCorrect: data.isCorrect, answeredAt: new Date().toISOString() } : q))
+
+      const answeredAt = new Date().toISOString()
+      setQuestions(prev => prev.map(q => q.id === questionId ? {
+        ...q,
+        selectedIdx: optionIndex,
+        isCorrect: data.isCorrect,
+        answeredAt,
+      } : q))
+
+      if (current.planId && data.planProgress) {
+        setPlans(prev => prev.map(p => p.id === current.planId ? {
+          ...p,
+          planJson: {
+            ...(p.planJson || {}),
+            progresso: data.planProgress,
+          },
+        } : p))
+      }
+
       if (data.isCorrect) toast.success('Resposta correta!')
       else toast.error('Resposta incorreta.')
-      if (current.planId) await load()
     } catch {
       toast.error('Erro ao salvar resposta')
     } finally {
