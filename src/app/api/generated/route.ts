@@ -11,6 +11,21 @@ async function ensureGeneratedQuestionsTable() {
       created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `)
+  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS user_generated_questions_user_question_idx ON user_generated_questions(user_id, question_id);`).catch(() => null)
+}
+
+async function linkQuestionsToUser(userId: string, questionIds: string[]) {
+  await ensureGeneratedQuestionsTable()
+  for (const questionId of questionIds.filter(Boolean)) {
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO user_generated_questions (id, user_id, question_id, created_at)
+       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+       ON CONFLICT (user_id, question_id) DO NOTHING`,
+      crypto.randomUUID(),
+      userId,
+      questionId
+    ).catch(() => null)
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -80,7 +95,7 @@ export async function GET(req: NextRequest) {
     JOIN questions q ON q.id = ugq.question_id
     WHERE ugq.user_id = $1
     ORDER BY ugq.created_at DESC
-    LIMIT 100
+    LIMIT 300
   `, session.userId)
 
   return NextResponse.json({ ok: true, plans, questions })
@@ -95,6 +110,12 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { action, type, id } = body || {}
+
+    if (action === 'link_questions') {
+      const questionIds = Array.isArray(body.questionIds) ? body.questionIds.map(String) : []
+      await linkQuestionsToUser(session.userId, questionIds)
+      return NextResponse.json({ ok: true, linked: questionIds.length })
+    }
 
     if (action === 'save_question_plan') {
       const plan = body.plan || {}
@@ -185,6 +206,11 @@ export async function POST(req: NextRequest) {
       })
 
       return NextResponse.json({ ok: true, progresso, daysCompleted })
+    }
+
+    if (action === 'delete_all_questions') {
+      await prisma.$executeRawUnsafe(`DELETE FROM user_generated_questions WHERE user_id = $1`, session.userId)
+      return NextResponse.json({ ok: true })
     }
 
     if (action !== 'delete_item') {
