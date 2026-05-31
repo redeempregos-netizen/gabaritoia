@@ -2,10 +2,10 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { getPlanLabel } from '@/lib/plans'
+import { canAccessRoute, getPlanLabel } from '@/lib/plans'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
-  History, Settings, LogOut, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target, UserCircle,
+  History, Settings, LogOut, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target, UserCircle, Lock,
   type LucideIcon
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -15,6 +15,7 @@ type NavItem = {
   label: string
   icon: LucideIcon
   badge?: string
+  upgradeText?: string
 }
 
 const ADMIN_NAV: NavItem[] = [
@@ -34,13 +35,9 @@ const USER_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/conta',      label: 'Minha Conta',         icon: UserCircle },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
-  { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Novo' },
-  { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
+  { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Upgrade', upgradeText: 'Básico+' },
+  { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen, badge: 'Upgrade', upgradeText: 'Pro+' },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
-  { href: '/em-breve',   label: 'Mapas Mentais',       icon: Brain, badge: 'Em breve' },
-  { href: '/em-breve',   label: 'Edital Verticalizado', icon: FileText, badge: 'Em breve' },
-  { href: '/em-breve',   label: 'Edital Pro',           icon: Rocket, badge: 'Em breve' },
-  { href: '/em-breve',   label: 'Histórico',            icon: History, badge: 'Em breve' },
 ]
 
 interface SidebarProps {
@@ -131,12 +128,13 @@ export function Sidebar({ user }: SidebarProps) {
         <div className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-3 mb-2">Menu</div>
         {nav.map((item, idx) => {
           const Icon = item.icon
-          const active = pathname === item.href || pathname.startsWith(item.href + '/')
+          const locked = user.role !== 'ADMIN' && !canAccessRoute(user.plan, item.href)
+          const active = !locked && (pathname === item.href || pathname.startsWith(item.href + '/'))
           return (
-            <Link key={`${item.href}-${item.label}-${idx}`} href={item.href} className={cn('sidebar-item', active && 'sidebar-item-active')}>
+            <Link key={`${item.href}-${item.label}-${idx}`} href={locked ? '/conta' : item.href} className={cn('sidebar-item', active && 'sidebar-item-active', locked && 'opacity-70 hover:text-amber-300')}>
               <Icon size={15} />
               <span className="flex-1 text-xs">{item.label}</span>
-              {item.badge && <span className="text-[9px] bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded-full font-semibold">{item.badge}</span>}
+              {locked ? <Lock size={12} className="text-amber-400" /> : item.badge && <span className="text-[9px] bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded-full font-semibold">{item.badge}</span>}
             </Link>
           )
         })}
