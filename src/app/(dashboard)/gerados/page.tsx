@@ -29,6 +29,11 @@ interface QuestionItem {
   correctIndex: number
   comentario: string
   createdAt: string
+  planId?: string | null
+  dayNumber?: number | null
+  selectedIdx?: number | null
+  isCorrect?: boolean | null
+  answeredAt?: string | null
 }
 
 function uniqueValues<T>(items: T[], getter: (item: T) => string | undefined | null) {
@@ -40,13 +45,16 @@ function getQuestionPlanStats(plan: PlanItem) {
   const progresso = data.progresso || {}
   const cronograma = Array.isArray(data.cronograma) ? data.cronograma : []
   const totalDias = Number(progresso.totalDias || cronograma.length || 0)
-  const diasComQuestoes = Array.isArray(progresso.diasComQuestoes) ? progresso.diasComQuestoes.length : 0
-  const percentual = totalDias ? Math.round((diasComQuestoes / totalDias) * 100) : 0
+  const diasConcluidos = Array.isArray(progresso.diasConcluidos) ? progresso.diasConcluidos.length : 0
+  const percentual = Number(progresso.percentual || 0)
   const questoesGeradas = Number(progresso.questoesGeradas || 0)
+  const questoesRespondidas = Number(progresso.questoesRespondidas || 0)
+  const acertos = Number(progresso.acertos || 0)
+  const erros = Number(progresso.erros || 0)
   const horasTotais = cronograma.reduce((acc: number, d: any) => acc + Number(d.horasPorDia || 0), 0)
   const questoesPrevistas = cronograma.reduce((acc: number, d: any) => acc + Number(d.metaQuestoes || 0), 0)
-  const status = percentual >= 100 ? 'Todas as questões geradas' : percentual > 0 ? 'Em geração' : 'Não iniciado'
-  return { totalDias, diasComQuestoes, percentual, questoesGeradas, horasTotais, questoesPrevistas, status, cronograma }
+  const status = percentual >= 100 ? 'Feito' : percentual > 0 ? 'Em andamento' : 'Não iniciado'
+  return { totalDias, diasConcluidos, percentual, questoesGeradas, questoesRespondidas, acertos, erros, horasTotais, questoesPrevistas, status, cronograma }
 }
 
 export default function GeradosPage() {
@@ -57,13 +65,13 @@ export default function GeradosPage() {
   const [openPlan, setOpenPlan] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [clearing, setClearing] = useState(false)
+  const [answering, setAnswering] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [filterBanca, setFilterBanca] = useState('')
   const [filterCargo, setFilterCargo] = useState('')
   const [filterArea, setFilterArea] = useState('')
   const [filterDifficulty, setFilterDifficulty] = useState('')
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({})
 
   useEffect(() => { load() }, [])
 
@@ -79,8 +87,27 @@ export default function GeradosPage() {
     finally { setLoading(false) }
   }
 
-  function answerQuestion(questionId: string, optionIndex: number) {
-    setSelectedAnswers(prev => prev[questionId] !== undefined ? prev : { ...prev, [questionId]: optionIndex })
+  async function answerQuestion(questionId: string, optionIndex: number) {
+    const current = questions.find(q => q.id === questionId)
+    if (!current || current.answeredAt || answering) return
+    setAnswering(questionId)
+    try {
+      const res = await fetch('/api/generated', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'answer_question', questionId, selectedIdx: optionIndex }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast.error(data.error || 'Erro ao salvar resposta'); return }
+      setQuestions(prev => prev.map(q => q.id === questionId ? { ...q, selectedIdx: optionIndex, isCorrect: data.isCorrect, answeredAt: new Date().toISOString() } : q))
+      if (data.isCorrect) toast.success('Resposta correta!')
+      else toast.error('Resposta incorreta.')
+      if (current.planId) await load()
+    } catch {
+      toast.error('Erro ao salvar resposta')
+    } finally {
+      setAnswering(null)
+    }
   }
 
   async function deleteItem(type: 'plan' | 'question', id: string) {
@@ -124,7 +151,6 @@ export default function GeradosPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error(data.error || 'Erro ao limpar questões'); return }
       setQuestions([])
-      setSelectedAnswers({})
       toast.success('Questões limpas com sucesso')
     } catch {
       toast.error('Erro ao limpar questões')
@@ -160,8 +186,8 @@ export default function GeradosPage() {
 
     if (isQuestionPlan) {
       const stats = getQuestionPlanStats(plan)
-      addLine('Progresso de geração', 13, true)
-      addLine(`${stats.percentual}% gerado | ${stats.diasComQuestoes}/${stats.totalDias} dias com questões | ${stats.questoesGeradas} questões geradas | ${stats.horasTotais}h previstas`)
+      addLine('Progresso real', 13, true)
+      addLine(`${stats.percentual}% respondido | ${stats.questoesRespondidas}/${stats.questoesGeradas} questões | ${stats.acertos} acertos | ${stats.erros} erros | ${stats.diasConcluidos}/${stats.totalDias} dias feitos`)
       y += 3
       addLine('Cronograma', 13, true)
       stats.cronograma.forEach((d: any) => addLine(`Dia ${d.dia} - ${d.data} - ${d.turno} - ${d.horasPorDia}h - ${d.metaQuestoes} questões - ${d.foco}`))
@@ -283,7 +309,7 @@ export default function GeradosPage() {
 
       <div className="flex gap-2 mb-6 overflow-x-auto">
         <button onClick={() => setTab('questoes')} className={`chip ${tab === 'questoes' ? 'chip-active' : ''}`}>Questões ({filteredQuestions.length}/{questions.length})</button>
-        <button onClick={() => setTab('planos')} className={`chip ${tab === 'planos' ? 'chip-active' : ''}`}>Planos / Edital Pro ({filteredPlans.length}/{plans.length})</button>
+        <button onClick={() => setTab('planos')} className={`chip ${tab === 'planos' ? 'chip-active' : ''}`}>Cronogramas ({filteredPlans.length}/{plans.length})</button>
       </div>
 
       {tab === 'questoes' && (
@@ -300,8 +326,8 @@ export default function GeradosPage() {
           <div className="space-y-4">
             {filteredQuestions.map((q, idx) => {
               const deletingThis = deleting === `question:${q.id}`
-              const selected = selectedAnswers[q.id]
-              const answered = selected !== undefined
+              const selected = q.answeredAt ? Number(q.selectedIdx) : undefined
+              const answered = q.answeredAt || selected !== undefined
               return (
                 <div key={q.id} className="card p-5">
                   <div className="flex items-start justify-between gap-3 mb-3">
@@ -309,7 +335,7 @@ export default function GeradosPage() {
                       <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-300 flex items-center justify-center"><HelpCircle size={18} /></div>
                       <div>
                         <div className="text-xs text-brand-300 font-bold">{idx + 1}. {q.banca} · {q.area} · {q.difficulty}</div>
-                        <div className="text-[11px] text-zinc-500">{q.cargo ? `${q.cargo} · ` : ''}{new Date(q.createdAt).toLocaleDateString('pt-BR')}</div>
+                        <div className="text-[11px] text-zinc-500">{q.cargo ? `${q.cargo} · ` : ''}{q.planId ? `Dia ${q.dayNumber} do plano · ` : ''}{new Date(q.createdAt).toLocaleDateString('pt-BR')}</div>
                       </div>
                     </div>
                     <button disabled={deletingThis} className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-xs flex items-center gap-1 disabled:opacity-50" onClick={() => deleteItem('question', q.id)}>{deletingThis ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir</button>
@@ -326,10 +352,10 @@ export default function GeradosPage() {
                             ? 'bg-red-500/10 text-red-300 border-red-500/20'
                             : 'bg-black/20 text-zinc-500 border-white/5'
                         : 'bg-black/20 text-zinc-300 border-white/5 hover:border-brand-500/30 hover:text-brand-200 cursor-pointer'
-                      return <button key={i} disabled={answered} onClick={() => answerQuestion(q.id, i)} className={`w-full text-left text-xs rounded-lg p-2 border ${className}`}>{'ABCDE'[i]}) {op}</button>
+                      return <button key={i} disabled={!!answered || answering === q.id} onClick={() => answerQuestion(q.id, i)} className={`w-full text-left text-xs rounded-lg p-2 border ${className}`}>{answering === q.id && i === selected ? 'Salvando... ' : ''}{'ABCDE'[i]}) {op}</button>
                     })}
                   </div>
-                  {!answered && <div className="text-xs text-zinc-500 border-l-2 border-zinc-700 pl-3">Marque uma alternativa para ver o gabarito e o comentário.</div>}
+                  {!answered && <div className="text-xs text-zinc-500 border-l-2 border-zinc-700 pl-3">Marque uma alternativa para salvar a resposta, atualizar o cronograma e ver o gabarito.</div>}
                   {answered && <div className="text-xs text-zinc-400 border-l-2 border-brand-500 pl-3">{selected === q.correctIndex ? 'Você acertou. ' : `Você errou. Gabarito: ${'ABCDE'[q.correctIndex]}. `}{q.comentario}</div>}
                 </div>
               )
@@ -354,20 +380,9 @@ export default function GeradosPage() {
                   <div className="flex gap-3 flex-1">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isQuestionPlan ? 'bg-green-500/10 text-green-300' : 'bg-brand-500/10 text-brand-300'}`}>{isQuestionPlan ? <BarChart3 size={20} /> : <FileText size={20} />}</div>
                     <div className="flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="font-heading font-bold text-sm">{plan.title}</div>
-                        {isQuestionPlan && <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-300">Plano de Questões</span>}
-                      </div>
+                      <div className="flex flex-wrap items-center gap-2"><div className="font-heading font-bold text-sm">{plan.title}</div>{isQuestionPlan && <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-300">Plano de Questões</span>}</div>
                       <div className="text-xs text-zinc-500 mt-1">{plan.banca || data?.banca?.nome || data?.banca || 'Banca não informada'} · {plan.cargo || data?.cargo || 'Cargo não informado'} · {new Date(plan.createdAt).toLocaleDateString('pt-BR')}</div>
-                      {isQuestionPlan && stats && (
-                        <div className="mt-3 max-w-xl">
-                          <div className="flex flex-wrap gap-2 text-xs text-zinc-400 mb-2">
-                            <span>{stats.percentual}% gerado</span><span>•</span><span>{stats.diasComQuestoes}/{stats.totalDias} dias com questões</span><span>•</span><span>{stats.questoesGeradas} questões geradas</span><span>•</span><span>{stats.horasTotais}h previstas</span>
-                          </div>
-                          <div className="h-2 rounded-full bg-zinc-800 overflow-hidden"><div className="h-full bg-green-500" style={{ width: `${stats.percentual}%` }} /></div>
-                          <div className="text-[11px] text-zinc-500 mt-1">Status: {stats.status} · Meta prevista: {stats.questoesPrevistas} questões</div>
-                        </div>
-                      )}
+                      {isQuestionPlan && stats && <div className="mt-3 max-w-xl"><div className="flex flex-wrap gap-2 text-xs text-zinc-400 mb-2"><span>{stats.percentual}% respondido</span><span>•</span><span>{stats.questoesRespondidas}/{stats.questoesGeradas} respondidas</span><span>•</span><span>{stats.acertos} acertos</span><span>•</span><span>{stats.erros} erros</span></div><div className="h-2 rounded-full bg-zinc-800 overflow-hidden"><div className="h-full bg-green-500" style={{ width: `${stats.percentual}%` }} /></div><div className="text-[11px] text-zinc-500 mt-1">Status: {stats.status} · {stats.diasConcluidos}/{stats.totalDias} dias feitos</div></div>}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -377,14 +392,7 @@ export default function GeradosPage() {
                     <button disabled={deletingThis} className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2 text-xs flex items-center gap-1 disabled:opacity-50" onClick={() => deleteItem('plan', plan.id)}>{deletingThis ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir</button>
                   </div>
                 </div>
-                {isOpen && isQuestionPlan && stats && (
-                  <div className="mt-4 border-t border-white/[0.07] pt-4">
-                    <div className="text-xs font-bold text-brand-300 mb-2">Cronograma</div>
-                    <div className="grid md:grid-cols-2 gap-2">
-                      {stats.cronograma.slice(0, 20).map((d: any) => <div key={d.dia} className="bg-black/20 rounded-xl p-3 text-xs"><div className="font-semibold text-zinc-200">D{d.dia} · {d.foco}</div><div className="text-zinc-500 mt-1">{d.data} · {d.turno} · {d.horasPorDia}h · {d.metaQuestoes} questões</div></div>)}
-                    </div>
-                  </div>
-                )}
+                {isOpen && isQuestionPlan && stats && <div className="mt-4 border-t border-white/[0.07] pt-4"><div className="text-xs font-bold text-brand-300 mb-2">Cronograma</div><div className="grid md:grid-cols-2 gap-2">{stats.cronograma.slice(0, 20).map((d: any) => <div key={d.dia} className="bg-black/20 rounded-xl p-3 text-xs"><div className="font-semibold text-zinc-200">D{d.dia} · {d.foco}</div><div className="text-zinc-500 mt-1">{d.data} · {d.turno} · {d.horasPorDia}h · {d.metaQuestoes} questões</div></div>)}</div></div>}
               </div>
             )
           })}
