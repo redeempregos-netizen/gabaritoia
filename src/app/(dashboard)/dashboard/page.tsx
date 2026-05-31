@@ -1,9 +1,10 @@
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
-import { BarChart3, Target, Zap, Flame } from 'lucide-react'
+import { BarChart3, Target, Zap, Flame, Lock } from 'lucide-react'
 import Link from 'next/link'
 import { ResetDashboardButton } from '@/components/dashboard/ResetDashboardButton'
+import { canAccessRoute } from '@/lib/plans'
 
 export default async function DashboardPage() {
   const session = await getSession()
@@ -40,6 +41,13 @@ export default async function DashboardPage() {
   const hour = Number(new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }).format(new Date()))
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
   const firstName = user.name.split(' ')[0]
+
+  const quickActions = [
+    { href: '/gerar', label: 'Gerar questão', emoji: '✦', desc: 'Nova questão agora', lockedText: 'Recurso bloqueado' },
+    { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯', desc: 'Metas e revisão', lockedText: 'Disponível no Básico, Pro e Premium' },
+    { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚', desc: 'Subir PDFs', lockedText: 'Disponível no Pro e Premium' },
+    { href: '/gerados', label: 'Meus Gerados', emoji: '📁', desc: 'Ver questões', lockedText: 'Recurso bloqueado' },
+  ].map(item => ({ ...item, locked: !canAccessRoute(user.plan, item.href) }))
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -116,17 +124,24 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-        {[
-          { href: '/gerar', label: 'Gerar questão', emoji: '✦', desc: 'Nova questão agora' },
-          { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚', desc: 'Subir PDFs' },
-          { href: '/gerados', label: 'Meus Gerados', emoji: '📁', desc: 'Ver questões' },
-          { href: '/em-breve', label: 'Em breve', emoji: '🚧', desc: 'Novas funções' },
-        ].map(item => (
-          <Link key={item.href} href={item.href} className="card p-4 hover:border-brand-500/30 transition-colors group">
-            <div className="text-2xl mb-2">{item.emoji}</div>
-            <div className="text-sm font-semibold text-zinc-100 group-hover:text-brand-300 transition-colors">{item.label}</div>
-            <div className="text-xs text-zinc-500 mt-0.5">{item.desc}</div>
-          </Link>
+        {quickActions.map(item => (
+          item.locked ? (
+            <Link key={item.href} href="/conta" className="card p-4 border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40 transition-colors group">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="text-2xl opacity-60">{item.emoji}</div>
+                <Lock size={15} className="text-amber-400" />
+              </div>
+              <div className="text-sm font-semibold text-zinc-100 group-hover:text-amber-300 transition-colors">{item.label}</div>
+              <div className="text-xs text-amber-300/80 mt-0.5">{item.lockedText}</div>
+              <div className="text-[11px] text-zinc-500 mt-2">Toque para ver planos</div>
+            </Link>
+          ) : (
+            <Link key={item.href} href={item.href} className="card p-4 hover:border-brand-500/30 transition-colors group">
+              <div className="text-2xl mb-2">{item.emoji}</div>
+              <div className="text-sm font-semibold text-zinc-100 group-hover:text-brand-300 transition-colors">{item.label}</div>
+              <div className="text-xs text-zinc-500 mt-0.5">{item.desc}</div>
+            </Link>
+          )
         ))}
       </div>
     </div>
