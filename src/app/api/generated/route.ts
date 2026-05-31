@@ -11,21 +11,113 @@ async function ensureGeneratedQuestionsTable() {
       created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `)
+  await prisma.$executeRawUnsafe(`ALTER TABLE user_generated_questions ADD COLUMN IF NOT EXISTS plan_id TEXT;`).catch(() => null)
+  await prisma.$executeRawUnsafe(`ALTER TABLE user_generated_questions ADD COLUMN IF NOT EXISTS day_number INTEGER;`).catch(() => null)
+  await prisma.$executeRawUnsafe(`ALTER TABLE user_generated_questions ADD COLUMN IF NOT EXISTS selected_idx INTEGER;`).catch(() => null)
+  await prisma.$executeRawUnsafe(`ALTER TABLE user_generated_questions ADD COLUMN IF NOT EXISTS is_correct BOOLEAN;`).catch(() => null)
+  await prisma.$executeRawUnsafe(`ALTER TABLE user_generated_questions ADD COLUMN IF NOT EXISTS answered_at TIMESTAMP(3);`).catch(() => null)
   await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS user_generated_questions_user_question_idx ON user_generated_questions(user_id, question_id);`).catch(() => null)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS user_generated_questions_plan_day_idx ON user_generated_questions(user_id, plan_id, day_number);`).catch(() => null)
 }
 
-async function linkQuestionsToUser(userId: string, questionIds: string[]) {
+async function linkQuestionsToUser(userId: string, questionIds: string[], planId?: string | null, dayNumber?: number | null) {
   await ensureGeneratedQuestionsTable()
   for (const questionId of questionIds.filter(Boolean)) {
     await prisma.$executeRawUnsafe(
-      `INSERT INTO user_generated_questions (id, user_id, question_id, created_at)
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-       ON CONFLICT (user_id, question_id) DO NOTHING`,
+      `INSERT INTO user_generated_questions (id, user_id, question_id, plan_id, day_number, created_at)
+       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+       ON CONFLICT (user_id, question_id) DO UPDATE SET
+         plan_id = COALESCE(EXCLUDED.plan_id, user_generated_questions.plan_id),
+         day_number = COALESCE(EXCLUDED.day_number, user_generated_questions.day_number)`,
       crypto.randomUUID(),
       userId,
-      questionId
+      questionId,
+      planId || null,
+      dayNumber || null
     ).catch(() => null)
   }
+}
+
+async function getDayStats(userId: string, planId: string) {
+  await ensureGeneratedQuestionsTable()
+  const rows = await prisma.$queryRawUnsafe<any[]>(`
+    SELECT
+      day_number AS "dayNumber",
+      COUNT(*)::int AS total,
+      COUNT(answered_at)::int AS answered,
+      COALESCE(SUM(CASE WHEN is_correct = true THEN 1 ELSE 0 END), 0)::int AS correct,
+      COALESCE(SUM(CASE WHEN answered_at IS NOT NULL AND is_correct = false THEN 1 ELSE 0 END), 0)::int AS wrong
+    FROM user_generated_questions
+    WHERE user_id = $1 AND plan_id = $2 AND day_number IS NOT NULL
+    GROUP BY day_number
+    ORDER BY day_number ASC
+  `, userId, planId)
+
+  const stats: Record<string, any> = {}
+  for (const row of rows) {
+    const total = Number(row.total || 0)
+    const answered = Number(row.answered || 0)
+    stats[String(row.dayNumber)] = {
+      dayNumber: Number(row.dayNumber),
+      total,
+      answered,
+      correct: Number(row.correct || 0),
+      wrong: Number(row.wrong || 0),
+      percent: total ? Math.round((answered / total) * 100) : 0,
+      done: total > 0 && answered >= total,
+    }
+  }
+  return stats
+}
+
+async function syncPlanProgressFromStats(userId: string, planId: string) {
+  const existing = await prisma.studyPlan.findFirst({ where: { id: planId, userId }, select: { planJson: true, daysCompleted: true } })
+  if (!existing) return null
+
+  const planJson: any = existing.planJson || {}
+  const cronograma = Array.isArray(planJson.cronograma) ? planJson.cronograma : []
+  const dayStats = await getDayStats(userId, planId)
+  const diasComQuestoes = Object.values(dayStats).filter((s: any) => s.total > 0).map((s: any) => s.dayNumber)
+  const diasConcluidos = Object.values(dayStats).filter((s: any) => s.done).map((s: any) => s.dayNumber)
+  const questoesGeradas = Object.values(dayStats).reduce((acc: number, s: any) => acc + Number(s.total || 0), 0)
+  const questoesRespondidas = Object.values(dayStats).reduce((acc: number, s: any) => acc + Number(s.answered || 0), 0)
+  const acertos = Object.values(dayStats).reduce((acc: number, s: any) => acc + Number(s.correct || 0), 0)
+  const erros = Object.values(dayStats).reduce((acc: number, s: any) => acc + Number(s.wrong || 0), 0)
+  const totalDias = cronograma.length || Number(planJson.progresso?.totalDias || 0)
+  const percentual = questoesGeradas ? Math.round((questoesRespondidas / questoesGeradas) * 100) : 0
+  const progresso = {
+    ...(planJson.progresso || {}),
+    diasComQuestoes,
+    diasConcluidos,
+    questoesGeradas,
+    questoesRespondidas,
+    acertos,
+    erros,
+    totalDias,
+    percentual,
+    ultimaAtualizacao: new Date().toISOString(),
+  }
+
+  const daysCompleted: any = existing.daysCompleted || {}
+  Object.entries(dayStats).forEach(([day, stat]: any) => {
+    daysCompleted[day] = {
+      ...(daysCompleted[day] || {}),
+      completed: stat.done,
+      questionsGenerated: stat.total,
+      answered: stat.answered,
+      correct: stat.correct,
+      wrong: stat.wrong,
+      percent: stat.percent,
+      updatedAt: new Date().toISOString(),
+    }
+  })
+
+  await prisma.studyPlan.update({
+    where: { id: planId },
+    data: { planJson: { ...planJson, progresso }, daysCompleted },
+  })
+
+  return { progresso, daysCompleted, dayStats }
 }
 
 export async function GET(req: NextRequest) {
@@ -36,6 +128,7 @@ export async function GET(req: NextRequest) {
 
   const planId = req.nextUrl.searchParams.get('planId')
   if (planId) {
+    await syncPlanProgressFromStats(session.userId, planId).catch(() => null)
     const plan = await prisma.studyPlan.findFirst({
       where: { id: planId, userId: session.userId },
       select: {
@@ -53,7 +146,8 @@ export async function GET(req: NextRequest) {
       },
     })
     if (!plan) return NextResponse.json({ error: 'Plano não encontrado.' }, { status: 404 })
-    return NextResponse.json({ ok: true, plan })
+    const dayStats = await getDayStats(session.userId, planId)
+    return NextResponse.json({ ok: true, plan, dayStats })
   }
 
   const plans = await prisma.studyPlan.findMany({
@@ -90,6 +184,11 @@ export async function GET(req: NextRequest) {
       q."correctIndex",
       q.comentario,
       q."createdAt",
+      ugq.plan_id AS "planId",
+      ugq.day_number AS "dayNumber",
+      ugq.selected_idx AS "selectedIdx",
+      ugq.is_correct AS "isCorrect",
+      ugq.answered_at AS "answeredAt",
       ugq.created_at AS "savedAt"
     FROM user_generated_questions ugq
     JOIN questions q ON q.id = ugq.question_id
@@ -113,8 +212,30 @@ export async function POST(req: NextRequest) {
 
     if (action === 'link_questions') {
       const questionIds = Array.isArray(body.questionIds) ? body.questionIds.map(String) : []
-      await linkQuestionsToUser(session.userId, questionIds)
+      await linkQuestionsToUser(session.userId, questionIds, body.planId ? String(body.planId) : null, body.dayNumber ? Number(body.dayNumber) : null)
       return NextResponse.json({ ok: true, linked: questionIds.length })
+    }
+
+    if (action === 'answer_question') {
+      const questionId = String(body.questionId || '')
+      const selectedIdx = Number(body.selectedIdx)
+      if (!questionId || Number.isNaN(selectedIdx)) return NextResponse.json({ error: 'Questão ou alternativa inválida.' }, { status: 400 })
+      const question = await prisma.question.findUnique({ where: { id: questionId }, select: { correctIndex: true } })
+      if (!question) return NextResponse.json({ error: 'Questão não encontrada.' }, { status: 404 })
+      const isCorrect = selectedIdx === question.correctIndex
+      await prisma.$executeRawUnsafe(
+        `UPDATE user_generated_questions
+         SET selected_idx = $1, is_correct = $2, answered_at = COALESCE(answered_at, CURRENT_TIMESTAMP)
+         WHERE user_id = $3 AND question_id = $4`,
+        selectedIdx,
+        isCorrect,
+        session.userId,
+        questionId
+      )
+      const linked = await prisma.$queryRawUnsafe<any[]>(`SELECT plan_id AS "planId" FROM user_generated_questions WHERE user_id = $1 AND question_id = $2 LIMIT 1`, session.userId, questionId)
+      const planId = linked?.[0]?.planId
+      const synced = planId ? await syncPlanProgressFromStats(session.userId, String(planId)).catch(() => null) : null
+      return NextResponse.json({ ok: true, selectedIdx, isCorrect, planProgress: synced?.progresso || null, dayStats: synced?.dayStats || null })
     }
 
     if (action === 'save_question_plan') {
@@ -146,6 +267,9 @@ export async function POST(req: NextRequest) {
               diasConcluidos: [],
               diasComQuestoes: [],
               questoesGeradas: 0,
+              questoesRespondidas: 0,
+              acertos: 0,
+              erros: 0,
               totalDias: Array.isArray(plan) ? plan.length : 0,
               percentual: 0,
               ultimaAtualizacao: new Date().toISOString(),
@@ -165,47 +289,9 @@ export async function POST(req: NextRequest) {
       const dayNumber = Number(body.dayNumber)
       const generated = Math.max(0, Number(body.generated || 0))
       if (!planId || !dayNumber) return NextResponse.json({ error: 'Plano ou dia inválido.' }, { status: 400 })
-
-      const existing = await prisma.studyPlan.findFirst({ where: { id: planId, userId: session.userId }, select: { planJson: true, daysCompleted: true } })
-      if (!existing) return NextResponse.json({ error: 'Plano não encontrado.' }, { status: 404 })
-
-      const planJson: any = existing.planJson || {}
-      const previousProgress = planJson.progresso || {}
-      const previousGeneratedDays = Array.isArray(previousProgress.diasComQuestoes) ? previousProgress.diasComQuestoes : []
-      const diasComQuestoes = Array.from(new Set([...previousGeneratedDays, dayNumber])).sort((a: any, b: any) => Number(a) - Number(b))
-      const diasConcluidos = Array.isArray(previousProgress.diasConcluidos) ? previousProgress.diasConcluidos : []
-      const totalDias = Array.isArray(planJson.cronograma) ? planJson.cronograma.length : previousProgress.totalDias || diasComQuestoes.length
-      const questoesGeradas = Number(previousProgress.questoesGeradas || 0) + generated
-      const progresso = {
-        ...previousProgress,
-        diasConcluidos,
-        diasComQuestoes,
-        questoesGeradas,
-        totalDias,
-        percentual: totalDias ? Math.round((diasConcluidos.length / totalDias) * 100) : 0,
-        ultimaAtualizacao: new Date().toISOString(),
-        historico: [
-          ...(Array.isArray(previousProgress.historico) ? previousProgress.historico : []),
-          { dia: dayNumber, questoesGeradas: generated, data: new Date().toISOString(), status: 'geradas_para_resolver' },
-        ].slice(-100),
-      }
-
-      const daysCompleted: any = existing.daysCompleted || {}
-      daysCompleted[String(dayNumber)] = {
-        completed: false,
-        questionsGenerated: (Number(daysCompleted[String(dayNumber)]?.questionsGenerated || 0) + generated),
-        generatedAt: new Date().toISOString(),
-      }
-
-      await prisma.studyPlan.update({
-        where: { id: planId },
-        data: {
-          planJson: { ...planJson, progresso },
-          daysCompleted,
-        },
-      })
-
-      return NextResponse.json({ ok: true, progresso, daysCompleted })
+      const synced = await syncPlanProgressFromStats(session.userId, planId)
+      if (!synced) return NextResponse.json({ error: 'Plano não encontrado.' }, { status: 404 })
+      return NextResponse.json({ ok: true, progresso: synced.progresso, daysCompleted: synced.daysCompleted, dayStats: synced.dayStats })
     }
 
     if (action === 'delete_all_questions') {
@@ -224,15 +310,12 @@ export async function POST(req: NextRequest) {
     if (type === 'plan') {
       const deleted = await prisma.studyPlan.deleteMany({ where: { id, userId: session.userId } })
       if (!deleted.count) return NextResponse.json({ error: 'Projeto não encontrado.' }, { status: 404 })
+      await prisma.$executeRawUnsafe(`DELETE FROM user_generated_questions WHERE user_id = $1 AND plan_id = $2`, session.userId, id).catch(() => null)
       return NextResponse.json({ ok: true })
     }
 
     if (type === 'question') {
-      await prisma.$executeRawUnsafe(
-        `DELETE FROM user_generated_questions WHERE user_id = $1 AND question_id = $2`,
-        session.userId,
-        id
-      )
+      await prisma.$executeRawUnsafe(`DELETE FROM user_generated_questions WHERE user_id = $1 AND question_id = $2`, session.userId, id)
       return NextResponse.json({ ok: true })
     }
 
