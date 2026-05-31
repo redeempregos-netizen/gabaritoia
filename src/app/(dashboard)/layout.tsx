@@ -21,10 +21,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
     { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
     { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
-    { href: '/em-breve', label: 'Mapas Mentais', emoji: '🧠' },
-    { href: '/em-breve', label: 'Edital Verticalizado', emoji: '📄' },
-    { href: '/em-breve', label: 'Edital Pro', emoji: '🚀' },
-    { href: '/em-breve', label: 'Histórico', emoji: '🕘' },
   ]
 
   const adminMobileNav = [
