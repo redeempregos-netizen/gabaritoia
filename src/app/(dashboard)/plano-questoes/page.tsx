@@ -17,9 +17,23 @@ type DayPlan = {
   observacao: string
 }
 
+type DayStats = {
+  dayNumber: number
+  total: number
+  answered: number
+  correct: number
+  wrong: number
+  percent: number
+  done: boolean
+}
+
 type PlanProgress = {
   diasConcluidos: number[]
+  diasComQuestoes: number[]
   questoesGeradas: number
+  questoesRespondidas: number
+  acertos: number
+  erros: number
   totalDias: number
   percentual: number
   ultimaAtualizacao?: string
@@ -53,6 +67,17 @@ function dateInputValue(value: any) {
   return ''
 }
 
+const emptyProgress: PlanProgress = {
+  diasConcluidos: [],
+  diasComQuestoes: [],
+  questoesGeradas: 0,
+  questoesRespondidas: 0,
+  acertos: 0,
+  erros: 0,
+  totalDias: 0,
+  percentual: 0,
+}
+
 export default function PlanoQuestoesPage() {
   const [banca, setBanca] = useState('')
   const [cargo, setCargo] = useState('')
@@ -67,14 +92,16 @@ export default function PlanoQuestoesPage() {
   const [loadingSaved, setLoadingSaved] = useState(false)
   const [savingPlan, setSavingPlan] = useState(false)
   const [savedPlanId, setSavedPlanId] = useState<string | null>(null)
-  const [progress, setProgress] = useState<PlanProgress>({ diasConcluidos: [], questoesGeradas: 0, totalDias: 0, percentual: 0 })
+  const [progress, setProgress] = useState<PlanProgress>(emptyProgress)
+  const [dayStats, setDayStats] = useState<Record<string, DayStats>>({})
   const [generatingDay, setGeneratingDay] = useState<number | null>(null)
-  const [generatedDays, setGeneratedDays] = useState<Record<number, number>>({})
   const [plan, setPlan] = useState<DayPlan[]>([])
   const planLockRef = useRef(false)
   const dayLocksRef = useRef<Record<number, boolean>>({})
 
   const materias = useMemo(() => materiasText.split('\n').map(s => s.trim()).filter(Boolean), [materiasText])
+  const totalQuestoes = plan.reduce((acc, d) => acc + d.metaQuestoes, 0)
+  const totalHoras = plan.reduce((acc, d) => acc + Number(d.horasPorDia || 0), 0)
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('id')
@@ -95,12 +122,6 @@ export default function PlanoQuestoesPage() {
       const json = saved.planJson || {}
       const cronograma: DayPlan[] = Array.isArray(json.cronograma) ? json.cronograma : []
       const progresso = json.progresso || {}
-      const daysCompleted = saved.daysCompleted || {}
-      const generatedByDay: Record<number, number> = {}
-
-      Object.entries(daysCompleted).forEach(([key, value]: any) => {
-        generatedByDay[Number(key)] = Number(value?.questionsGenerated || 0)
-      })
 
       setSavedPlanId(saved.id)
       setBanca(json.banca || saved.banca || '')
@@ -113,10 +134,14 @@ export default function PlanoQuestoesPage() {
       setSource(['geradas', 'cadernos', 'ambos'].includes(json.source) ? json.source : 'ambos')
       setMateriasText(Array.isArray(json.materias) && json.materias.length ? json.materias.join('\n') : (saved.editalText || DEFAULT_MATERIAS))
       setPlan(cronograma)
-      setGeneratedDays(generatedByDay)
+      setDayStats(data.dayStats || {})
       setProgress({
         diasConcluidos: Array.isArray(progresso.diasConcluidos) ? progresso.diasConcluidos.map(Number) : [],
+        diasComQuestoes: Array.isArray(progresso.diasComQuestoes) ? progresso.diasComQuestoes.map(Number) : [],
         questoesGeradas: Number(progresso.questoesGeradas || 0),
+        questoesRespondidas: Number(progresso.questoesRespondidas || 0),
+        acertos: Number(progresso.acertos || 0),
+        erros: Number(progresso.erros || 0),
         totalDias: Number(progresso.totalDias || cronograma.length || 0),
         percentual: Number(progresso.percentual || 0),
         ultimaAtualizacao: progresso.ultimaAtualizacao,
@@ -130,10 +155,7 @@ export default function PlanoQuestoesPage() {
   }
 
   function toggleDay(day: number) {
-    setSelectedDays(prev => {
-      if (prev.includes(day)) return prev.filter(d => d !== day)
-      return [...prev, day].sort((a, b) => a - b)
-    })
+    setSelectedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b))
   }
 
   function resetarPlano() {
@@ -142,10 +164,10 @@ export default function PlanoQuestoesPage() {
       return
     }
     setPlan([])
-    setGeneratedDays({})
     setGeneratingDay(null)
     setSavedPlanId(null)
-    setProgress({ diasConcluidos: [], questoesGeradas: 0, totalDias: 0, percentual: 0 })
+    setProgress(emptyProgress)
+    setDayStats({})
     dayLocksRef.current = {}
     setBanca('')
     setCargo('')
@@ -160,7 +182,7 @@ export default function PlanoQuestoesPage() {
   }
 
   async function salvarPlanoGerado(rows: DayPlan[]) {
-    if (!rows.length) return
+    if (!rows.length) return null
     setSavingPlan(true)
     try {
       const res = await fetch('/api/generated', {
@@ -184,56 +206,60 @@ export default function PlanoQuestoesPage() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        toast.error(data.error || 'Plano gerado, mas não foi salvo em Meus Gerados')
-        return
+        toast.error(data.error || 'Plano gerado, mas não foi salvo')
+        return null
       }
-      setSavedPlanId(data.plan?.id || null)
-      setProgress({ diasConcluidos: [], questoesGeradas: 0, totalDias: rows.length, percentual: 0, ultimaAtualizacao: new Date().toISOString() })
-      toast.success('Plano gerado e salvo em Meus Gerados')
+      const id = data.plan?.id || null
+      setSavedPlanId(id)
+      setProgress({ ...emptyProgress, totalDias: rows.length, ultimaAtualizacao: new Date().toISOString() })
+      toast.success('Plano gerado e salvo')
+      return id
     } catch {
-      toast.error('Plano gerado, mas não foi salvo em Meus Gerados')
+      toast.error('Plano gerado, mas não foi salvo')
+      return null
     } finally {
       setSavingPlan(false)
     }
   }
 
-  async function atualizarProgresso(day: DayPlan, generated: number) {
-    if (!savedPlanId || generated <= 0) return
+  async function recarregarPlanoAtual(id = savedPlanId) {
+    if (!id) return
     try {
-      const res = await fetch('/api/generated', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update_question_plan_progress',
-          planId: savedPlanId,
-          dayNumber: day.dia,
-          generated,
-        }),
-      })
+      const res = await fetch(`/api/generated?planId=${encodeURIComponent(id)}`)
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) return
-      if (data.progresso) setProgress(data.progresso)
+      if (!res.ok || !data.plan) return
+      const json = data.plan.planJson || {}
+      const progresso = json.progresso || {}
+      setDayStats(data.dayStats || {})
+      setProgress({
+        diasConcluidos: Array.isArray(progresso.diasConcluidos) ? progresso.diasConcluidos.map(Number) : [],
+        diasComQuestoes: Array.isArray(progresso.diasComQuestoes) ? progresso.diasComQuestoes.map(Number) : [],
+        questoesGeradas: Number(progresso.questoesGeradas || 0),
+        questoesRespondidas: Number(progresso.questoesRespondidas || 0),
+        acertos: Number(progresso.acertos || 0),
+        erros: Number(progresso.erros || 0),
+        totalDias: Number(progresso.totalDias || plan.length || 0),
+        percentual: Number(progresso.percentual || 0),
+        ultimaAtualizacao: progresso.ultimaAtualizacao,
+      })
     } catch {}
   }
 
   function gerarPlano() {
-    if (planLockRef.current || loading || savingPlan || loadingSaved) {
-      toast.info('Já existe uma geração de plano em andamento')
-      return
-    }
-    if (!banca.trim()) { toast.error('Informe a banca'); return }
-    if (!cargo.trim()) { toast.error('Informe o cargo'); return }
-    if (!materias.length) { toast.error('Informe pelo menos uma matéria'); return }
-    if (!selectedDays.length) { toast.error('Escolha pelo menos um dia da semana'); return }
-    if (!hoursPerDay || hoursPerDay < 0.5) { toast.error('Informe quantas horas por dia vai estudar'); return }
+    if (planLockRef.current || loading || savingPlan || loadingSaved) return toast.info('Já existe uma geração em andamento')
+    if (!banca.trim()) return toast.error('Informe a banca')
+    if (!cargo.trim()) return toast.error('Informe o cargo')
+    if (!materias.length) return toast.error('Informe pelo menos uma matéria')
+    if (!selectedDays.length) return toast.error('Escolha pelo menos um dia da semana')
 
     planLockRef.current = true
     setLoading(true)
     setSavedPlanId(null)
-    setProgress({ diasConcluidos: [], questoesGeradas: 0, totalDias: 0, percentual: 0 })
-    setGeneratedDays({})
+    setProgress(emptyProgress)
+    setDayStats({})
     dayLocksRef.current = {}
-    setTimeout(() => {
+
+    setTimeout(async () => {
       const today = new Date()
       const end = examDate ? new Date(`${examDate}T12:00:00`) : new Date(today.getTime() + 21 * 86400000)
       const diffDays = Math.max(7, Math.ceil((end.getTime() - today.getTime()) / 86400000))
@@ -243,14 +269,12 @@ export default function PlanoQuestoesPage() {
       for (let offset = 0; offset <= diffDays && rows.length < 45; offset++) {
         const d = new Date(today.getTime() + offset * 86400000)
         if (!selectedDays.includes(d.getDay())) continue
-
         const count = studyIndex + 1
         const isReview = count % 5 === 0
         const isSimulado = count % 7 === 0
         const materia = materias[studyIndex % materias.length]
         const materia2 = materias[(studyIndex + 1) % materias.length]
         const adjustedQuestions = Math.max(5, Math.round(Number(questionsPerDay || 30) * Math.max(0.5, Number(hoursPerDay || 2)) / 2))
-
         rows.push({
           dia: count,
           data: formatDate(d),
@@ -260,42 +284,25 @@ export default function PlanoQuestoesPage() {
           foco: isSimulado ? `Simulado misto: ${materias.slice(0, 4).join(', ')}` : isReview ? `Revisão de erros: ${materia} + ${materia2}` : materia,
           metaQuestoes: isSimulado ? Math.max(adjustedQuestions, 40) : isReview ? Math.max(15, Math.round(adjustedQuestions * 0.7)) : adjustedQuestions,
           tipo: isSimulado ? 'Simulado' : isReview ? 'Revisão' : 'Questões novas',
-          observacao: isSimulado
-            ? `Resolver em tempo cronometrado no estilo ${banca}. Separar ${hoursPerDay}h para simulado e correção das erradas.`
-            : isReview
-              ? `Usar ${hoursPerDay}h para refazer questões erradas e ler comentários apenas depois de responder.`
-              : source === 'cadernos'
-                ? `Usar ${hoursPerDay}h com questões dos PDFs importados no módulo Cadernos.`
-                : source === 'geradas'
-                  ? `Usar ${hoursPerDay}h com questões criadas pelo Gerador de Questões com IA.`
-                  : `Usar ${hoursPerDay}h combinando PDFs importados com questões criadas pela IA.`,
+          observacao: isSimulado ? `Resolver em tempo cronometrado no estilo ${banca}.` : isReview ? `Refazer questões erradas e revisar comentários depois de responder.` : `Resolver questões de ${materia} e registrar desempenho.`,
         })
         studyIndex++
       }
 
       setPlan(rows)
-      setProgress({ diasConcluidos: [], questoesGeradas: 0, totalDias: rows.length, percentual: 0 })
+      setProgress({ ...emptyProgress, totalDias: rows.length })
       setLoading(false)
       planLockRef.current = false
-      salvarPlanoGerado(rows)
-    }, 350)
+      await salvarPlanoGerado(rows)
+    }, 300)
   }
 
   async function gerarQuestoesDoDia(day: DayPlan) {
-    if (generatingDay !== null || dayLocksRef.current[day.dia]) {
-      toast.info('Já existe uma geração de questões em andamento')
-      return
-    }
-    if (!banca.trim() || !cargo.trim()) {
-      toast.error('Informe banca e cargo antes de gerar as questões')
-      return
-    }
-
+    if (generatingDay !== null || dayLocksRef.current[day.dia]) return toast.info('Já existe uma geração em andamento')
+    if (!savedPlanId) return toast.error('Gere e salve o plano antes de gerar questões do dia')
+    if (!banca.trim() || !cargo.trim()) return toast.error('Informe banca e cargo')
     const total = Math.max(1, Number(day.metaQuestoes || 1))
-    if (total > 10) {
-      const ok = window.confirm(`Este dia tem ${total} questões. Isso vai consumir ${total} créditos e gerar em lotes de 10. Continuar?`)
-      if (!ok) return
-    }
+    if (total > 10 && !window.confirm(`Este dia tem ${total} questões. Vai consumir ${total} créditos. Continuar?`)) return
 
     dayLocksRef.current[day.dia] = true
     setGeneratingDay(day.dia)
@@ -316,21 +323,32 @@ export default function PlanoQuestoesPage() {
             type: 'MULTIPLE_CHOICE',
             format: 'Estilo banca',
             quantity,
-            editalText: `REFERÊNCIA DO PLANO DE QUESTÕES: ${cargo}\nDIA DO PLANO: ${day.dia}\nDATA: ${day.data}\nDIA DA SEMANA: ${day.diaSemana}\nTURNO DE ESTUDO: ${day.turno}\nHORAS DE ESTUDO NO DIA: ${day.horasPorDia}h\nTIPO: ${day.tipo}\nFOCO: ${day.foco}\nORIENTAÇÃO: ${day.observacao}`,
+            editalText: `REFERÊNCIA DO PLANO DE QUESTÕES: ${cargo}\nDIA DO PLANO: ${day.dia}\nDATA: ${day.data}\nTIPO: ${day.tipo}\nFOCO: ${day.foco}\nORIENTAÇÃO: ${day.observacao}`,
           }),
         })
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         if (!res.ok) {
           toast.error(data.error || 'Erro ao gerar questões do dia')
           break
         }
-        created += data.questions?.length || quantity
-        setGeneratedDays(prev => ({ ...prev, [day.dia]: (prev[day.dia] || 0) + (data.questions?.length || quantity) }))
+        const ids = (data.questions || []).map((q: any) => q.id).filter(Boolean)
+        if (ids.length) {
+          await fetch('/api/generated', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'link_questions', questionIds: ids, planId: savedPlanId, dayNumber: day.dia }),
+          })
+        }
+        created += ids.length || quantity
       }
-
       if (created > 0) {
-        await atualizarProgresso(day, created)
-        toast.success(`${created} questão(ões) gerada(s) e salvas em Meus Gerados para o aluno responder.`)
+        await fetch('/api/generated', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update_question_plan_progress', planId: savedPlanId, dayNumber: day.dia, generated: created }),
+        })
+        await recarregarPlanoAtual()
+        toast.success(`${created} questão(ões) vinculada(s) ao Dia ${day.dia}.`)
       }
     } catch {
       toast.error('Erro ao gerar questões do dia')
@@ -340,178 +358,67 @@ export default function PlanoQuestoesPage() {
     }
   }
 
-  const totalQuestoes = plan.reduce((acc, d) => acc + d.metaQuestoes, 0)
-  const totalHoras = plan.reduce((acc, d) => acc + Number(d.horasPorDia || 0), 0)
-  const diasConcluidos = progress.diasConcluidos || []
-  const progressoPercentual = progress.percentual || (plan.length ? Math.round((diasConcluidos.length / plan.length) * 100) : 0)
+  const diasFeitos = progress.diasConcluidos?.length || 0
+  const diasComQuestoes = progress.diasComQuestoes?.length || 0
+  const progressoPercentual = progress.percentual || 0
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
       <div className="mb-8 rounded-3xl border border-brand-500/20 bg-gradient-to-br from-brand-500/10 via-zinc-900 to-zinc-950 p-5 md:p-7">
-        <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-xs text-brand-200 mb-3">
-          <Target size={13} /> Plano de resolução
-        </div>
-        <h1 className="font-heading text-2xl md:text-3xl font-bold">Plano de Estudos de Questões</h1>
-        <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Monte um cronograma, gere as questões do dia com IA, salve em Meus Gerados e deixe o aluno responder antes de ver o gabarito.</p>
+        <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-xs text-brand-200 mb-3"><Target size={13} /> Centro de estudo</div>
+        <h1 className="font-heading text-2xl md:text-3xl font-bold">Plano de Questões</h1>
+        <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Cronograma com questões por dia, respostas salvas, acertos, erros, percentual e status feito.</p>
       </div>
 
       <div className="grid lg:grid-cols-[380px_1fr] gap-6">
         <div className="card p-5 space-y-4 h-fit">
-          <div>
-            <label className="label">Banca</label>
-            <input className="input" placeholder="Ex: FURB, FGV, CEBRASPE" value={banca} onChange={e => setBanca(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Cargo / concurso</label>
-            <input className="input" placeholder="Ex: Prefeitura de Florianópolis — Administrativo" value={cargo} onChange={e => setCargo(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Data da prova</label>
-            <input className="input" type="date" value={examDate} onChange={e => setExamDate(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Dias da semana que vai estudar</label>
-            <div className="flex flex-wrap gap-2">
-              {WEEK_DAYS.map(d => <button key={d.key} type="button" onClick={() => toggleDay(d.key)} className={`chip text-xs ${selectedDays.includes(d.key) ? 'chip-active' : ''}`}>{d.label}</button>)}
-            </div>
-          </div>
-          <div>
-            <label className="label">Turno de estudo</label>
-            <div className="flex flex-wrap gap-2">
-              {TURNOS.map(t => <button key={t} type="button" onClick={() => setTurno(t)} className={`chip ${turno === t ? 'chip-active' : ''}`}>{t}</button>)}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Horas por dia</label>
-              <input className="input" type="number" min={0.5} max={12} step={0.5} value={hoursPerDay} onChange={e => setHoursPerDay(Number(e.target.value))} />
-            </div>
-            <div>
-              <label className="label">Questões base/dia</label>
-              <input className="input" type="number" min={5} max={200} value={questionsPerDay} onChange={e => setQuestionsPerDay(Number(e.target.value))} />
-            </div>
-          </div>
-          <p className="text-xs text-zinc-600 -mt-2">A meta diária é ajustada conforme as horas. Ex.: 2h usa a meta base; 4h dobra a meta.</p>
-          <div>
-            <label className="label">Matérias / tópicos</label>
-            <textarea className="input min-h-[140px] py-3" value={materiasText} onChange={e => setMateriasText(e.target.value)} />
-            <p className="text-xs text-zinc-600 mt-2">Uma matéria por linha.</p>
-          </div>
-          <div>
-            <label className="label">Fonte das questões</label>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={() => setSource('ambos')} className={`chip ${source === 'ambos' ? 'chip-active' : ''}`}>PDFs + Gerador IA</button>
-              <button onClick={() => setSource('cadernos')} className={`chip ${source === 'cadernos' ? 'chip-active' : ''}`}>Só PDFs importados</button>
-              <button onClick={() => setSource('geradas')} className={`chip ${source === 'geradas' ? 'chip-active' : ''}`}>Só Gerador IA</button>
-            </div>
-            <p className="text-xs text-zinc-600 mt-2">Essa escolha orienta o cronograma. O botão de gerar usa IA e salva em Meus Gerados.</p>
-          </div>
+          <div><label className="label">Banca</label><input className="input" placeholder="Ex: FURB, FGV, CEBRASPE" value={banca} onChange={e => setBanca(e.target.value)} /></div>
+          <div><label className="label">Cargo / concurso</label><input className="input" placeholder="Ex: Prefeitura — Administrativo" value={cargo} onChange={e => setCargo(e.target.value)} /></div>
+          <div><label className="label">Data da prova</label><input className="input" type="date" value={examDate} onChange={e => setExamDate(e.target.value)} /></div>
+          <div><label className="label">Dias da semana</label><div className="flex flex-wrap gap-2">{WEEK_DAYS.map(d => <button key={d.key} type="button" onClick={() => toggleDay(d.key)} className={`chip text-xs ${selectedDays.includes(d.key) ? 'chip-active' : ''}`}>{d.label}</button>)}</div></div>
+          <div><label className="label">Turno</label><div className="flex flex-wrap gap-2">{TURNOS.map(t => <button key={t} type="button" onClick={() => setTurno(t)} className={`chip ${turno === t ? 'chip-active' : ''}`}>{t}</button>)}</div></div>
+          <div className="grid grid-cols-2 gap-3"><div><label className="label">Horas/dia</label><input className="input" type="number" min={0.5} step={0.5} value={hoursPerDay} onChange={e => setHoursPerDay(Number(e.target.value))} /></div><div><label className="label">Questões base/dia</label><input className="input" type="number" min={5} value={questionsPerDay} onChange={e => setQuestionsPerDay(Number(e.target.value))} /></div></div>
+          <div><label className="label">Matérias / tópicos</label><textarea className="input min-h-[140px] py-3" value={materiasText} onChange={e => setMateriasText(e.target.value)} /></div>
+          <div><label className="label">Fonte das questões</label><div className="flex flex-wrap gap-2"><button onClick={() => setSource('ambos')} className={`chip ${source === 'ambos' ? 'chip-active' : ''}`}>PDFs + IA</button><button onClick={() => setSource('cadernos')} className={`chip ${source === 'cadernos' ? 'chip-active' : ''}`}>Só PDFs</button><button onClick={() => setSource('geradas')} className={`chip ${source === 'geradas' ? 'chip-active' : ''}`}>Só IA</button></div></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button onClick={gerarPlano} disabled={loading || planLockRef.current || savingPlan || loadingSaved} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
-              {(loading || savingPlan || loadingSaved) && <Loader2 size={16} className="animate-spin" />}
-              {loadingSaved ? 'Carregando...' : loading ? 'Gerando plano...' : savingPlan ? 'Salvando...' : 'Gerar plano'}
-            </button>
-            <button onClick={resetarPlano} type="button" disabled={loading || generatingDay !== null || savingPlan || loadingSaved} className="btn-secondary w-full flex items-center justify-center gap-2 h-11 disabled:opacity-50">
-              <RotateCcw size={15} /> Resetar
-            </button>
+            <button onClick={gerarPlano} disabled={loading || planLockRef.current || savingPlan || loadingSaved} className="btn-primary w-full flex items-center justify-center gap-2 h-11">{(loading || savingPlan || loadingSaved) && <Loader2 size={16} className="animate-spin" />}{loadingSaved ? 'Carregando...' : loading ? 'Gerando...' : savingPlan ? 'Salvando...' : 'Gerar plano'}</button>
+            <button onClick={resetarPlano} disabled={loading || generatingDay !== null || savingPlan || loadingSaved} className="btn-secondary w-full flex items-center justify-center gap-2 h-11 disabled:opacity-50"><RotateCcw size={15} /> Resetar</button>
           </div>
         </div>
 
         <div className="space-y-4">
-          {savedPlanId && (
-            <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <span>Plano salvo em Meus Gerados. Questões geradas: {progress.questoesGeradas || 0}. O aluno responde em Meus Gerados.</span>
-              <Link href="/gerados" className="rounded-xl border border-green-400/20 bg-green-500/10 px-3 py-2 text-xs font-semibold text-green-100 flex items-center gap-1.5 w-fit">
-                <ExternalLink size={13} /> Abrir Meus Gerados
-              </Link>
+          {savedPlanId && <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><span>Plano salvo. Responda as questões em Meus Gerados e acompanhe o progresso aqui.</span><Link href="/gerados" className="rounded-xl border border-green-400/20 bg-green-500/10 px-3 py-2 text-xs font-semibold text-green-100 flex items-center gap-1.5 w-fit"><ExternalLink size={13} /> Responder questões</Link></div>}
+
+          {!plan.length && <div className="card p-10 text-center text-zinc-500"><CalendarDays size={34} className="mx-auto mb-3 text-zinc-600" />{loadingSaved ? 'Carregando plano salvo...' : 'Preencha os dados para criar uma trilha diária de questões.'}</div>}
+
+          {!!plan.length && <>
+            <div className="grid md:grid-cols-5 gap-3">
+              <div className="card p-4"><div className="text-xs text-zinc-500">Dias feitos</div><div className="font-heading text-2xl font-bold text-green-300">{diasFeitos}/{plan.length}</div></div>
+              <div className="card p-4"><div className="text-xs text-zinc-500">Dias com questões</div><div className="font-heading text-2xl font-bold text-white">{diasComQuestoes}/{plan.length}</div></div>
+              <div className="card p-4"><div className="text-xs text-zinc-500">Respondidas</div><div className="font-heading text-2xl font-bold text-brand-300">{progress.questoesRespondidas}/{progress.questoesGeradas}</div></div>
+              <div className="card p-4"><div className="text-xs text-zinc-500">Acertos / erros</div><div className="font-heading text-2xl font-bold text-white">{progress.acertos}/{progress.erros}</div></div>
+              <div className="card p-4"><div className="text-xs text-zinc-500">Progresso real</div><div className="font-heading text-2xl font-bold text-white">{progressoPercentual}%</div></div>
             </div>
-          )}
 
-          {!plan.length && (
-            <div className="card p-10 text-center text-zinc-500">
-              <CalendarDays size={34} className="mx-auto mb-3 text-zinc-600" />
-              {loadingSaved ? 'Carregando plano salvo...' : 'Preencha os dados para criar uma trilha diária de questões.'}
+            <div className="card p-4"><div className="flex items-center justify-between text-xs text-zinc-500 mb-2"><span>Progresso real de resolução</span><span>{progress.questoesRespondidas} de {progress.questoesGeradas} questões respondidas</span></div><div className="h-3 rounded-full bg-zinc-800 overflow-hidden"><div className="h-full bg-green-500 transition-all" style={{ width: `${progressoPercentual}%` }} /></div></div>
+
+            <div className="card overflow-hidden">
+              <div className="p-4 border-b border-white/[0.07] flex items-center justify-between gap-3"><div><div className="font-heading font-bold">Cronograma de questões</div><div className="text-xs text-zinc-500 mt-1">{cargo}</div></div><button onClick={() => recarregarPlanoAtual()} disabled={!savedPlanId} className="btn-secondary text-xs flex items-center gap-1.5"><RotateCcw size={13} /> Atualizar progresso</button></div>
+              <div className="divide-y divide-white/[0.05]">
+                {plan.map(day => {
+                  const stat = dayStats[String(day.dia)] || { dayNumber: day.dia, total: 0, answered: 0, correct: 0, wrong: 0, percent: 0, done: false }
+                  const hasQuestions = stat.total > 0
+                  return <div key={day.dia} className="p-4 hover:bg-white/[0.02] transition-colors">
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+                      <div className="flex gap-3 flex-1"><div className={`w-10 h-10 rounded-2xl border flex items-center justify-center font-bold text-xs ${stat.done ? 'bg-green-500/10 border-green-500/20 text-green-300' : hasQuestions ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-brand-500/10 border-brand-500/20 text-brand-300'}`}>{stat.done ? '✓' : `D${day.dia}`}</div><div className="flex-1"><div className="font-semibold text-sm text-zinc-100 flex flex-wrap items-center gap-2">{day.foco}{stat.done && <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-300">Feito</span>}{hasQuestions && !stat.done && <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300">Em andamento</span>}</div><div className="text-xs text-zinc-500 mt-1">{day.data} · {day.diaSemana} · {day.turno} · {day.horasPorDia}h · {day.tipo}</div><div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs"><div className="rounded-xl bg-black/20 p-2"><div className="text-zinc-500">Geradas</div><div className="font-bold text-white">{stat.total}</div></div><div className="rounded-xl bg-black/20 p-2"><div className="text-zinc-500">Respondidas</div><div className="font-bold text-brand-300">{stat.answered}</div></div><div className="rounded-xl bg-black/20 p-2"><div className="text-zinc-500">Acertos</div><div className="font-bold text-green-300">{stat.correct}</div></div><div className="rounded-xl bg-black/20 p-2"><div className="text-zinc-500">Erros</div><div className="font-bold text-red-300">{stat.wrong}</div></div><div className="rounded-xl bg-black/20 p-2"><div className="text-zinc-500">Concluído</div><div className="font-bold text-white">{stat.percent}%</div></div></div><div className="mt-3 h-2 rounded-full bg-zinc-800 overflow-hidden"><div className={`h-full ${stat.done ? 'bg-green-500' : 'bg-brand-500'}`} style={{ width: `${stat.percent}%` }} /></div><div className="mt-2 text-xs text-zinc-500">Status: {stat.done ? 'Feito' : hasQuestions ? 'Em andamento' : 'Aguardando gerar questões'}</div></div></div>
+                      <div className="flex flex-col gap-2 md:items-end"><div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold text-brand-300 whitespace-nowrap">Meta: {day.metaQuestoes} questões</div><button onClick={() => gerarQuestoesDoDia(day)} disabled={generatingDay !== null || !!dayLocksRef.current[day.dia]} className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50">{generatingDay === day.dia ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}{generatingDay === day.dia ? 'Gerando...' : hasQuestions ? 'Gerar mais' : 'Gerar questões do dia'}</button><Link href="/gerados" className="rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-300 flex items-center gap-1.5"><ExternalLink size={13} /> Responder</Link></div>
+                    </div>
+                    <div className="mt-3 flex items-start gap-2 text-xs text-zinc-400 leading-relaxed"><CheckCircle2 size={13} className="text-green-400 mt-0.5 shrink-0" />{day.observacao}</div>
+                  </div>
+                })}
+              </div>
             </div>
-          )}
-
-          {!!plan.length && (
-            <>
-              <div className="grid md:grid-cols-4 gap-3">
-                <div className="card p-4"><div className="text-xs text-zinc-500">Dias com questões</div><div className="font-heading text-2xl font-bold text-white">{diasConcluidos.length}/{plan.length}</div></div>
-                <div className="card p-4"><div className="text-xs text-zinc-500">Questões geradas</div><div className="font-heading text-2xl font-bold text-brand-300">{progress.questoesGeradas || 0}</div></div>
-                <div className="card p-4"><div className="text-xs text-zinc-500">Horas totais</div><div className="font-heading text-2xl font-bold text-green-300">{totalHoras}h</div></div>
-                <div className="card p-4"><div className="text-xs text-zinc-500">Progresso de geração</div><div className="font-heading text-2xl font-bold text-white">{progressoPercentual}%</div></div>
-              </div>
-
-              <div className="card p-4">
-                <div className="flex items-center justify-between text-xs text-zinc-500 mb-2">
-                  <span>Progresso de geração do plano</span>
-                  <span>{diasConcluidos.length} de {plan.length} dias com questões geradas</span>
-                </div>
-                <div className="h-3 rounded-full bg-zinc-800 overflow-hidden">
-                  <div className="h-full bg-brand-500 transition-all" style={{ width: `${progressoPercentual}%` }} />
-                </div>
-                <div className="text-xs text-zinc-500 mt-2">Meta total prevista: {totalQuestoes} questões. A resolução acontece em Meus Gerados.</div>
-              </div>
-
-              <div className="card overflow-hidden">
-                <div className="p-4 border-b border-white/[0.07] flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-heading font-bold">Cronograma de questões</div>
-                    <div className="text-xs text-zinc-500 mt-1">{cargo}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Link href="/gerados" className="rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                      <ExternalLink size={13} /> Meus Gerados
-                    </Link>
-                    <button onClick={resetarPlano} disabled={loading || generatingDay !== null || savingPlan || loadingSaved} className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 flex items-center gap-1.5 disabled:opacity-50">
-                      <RotateCcw size={13} /> Resetar tudo
-                    </button>
-                  </div>
-                </div>
-                <div className="divide-y divide-white/[0.05]">
-                  {plan.map(day => {
-                    const generated = generatedDays[day.dia] || 0
-                    const completed = diasConcluidos.includes(day.dia)
-                    return (
-                      <div key={day.dia} className="p-4 hover:bg-white/[0.02] transition-colors">
-                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
-                          <div className="flex gap-3">
-                            <div className={`w-10 h-10 rounded-2xl border flex items-center justify-center font-bold text-xs ${completed ? 'bg-green-500/10 border-green-500/20 text-green-300' : 'bg-brand-500/10 border-brand-500/20 text-brand-300'}`}>{completed ? '✓' : `D${day.dia}`}</div>
-                            <div>
-                              <div className="font-semibold text-sm text-zinc-100 flex flex-wrap items-center gap-2">
-                                {day.foco}
-                                {completed && <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-300">Questões geradas</span>}
-                              </div>
-                              <div className="text-xs text-zinc-500 mt-1">{day.data} · {day.diaSemana} · {day.turno} · {day.horasPorDia}h · {day.tipo}</div>
-                            </div>
-                          </div>
-                          <div className="flex flex-col sm:flex-row md:flex-col gap-2 md:items-end">
-                            <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-bold text-brand-300 whitespace-nowrap">
-                              {day.metaQuestoes} questões · {day.horasPorDia}h
-                            </div>
-                            <button
-                              onClick={() => gerarQuestoesDoDia(day)}
-                              disabled={generatingDay !== null || !!dayLocksRef.current[day.dia]}
-                              className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50"
-                            >
-                              {generatingDay === day.dia ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                              {generatingDay === day.dia ? 'Gerando...' : generated > 0 ? `Gerar mais (${generated} salvas)` : 'Gerar questões do dia'}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex items-start gap-2 text-xs text-zinc-400 leading-relaxed">
-                          <CheckCircle2 size={13} className="text-green-400 mt-0.5 shrink-0" />
-                          {day.observacao}
-                        </div>
-                        {generated > 0 && <div className="mt-2 text-xs text-green-400">✓ {generated} questão(ões) deste dia salvas em Meus Gerados para o aluno responder.</div>}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </>
-          )}
+          </>}
         </div>
       </div>
     </div>
