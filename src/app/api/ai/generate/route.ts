@@ -60,12 +60,14 @@ async function saveGeneratedQuestionLinks(userId: string, questionIds: string[])
         created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `)
+    await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS user_generated_questions_user_question_idx ON user_generated_questions(user_id, question_id);`).catch(() => null)
     for (const questionId of questionIds) {
       await prisma.$executeRawUnsafe(
         `INSERT INTO user_generated_questions (id, user_id, question_id, created_at)
-         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+         ON CONFLICT (user_id, question_id) DO NOTHING`,
         crypto.randomUUID(), userId, questionId
-      )
+      ).catch(() => null)
     }
   } catch (e) {
     console.error('[generated questions link error]', e)
