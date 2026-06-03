@@ -24,8 +24,8 @@ const ADMIN_NAV: NavItem[] = [
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
   { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Novo' },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
-  { href: '/mapas',      label: 'Mapas Mentais',       icon: Brain },
-  { href: '/edital',     label: 'Edital Verticalizado', icon: FileText },
+  { href: '/mapas',      label: 'Mapas Mentais',       icon: Brain, badge: 'Beta' },
+  { href: '/edital',     label: 'Edital Verticalizado', icon: FileText, badge: 'Beta' },
   { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
   { href: '/historico',  label: 'Histórico',            icon: History },
@@ -37,9 +37,9 @@ const USER_NAV: NavItem[] = [
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
   { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Upgrade', upgradeText: 'Básico+' },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen, badge: 'Upgrade', upgradeText: 'Pro+' },
-  { href: '/edital',     label: 'Edital Verticalizado', icon: FileText, badge: 'Upgrade', upgradeText: 'Pro+' },
+  { href: '/edital',     label: 'Edital Verticalizado', icon: FileText, badge: 'Beta', upgradeText: 'Pro+' },
   { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket, badge: 'Upgrade', upgradeText: 'Premium' },
-  { href: '/mapas',      label: 'Mapas Mentais',        icon: Brain, badge: 'Upgrade', upgradeText: 'Premium' },
+  { href: '/mapas',      label: 'Mapas Mentais',        icon: Brain, badge: 'Beta', upgradeText: 'Premium' },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
 ]
 
@@ -137,7 +137,7 @@ export function Sidebar({ user }: SidebarProps) {
             <Link key={`${item.href}-${item.label}-${idx}`} href={locked ? '/conta' : item.href} className={cn('sidebar-item', active && 'sidebar-item-active', locked && 'opacity-70 hover:text-amber-300')}>
               <Icon size={15} />
               <span className="flex-1 text-xs">{item.label}</span>
-              {locked ? <Lock size={12} className="text-amber-400" /> : item.badge && <span className="text-[9px] bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded-full font-semibold">{item.badge}</span>}
+              {locked ? <Lock size={12} className="text-amber-400" /> : item.badge && <span className={cn('text-[9px] px-1.5 py-0.5 rounded-full font-semibold', item.badge === 'Beta' ? 'bg-amber-500/15 text-amber-300 border border-amber-500/20' : 'bg-zinc-700 text-zinc-300')}>{item.badge}</span>}
             </Link>
           )
         })}
