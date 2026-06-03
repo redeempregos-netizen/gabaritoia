@@ -75,43 +75,22 @@ async function saveGeneratedQuestionLinks(userId: string, questionIds: string[])
 }
 
 async function getProviderOrder(requested?: AIProvider): Promise<AIProvider[]> {
-  const enabled = await prisma.apiKey.findMany({
-    where: { isEnabled: true },
-    select: { provider: true },
-  }).catch(() => [])
-
+  const enabled = await prisma.apiKey.findMany({ where: { isEnabled: true }, select: { provider: true } }).catch(() => [])
   const enabledProviders = enabled.map(k => k.provider as AIProvider).filter(p => ALL_PROVIDERS.includes(p))
   const cfg = await prisma.adminConfig.findUnique({ where: { key: 'defaultProvider' } }).catch(() => null)
   const defaultProvider = cfg?.value as AIProvider | undefined
-
   const order: AIProvider[] = []
-  const add = (p?: AIProvider) => {
-    if (p && ALL_PROVIDERS.includes(p) && !order.includes(p)) order.push(p)
-  }
-
-  add(requested)
-  add(defaultProvider)
-  enabledProviders.forEach(add)
-  ALL_PROVIDERS.forEach(add)
-
+  const add = (p?: AIProvider) => { if (p && ALL_PROVIDERS.includes(p) && !order.includes(p)) order.push(p) }
+  add(requested); add(defaultProvider); enabledProviders.forEach(add); ALL_PROVIDERS.forEach(add)
   return order
 }
 
 async function callAIWithFallback(opts: { prompt: string; systemPrompt: string; provider?: AIProvider; maxTokens: number; queueJobId?: string }) {
   const providers = await getProviderOrder(opts.provider)
   let lastError = ''
-
   for (const provider of providers) {
     try {
-      const raw = await callAI({
-        prompt: opts.prompt,
-        systemPrompt: opts.systemPrompt,
-        provider,
-        maxTokens: opts.maxTokens,
-        useCache: false,
-        action: 'generate_questions',
-        queueJobId: opts.queueJobId,
-      })
+      const raw = await callAI({ prompt: opts.prompt, systemPrompt: opts.systemPrompt, provider, maxTokens: opts.maxTokens, useCache: false, action: 'generate_questions', queueJobId: opts.queueJobId })
       return { raw, provider }
     } catch (e) {
       lastError = (e as Error).message || String(e)
@@ -119,7 +98,6 @@ async function callAIWithFallback(opts: { prompt: string; systemPrompt: string; 
       continue
     }
   }
-
   throw new Error(`Nenhuma chave de IA ativa funcionou. Último erro: ${lastError || 'erro desconhecido'}`)
 }
 
@@ -147,14 +125,14 @@ export async function POST(req: NextRequest) {
     const defaultExamName = cleanMeta(params.editalText?.match(/REFERÊNCIA DO EDITAL\/CONCURSO:\s*([^\n]+)/i)?.[1], params.cargo ? `${params.cargo}` : 'Concurso público')
     const defaultExamYear = extractYear(params.editalText) || extractYear(params.cargo) || ''
     const defaultBasedOn = cleanMeta(params.area)
-    const systemPrompt = 'Você é especialista em concursos públicos brasileiros. Responda SOMENTE JSON válido, sem texto antes ou depois, sem markdown e sem backticks.'
+    const systemPrompt = 'Você é especialista em concursos públicos brasileiros e conhece profundamente o estilo das principais bancas. Responda SOMENTE JSON válido, sem texto antes ou depois, sem markdown e sem backticks.'
 
-    const contextoBase = `BANCA: ${params.banca}\nÁREA: ${params.area}\nCARGO: ${params.cargo || 'Não informado'}\nESCOLARIDADE: ${params.education || 'Não informado'}\nDIFICULDADE: ${params.difficulty}\nFORMATO: ${isOriginal ? 'questão inédita' : 'estilo da banca ' + params.banca}\nTIPO: ${isTF ? 'Certo ou Errado' : 'Múltipla escolha com 5 alternativas'}${isEdital ? `\nCONTEXTO DO EDITAL/CONCURSO:\n${params.editalText!.substring(0, 8000)}` : ''}`
+    const contextoBase = `BANCA OBRIGATÓRIA: ${params.banca}\nÁREA: ${params.area}\nCARGO: ${params.cargo || 'Não informado'}\nESCOLARIDADE: ${params.education || 'Não informado'}\nDIFICULDADE: ${params.difficulty}\nFORMATO: ${isOriginal ? 'questão inédita inspirada no perfil da banca ' + params.banca : 'estilo da banca ' + params.banca}\nTIPO: ${isTF ? 'Certo ou Errado' : 'Múltipla escolha com 5 alternativas'}${isEdital ? `\nCONTEXTO DO EDITAL/CONCURSO:\n${params.editalText!.substring(0, 8000)}` : ''}`
     const schemaJson = isTF
       ? '[{"enunciado":"afirmacao completa","options":["Certo","Errado"],"correctIndex":0,"comentario":"explicacao objetiva com fundamento","subtopic":"subtopico","area":"materia","examName":"nome da prova/concurso/órgão quando informado","examYear":"ano quando informado","basedOn":"tema, tópico ou item do edital usado como base"}]'
       : '[{"enunciado":"texto completo da questao","options":["alternativa A","alternativa B","alternativa C","alternativa D","alternativa E"],"correctIndex":0,"comentario":"explicacao detalhada com fundamento","subtopic":"subtopico","area":"materia","examName":"nome da prova/concurso/órgão quando informado","examYear":"ano quando informado","basedOn":"tema, tópico ou item do edital usado como base"}]'
 
-    const prompt = `Crie EXATAMENTE ${params.quantity} questão(ões) para concurso público brasileiro.\n\n${contextoBase}\n\nREGRAS:\n- Use o contexto do edital quando fornecido para escolher temas, subtemas, cargo, órgão, banca e nível de cobrança.\n- Em cada questão, preencha examName, examYear e basedOn.\n- examName deve ser o nome da prova/concurso/órgão/cargo quando houver referência; se não houver, use "Concurso público".\n- examYear deve ser o ano citado no edital/referência; se não houver ano, deixe string vazia.\n- basedOn deve indicar o tópico/subtópico/item de edital que inspirou a questão.\n- Se houver apenas referência do edital/concurso, use apenas como orientação e não invente dados factuais específicos.\n- As questões devem ser plausíveis para a banca ${params.banca}, com pegadinhas e linguagem compatíveis.\n- Não copie questões reais literalmente.\n- Cada comentário deve explicar a resposta correta.\n- Responda SOMENTE com JSON válido no formato: ${schemaJson}`
+    const prompt = `Crie EXATAMENTE ${params.quantity} questão(ões) para concurso público brasileiro.\n\n${contextoBase}\n\nREGRAS:\n- A banca ${params.banca} é OBRIGATÓRIA e deve orientar enunciado, alternativas, nível de pegadinha, extensão do texto, vocabulário e forma de cobrança.\n- Antes de escrever, simule mentalmente o padrão da banca ${params.banca}. Ex.: se for CEBRASPE, cobre julgamento e detalhes conceituais; se for FGV, use interpretação, casuística e alternativas próximas; se for FCC/VUNESP/IBFC/AOCP, adapte o tom e a objetividade conforme o perfil.\n- Use o contexto do edital quando fornecido para escolher temas, subtemas, cargo, órgão, banca e nível de cobrança.\n- Em cada questão, preencha examName, examYear e basedOn.\n- examName deve ser o nome da prova/concurso/órgão/cargo quando houver referência; se não houver, use "Concurso público".\n- examYear deve ser o ano citado no edital/referência; se não houver ano, deixe string vazia.\n- basedOn deve indicar o tópico/subtópico/item de edital que inspirou a questão.\n- Se houver apenas referência do edital/concurso, use apenas como orientação e não invente dados factuais específicos.\n- As questões devem ser plausíveis para a banca ${params.banca}, com pegadinhas e linguagem compatíveis.\n- Não copie questões reais literalmente.\n- Cada comentário deve explicar a resposta correta e apontar a armadilha da banca quando existir.\n- Responda SOMENTE com JSON válido no formato: ${schemaJson}`
 
     const aiResult = await callAIWithFallback({ prompt, systemPrompt, provider: params.provider as AIProvider | undefined, maxTokens: 3500, queueJobId: params.queueJobId })
     const provider = aiResult.provider
