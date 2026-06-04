@@ -40,7 +40,7 @@ export const PLAN_DAILY_BONUS_AMOUNT: Record<string, number> = {
 
 export const PLAN_FEATURES: Record<string, string[]> = {
   FREE: ['Dashboard', 'Minha Conta', 'Gerar questões', 'Meus Gerados', '300 créditos'],
-  PACK: ['Todos os recursos', '300 créditos iniciais', '+20 créditos de bônus por dia', 'Gerador de questões', 'Plano de questões', 'Cadernos PDF', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados'],
+  PACK: ['Pack com 400 mil questões incluso', 'Acesso por 6 meses', '300 créditos iniciais', '+20 créditos de bônus por dia', 'Gerador de questões', 'Plano de questões', 'Cadernos PDF', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados'],
   [PLAN_CADERNOS_500]: ['Dashboard', 'Minha Conta', 'Gerar questões', 'Plano de questões básico', 'Meus Gerados', '1.000 créditos'],
   [PLAN_CADERNOS_QUESTOES]: ['Dashboard', 'Minha Conta', 'Gerar questões', 'Plano de questões completo', 'Cadernos PDF', 'Edital Verticalizado', 'Meus Gerados', '3.000 créditos'],
   [PLAN_FULL]: ['Todos os recursos', 'Cadernos PDF', 'Plano de questões completo', 'Gerador de questões', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados', '8.000 créditos'],
