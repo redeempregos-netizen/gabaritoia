@@ -1,4 +1,5 @@
 import { prisma } from './prisma'
+import { normalizePlan, PLAN_DAILY_BONUS_AMOUNT } from './plans'
 
 // Custo em créditos por ação
 export const CREDIT_COSTS = {
@@ -11,9 +12,10 @@ export const CREDIT_COSTS = {
 
 // Créditos gratuitos por plano
 export const PLAN_CREDITS = {
-  FREE: 1000,
-  PRO:  1000,
-  ENTERPRISE: 3000,
+  FREE: 300,
+  PACK: 300,
+  PRO:  3000,
+  ENTERPRISE: 8000,
   CADERNOS_500: 1000,
 } as const
 
@@ -90,7 +92,7 @@ export async function getCreditHistory(userId: string, limit = 20) {
   })
 }
 
-// Bônus diário fixo
+// Bônus diário por plano
 export async function claimDailyBonus(userId: string): Promise<{ claimed: boolean; amount: number }> {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -105,8 +107,11 @@ export async function claimDailyBonus(userId: string): Promise<{ claimed: boolea
 
   if (alreadyClaimed) return { claimed: false, amount: 0 }
 
-  const total = 20
-  await addCredits(userId, total, 'daily_bonus', 'Bônus diário de 20 créditos')
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } })
+  const plan = normalizePlan(user?.plan)
+  const total = PLAN_DAILY_BONUS_AMOUNT[plan] ?? 20
+
+  await addCredits(userId, total, 'daily_bonus', `Bônus diário de ${total} créditos - ${plan}`)
 
   return { claimed: true, amount: total }
 }
