@@ -120,14 +120,30 @@ model StudyPlan {
   level         String
   editalText    String?
   planJson      Json
-  flashcards    Json?
-  daysCompleted Json?
+  flashcards    Json
+  daysCompleted Json      @default("{}")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("study_plans")
+}
+
+model AICache {
+  id         String   @id @default(cuid())
+  promptHash String   @unique
+  prompt     String
+  response   String
+  provider   String
+  model      String?
+  hits       Int      @default(0)
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([promptHash])
+  @@index([expiresAt])
+  @@map("ai_cache")
 }
 
 model CreditLog {
@@ -140,5 +156,41 @@ model CreditLog {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("credit_logs")
+}
+
+model RateLimit {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  count     Int      @default(0)
+  resetAt   DateTime
+  createdAt DateTime @default(now())
+
+  @@index([key])
+  @@index([resetAt])
+  @@map("rate_limits")
+}
+
+model AdminConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("admin_config")
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  provider   String    @unique
+  keyHash    String
+  model      String
+  isEnabled  Boolean   @default(true)
+  lastTested DateTime?
+  testStatus String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@map("api_keys")
 }
