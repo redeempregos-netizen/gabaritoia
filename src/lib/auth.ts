@@ -50,6 +50,7 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
 
 async function ensureUserPlanColumns() {
   const prisma = await getPrisma()
+  await prisma.$executeRawUnsafe(`DO $$ BEGIN ALTER TYPE "Plan" ADD VALUE IF NOT EXISTS 'PACK'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`).catch(() => null)
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_renewed_at TIMESTAMP(3);`).catch(() => null)
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_started_at TIMESTAMP(3);`).catch(() => null)
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMP(3);`).catch(() => null)
