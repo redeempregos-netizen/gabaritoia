@@ -149,6 +149,7 @@ export function Sidebar({ user }: SidebarProps) {
         {user.role === 'ADMIN' && (
           <>
             <Link href="/admin/assinaturas" className="sidebar-item"><DollarSign size={15} /><span className="text-xs">Assinaturas</span></Link>
+            <Link href="/admin/suporte" className="sidebar-item"><HelpCircle size={15} /><span className="text-xs">Admin Suporte</span></Link>
             <Link href="/admin/settings" className="sidebar-item"><Settings size={15} /><span className="text-xs">Admin</span></Link>
           </>
         )}
