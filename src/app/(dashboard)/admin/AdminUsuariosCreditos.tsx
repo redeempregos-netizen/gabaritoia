@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, Plus, RefreshCw, Save } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 type UserRow = {
@@ -30,7 +30,7 @@ type NewUserForm = {
 
 const PLAN_OPTIONS = [
   { value: 'FREE', label: 'Teste', credits: 300, validity: '7' },
-  { value: 'PACK', label: 'Plano Pack', credits: 300, validity: '180' },
+  { value: 'PACK', label: 'Plano Pack', credits: 1000, validity: '180' },
   { value: 'CADERNOS_500', label: 'Básico', credits: 1000, validity: '30' },
   { value: 'PRO', label: 'Pro', credits: 3000, validity: '30' },
   { value: 'ENTERPRISE', label: 'Premium', credits: 8000, validity: '30' },
@@ -71,6 +71,7 @@ function getPlanValidity(plan: string) {
 export default function AdminUsuariosCreditos() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const [users, setUsers] = useState<UserRow[]>([])
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [monthlyFreeCredits, setMonthlyFreeCredits] = useState(1000)
@@ -146,6 +147,27 @@ export default function AdminUsuariosCreditos() {
     }
   }
 
+  async function deleteUser(user: UserRow) {
+    const label = user.email || user.name || 'este usuário'
+    if (!window.confirm(`Tem certeza que deseja excluir ${label}? Essa ação não pode ser desfeita.`)) return
+    setDeleting(user.id)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast.error(data.error || 'Erro ao excluir usuário'); return }
+      toast.success('Usuário excluído')
+      await load()
+    } catch {
+      toast.error('Erro ao excluir usuário')
+    } finally {
+      setDeleting(null)
+    }
+  }
+
   async function applyPlanToUser(user: UserRow, plan: string) {
     await updateUser(user.id, { plan, credits: getPlanCredits(plan), planDurationDays: Number(getPlanValidity(plan)) })
   }
@@ -203,13 +225,48 @@ export default function AdminUsuariosCreditos() {
 
       <div className="card overflow-hidden">
         <div className="p-4 border-b border-white/[0.07] flex items-center justify-between gap-3">
-          <div><h2 className="font-heading font-semibold text-sm text-brand-300">Usuários cadastrados</h2><p className="text-xs text-zinc-500 mt-1">Ajuste créditos, role, plano e validade de acesso de cada usuário.</p></div>
+          <div><h2 className="font-heading font-semibold text-sm text-brand-300">Usuários cadastrados</h2><p className="text-xs text-zinc-500 mt-1">Ajuste créditos, role, plano, validade e exclusão de acesso de cada usuário.</p></div>
           <button onClick={load} className="btn-secondary text-xs flex items-center gap-1"><RefreshCw size={13} /> Atualizar</button>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1250px]">
-            <thead><tr className="border-b border-white/[0.07]"><th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Nome</th><th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">E-mail</th><th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Role</th><th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Plano</th><th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Validade</th><th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Renovar plano</th><th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Créditos</th><th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Usados</th><th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Última renovação</th><th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Streak</th></tr></thead>
-            <tbody>{users.map(user => { const left = daysLeft(user.planExpiresAt); const expired = user.planExpired || (left !== null && left < 0); return <tr key={user.id} className="border-b border-white/[0.04] hover:bg-white/[0.02]"><td className="px-4 py-3 text-sm">{user.name || 'Sem nome'}</td><td className="px-4 py-3 text-sm text-zinc-400">{user.email}</td><td className="px-4 py-3"><select className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none" value={user.role} onChange={e => updateUser(user.id, { role: e.target.value })}><option value="USER">Usuário</option><option value="ADMIN">Admin</option></select></td><td className="px-4 py-3"><select className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none min-w-[130px]" value={user.plan} onChange={e => updateUser(user.id, { plan: e.target.value })}>{PLAN_OPTIONS.map(plan => <option key={plan.value} value={plan.value}>{plan.label}</option>)}</select><div className="text-[11px] text-zinc-500 mt-1">{getPlanLabel(user.plan)}</div></td><td className="px-4 py-3 text-xs"><div className={expired ? 'text-red-300 font-semibold' : 'text-zinc-300'}>{formatDate(user.planExpiresAt)}</div>{left !== null && <div className={expired ? 'text-red-400 mt-1' : 'text-zinc-500 mt-1'}>{expired ? `Expirado há ${Math.abs(left)} dia(s)` : `${left} dia(s) restantes`}</div>}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1.5"><button disabled={saving === user.id} onClick={() => updateUser(user.id, { planDurationDays: 30 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">30 dias</button><button disabled={saving === user.id} onClick={() => updateUser(user.id, { planDurationDays: 90 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">90 dias</button><button disabled={saving === user.id} onClick={() => updateUser(user.id, { planDurationDays: 180 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">6 meses</button><button disabled={saving === user.id} onClick={() => updateUser(user.id, { planDurationDays: 365 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">1 ano</button><button disabled={saving === user.id} onClick={() => applyPlanToUser(user, user.plan)} className="rounded-lg border border-brand-500/20 bg-brand-500/10 px-2 py-1 text-[11px] text-brand-200 disabled:opacity-50">Aplicar créditos</button><button disabled={saving === user.id} onClick={() => updateUser(user.id, { clearPlanExpiration: true })} className="rounded-lg border border-green-500/20 bg-green-500/10 px-2 py-1 text-[11px] text-green-300 disabled:opacity-50">Vitalício</button></div></td><td className="px-4 py-3"><div className="flex items-center gap-2"><input className="w-28 rounded-lg border border-white/10 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 outline-none" type="number" min={0} value={drafts[user.id] ?? String(user.credits ?? 0)} onChange={e => setDrafts(prev => ({ ...prev, [user.id]: e.target.value }))} /><button onClick={() => updateUser(user.id, { credits: Math.max(0, Number(drafts[user.id] || 0)) })} disabled={saving === user.id} className="rounded-lg bg-brand-600 hover:bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{saving === user.id ? '...' : 'Salvar'}</button></div></td><td className="px-4 py-3 text-sm text-zinc-400">{user.creditsUsed ?? 0}</td><td className="px-4 py-3 text-xs text-zinc-500">{user.creditsRenewedAt ? new Date(user.creditsRenewedAt).toLocaleDateString('pt-BR') : 'Pendente'}</td><td className="px-4 py-3 text-sm text-zinc-400">{user.streak || 0} dias</td></tr> })}</tbody>
+          <table className="w-full min-w-[1400px]">
+            <thead>
+              <tr className="border-b border-white/[0.07]">
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Nome</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">E-mail</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Role</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Plano</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Validade</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Renovar plano</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Créditos</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Usados</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Última renovação</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Streak</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(user => {
+                const left = daysLeft(user.planExpiresAt)
+                const expired = user.planExpired || (left !== null && left < 0)
+                const isBusy = saving === user.id || deleting === user.id
+                return (
+                  <tr key={user.id} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
+                    <td className="px-4 py-3 text-sm">{user.name || 'Sem nome'}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-400">{user.email}</td>
+                    <td className="px-4 py-3"><select className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none" value={user.role} onChange={e => updateUser(user.id, { role: e.target.value })}><option value="USER">Usuário</option><option value="ADMIN">Admin</option></select></td>
+                    <td className="px-4 py-3"><select className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none min-w-[130px]" value={user.plan} onChange={e => updateUser(user.id, { plan: e.target.value, credits: getPlanCredits(e.target.value), planDurationDays: Number(getPlanValidity(e.target.value)) })}>{PLAN_OPTIONS.map(plan => <option key={plan.value} value={plan.value}>{plan.label}</option>)}</select><div className="text-[11px] text-zinc-500 mt-1">{getPlanLabel(user.plan)}</div></td>
+                    <td className="px-4 py-3 text-xs"><div className={expired ? 'text-red-300 font-semibold' : 'text-zinc-300'}>{formatDate(user.planExpiresAt)}</div>{left !== null && <div className={expired ? 'text-red-400 mt-1' : 'text-zinc-500 mt-1'}>{expired ? `Expirado há ${Math.abs(left)} dia(s)` : `${left} dia(s) restantes`}</div>}</td>
+                    <td className="px-4 py-3"><div className="flex flex-wrap gap-1.5"><button disabled={isBusy} onClick={() => updateUser(user.id, { planDurationDays: 30 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">30 dias</button><button disabled={isBusy} onClick={() => updateUser(user.id, { planDurationDays: 90 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">90 dias</button><button disabled={isBusy} onClick={() => updateUser(user.id, { planDurationDays: 180 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">6 meses</button><button disabled={isBusy} onClick={() => updateUser(user.id, { planDurationDays: 365 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">1 ano</button><button disabled={isBusy} onClick={() => applyPlanToUser(user, user.plan)} className="rounded-lg border border-brand-500/20 bg-brand-500/10 px-2 py-1 text-[11px] text-brand-200 disabled:opacity-50">Aplicar créditos</button><button disabled={isBusy} onClick={() => updateUser(user.id, { clearPlanExpiration: true })} className="rounded-lg border border-green-500/20 bg-green-500/10 px-2 py-1 text-[11px] text-green-300 disabled:opacity-50">Vitalício</button></div></td>
+                    <td className="px-4 py-3"><div className="flex items-center gap-2"><input className="w-28 rounded-lg border border-white/10 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 outline-none" type="number" min={0} value={drafts[user.id] ?? String(user.credits ?? 0)} onChange={e => setDrafts(prev => ({ ...prev, [user.id]: e.target.value }))} /><button onClick={() => updateUser(user.id, { credits: Math.max(0, Number(drafts[user.id] || 0)) })} disabled={isBusy} className="rounded-lg bg-brand-600 hover:bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{saving === user.id ? '...' : 'Salvar'}</button></div></td>
+                    <td className="px-4 py-3 text-sm text-zinc-400">{user.creditsUsed ?? 0}</td>
+                    <td className="px-4 py-3 text-xs text-zinc-500">{user.creditsRenewedAt ? new Date(user.creditsRenewedAt).toLocaleDateString('pt-BR') : 'Pendente'}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-400">{user.streak || 0} dias</td>
+                    <td className="px-4 py-3"><button onClick={() => deleteUser(user)} disabled={isBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">{deleting === user.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}EXCLUIR</button></td>
+                  </tr>
+                )
+              })}
+            </tbody>
           </table>
         </div>
       </div>
