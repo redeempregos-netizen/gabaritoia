@@ -45,10 +45,11 @@ function nextCreditRenewal(value?: string | null) {
 }
 
 const CHECKOUT_LINKS: Record<string, string> = {
-  FREE: '#',
-  CADERNOS_500: '#',
-  PRO: '#',
-  ENTERPRISE: '#',
+  FREE: 'https://pay.kiwify.com.br/2RXraOb',
+  PACK: 'https://pay.kiwify.com.br/3SY0sIx',
+  CADERNOS_500: 'https://pay.kiwify.com.br/B9iJ7G6',
+  PRO: 'https://pay.kiwify.com.br/UCpf3R6',
+  ENTERPRISE: 'https://pay.kiwify.com.br/MB01Fh7',
 }
 
 export default function MinhaContaPage() {
