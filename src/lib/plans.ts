@@ -40,7 +40,7 @@ export const PLAN_DAILY_BONUS_AMOUNT: Record<string, number> = {
 
 export const PLAN_FEATURES: Record<string, string[]> = {
   FREE: ['Dashboard', 'Minha Conta', 'Gerar questões', 'Meus Gerados', '300 créditos'],
-  PACK: ['Pack com 400 mil questões incluso', 'Acesso por 6 meses', '300 créditos iniciais', '+20 créditos de bônus por dia', 'Gerador de questões', 'Plano de questões', 'Cadernos PDF', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados'],
+  PACK: ['Gerador de questões', 'Meus Gerados', '300 créditos iniciais', '+20 créditos de bônus por dia', 'Acesso por 6 meses'],
   [PLAN_CADERNOS_500]: ['Dashboard', 'Minha Conta', 'Gerar questões', 'Plano de questões básico', 'Meus Gerados', '1.000 créditos'],
   [PLAN_CADERNOS_QUESTOES]: ['Dashboard', 'Minha Conta', 'Gerar questões', 'Plano de questões completo', 'Cadernos PDF', 'Edital Verticalizado', 'Meus Gerados', '3.000 créditos'],
   [PLAN_FULL]: ['Todos os recursos', 'Cadernos PDF', 'Plano de questões completo', 'Gerador de questões', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados', '8.000 créditos'],
@@ -48,7 +48,7 @@ export const PLAN_FEATURES: Record<string, string[]> = {
 
 export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
   FREE: ['/dashboard', '/conta', '/gerar', '/gerados', '/em-breve'],
-  PACK: ['/dashboard', '/conta', '/cadernos', '/gerar', '/plano-questoes', '/edital', '/edital-pro', '/mapas', '/gerados', '/historico', '/em-breve'],
+  PACK: ['/dashboard', '/conta', '/gerar', '/gerados', '/em-breve'],
   [PLAN_CADERNOS_500]: ['/dashboard', '/conta', '/gerar', '/plano-questoes', '/gerados', '/em-breve'],
   [PLAN_CADERNOS_QUESTOES]: ['/dashboard', '/conta', '/cadernos', '/gerar', '/plano-questoes', '/edital', '/gerados', '/em-breve'],
   [PLAN_FULL]: ['/dashboard', '/conta', '/cadernos', '/gerar', '/plano-questoes', '/edital', '/edital-pro', '/mapas', '/gerados', '/historico', '/em-breve'],
@@ -76,7 +76,7 @@ export function isFullPlan(plan?: string | null) {
 
 export function isLimitedPlan(plan?: string | null) {
   const normalized = normalizePlan(plan)
-  return normalized === PLAN_FREE || normalized === PLAN_CADERNOS_500 || normalized === PLAN_CADERNOS_QUESTOES
+  return normalized === PLAN_FREE || normalized === PLAN_PACK || normalized === PLAN_CADERNOS_500 || normalized === PLAN_CADERNOS_QUESTOES
 }
 
 export function getPlanLabel(plan?: string | null) {
