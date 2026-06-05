@@ -181,7 +181,7 @@ export default function CadernosPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-xs text-brand-200 mb-3"><BookOpen size={13} /> Caderno com cache</div>
             <h1 className="font-heading text-2xl md:text-3xl font-bold">Cadernos de Questões PDF</h1>
-            <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Importe PDFs comentados, reaproveite cache global e filtre questões por banca, ano, UF e tópico.</p>
+            <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Importe PDFs comentados, não importe mais que um por vez, pode acontecer de não importar todas as questões.</p>
           </div>
           <button disabled={importing} onClick={() => document.getElementById('book-file')?.click()} className="btn-primary flex items-center justify-center gap-2">
             {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Importar PDF
@@ -221,38 +221,38 @@ export default function CadernosPage() {
                 <div className="text-xs text-zinc-500 mt-3">Mostrando {filteredQuestions.length} de {questions.length} questões.</div>
               </div>
 
-              {!q ? <div className="card p-10 text-center text-zinc-500">Nenhuma questão encontrada com esses filtros.</div> : <>
-              <div className="rounded-3xl border border-white/[0.08] bg-gradient-to-br from-zinc-900 via-zinc-900 to-brand-950/30 p-5">
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+              {!q ? <div className="card p-8 text-center text-zinc-500">Nenhuma questão encontrada com os filtros atuais.</div> : <div className="card p-5 md:p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <div>
-                    <div className="text-xs text-brand-300 font-bold uppercase tracking-wider">{activeBook.title}</div>
-                    <h2 className="font-heading text-xl font-bold mt-1">Questão {q.number}</h2>
-                    <div className="text-xs text-zinc-500 mt-1">{safe(q.topic, 'Tópico não informado')} · {safe(q.banca, 'Banca não identificada')} · {inferYear(q) || 'Ano não identificado'} · {inferUf(q) || 'UF não identificada'}</div>
+                    <div className="text-xs text-zinc-500">Questão {current + 1} de {filteredQuestions.length}</div>
+                    <div className="font-heading font-bold text-lg text-white">{safe(q.topic, 'Questão importada')}</div>
+                    <div className="text-xs text-zinc-500 mt-1">{safe(q.banca)} · {safe(q.exam)} · ID {safe(q.externalId, q.number ? String(q.number) : '—')}</div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-center min-w-full md:min-w-[260px]">
-                    <div className="rounded-2xl bg-black/25 border border-white/10 p-3"><div className="font-bold text-white">{percent}%</div><div className="text-[10px] text-zinc-500">Feito</div></div>
-                    <div className="rounded-2xl bg-black/25 border border-white/10 p-3"><div className="font-bold text-green-300">{score}%</div><div className="text-[10px] text-zinc-500">Acerto</div></div>
-                    <div className="rounded-2xl bg-black/25 border border-white/10 p-3"><div className="font-bold text-brand-300">{current + 1}/{filteredQuestions.length}</div><div className="text-[10px] text-zinc-500">Filtro</div></div>
-                  </div>
+                  <div className="text-xs text-zinc-400">Progresso: {percent}% · Acertos: {score}%</div>
                 </div>
-              </div>
 
-              <div className="card p-5 md:p-6 space-y-5">
-                <div className="rounded-2xl border border-brand-500/20 bg-brand-500/5 p-4">
-                  <div className="text-xs font-bold text-brand-300 mb-3 uppercase tracking-wider">Origem da questão</div>
-                  <div className="grid md:grid-cols-3 gap-3 text-xs">
-                    <div className="rounded-xl bg-black/20 border border-white/10 p-3"><div className="text-zinc-500 mb-1">ID</div><div className="text-zinc-200 font-semibold">{safe(q.externalId)}</div></div>
-                    <div className="rounded-xl bg-black/20 border border-white/10 p-3"><div className="text-zinc-500 mb-1">Tópico</div><div className="text-zinc-200 font-semibold">{safe(q.topic)}</div></div>
-                    <div className="rounded-xl bg-black/20 border border-white/10 p-3"><div className="text-zinc-500 mb-1">Banca</div><div className="text-zinc-200 font-semibold">{safe(q.banca, 'Não identificada')}</div></div>
-                  </div>
-                  <div className="mt-3 rounded-xl bg-black/20 border border-white/10 p-3 text-xs"><div className="text-zinc-500 mb-1">Prova</div><div className="text-zinc-200 font-semibold leading-relaxed">{safe(q.exam)}</div></div>
+                <div className="prose prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap">{q.statement}</div>
+
+                <div className="space-y-2 mt-5">
+                  {q.options.map((op, idx) => {
+                    const selected = q.selectedIndex === idx
+                    const isCorrect = q.correctIndex === idx
+                    return <button key={idx} disabled={answering === q.id} onClick={() => answer(q, idx)} className={`w-full text-left rounded-2xl border px-4 py-3 text-sm transition ${answered && isCorrect ? 'border-green-500/40 bg-green-500/10 text-green-100' : answered && selected && !isCorrect ? 'border-red-500/40 bg-red-500/10 text-red-100' : 'border-white/10 bg-zinc-900 hover:border-brand-500/30'}`}>
+                      <span className="font-bold mr-2">{'ABCDE'[idx]}.</span>{op}
+                    </button>
+                  })}
                 </div>
-                <div><div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Pergunta</div><p className="text-sm md:text-base leading-relaxed whitespace-pre-line text-zinc-100">{q.statement}</p></div>
-                <div><div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Alternativas</div><div className="space-y-3">{(q.options || []).map((op, idx) => { const isSelected = q.selectedIndex === idx; const isCorrect = q.correctIndex === idx; const cls = answered && isCorrect ? 'border-green-500/40 bg-green-500/10 text-green-200' : answered && isSelected && !isCorrect ? 'border-red-500/40 bg-red-500/10 text-red-200' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-brand-500/40'; return <button key={idx} disabled={answering === q.id} onClick={() => answer(q, idx)} className={`w-full text-left rounded-2xl border p-4 text-sm transition-all ${cls}`}><div className="flex gap-3"><span className="font-bold">{'ABCDE'[idx] || idx + 1})</span><span>{op}</span>{answered && isCorrect && <CheckCircle2 size={16} className="ml-auto text-green-400" />}{answered && isSelected && !isCorrect && <XCircle size={16} className="ml-auto text-red-400" />}</div></button> })}</div></div>
-                {answered && <div className="rounded-2xl border border-brand-500/20 bg-brand-500/5 p-4"><div className="flex flex-wrap items-center gap-2 mb-3"><div className="text-xs font-bold text-brand-300 uppercase tracking-wider">Resposta e comentário</div><span className={`text-[11px] rounded-full px-2 py-1 border ${q.isCorrect ? 'border-green-500/20 bg-green-500/10 text-green-300' : 'border-red-500/20 bg-red-500/10 text-red-300'}`}>{q.isCorrect ? 'Você acertou' : 'Você errou'}</span><span className="text-[11px] rounded-full px-2 py-1 border border-white/10 bg-black/20 text-zinc-300">Resposta: {correctLetter}</span></div><div className="text-sm text-zinc-300 leading-relaxed">{q.comment || 'Comentário não informado.'}</div></div>}
-              </div>
-              <div className="flex justify-between gap-3"><button className="btn-secondary" disabled={current === 0} onClick={() => setCurrent(c => Math.max(0, c - 1))}>Anterior</button><button className="btn-primary" disabled={current >= filteredQuestions.length - 1} onClick={() => setCurrent(c => Math.min(filteredQuestions.length - 1, c + 1))}>Próxima</button></div>
-              </>}
+
+                {answered && <div className="mt-5 rounded-2xl border border-white/10 bg-zinc-900 p-4">
+                  <div className="flex items-center gap-2 font-bold text-sm mb-2">{q.isCorrect ? <CheckCircle2 className="text-green-400" size={17} /> : <XCircle className="text-red-400" size={17} />} Gabarito: {correctLetter}</div>
+                  {q.comment && <div className="text-sm text-zinc-300 whitespace-pre-wrap">{q.comment}</div>}
+                </div>}
+
+                <div className="flex justify-between gap-3 mt-6">
+                  <button className="btn-secondary" disabled={current <= 0} onClick={() => setCurrent(c => Math.max(0, c - 1))}>Anterior</button>
+                  <button className="btn-primary" disabled={current >= filteredQuestions.length - 1} onClick={() => setCurrent(c => Math.min(filteredQuestions.length - 1, c + 1))}>Próxima</button>
+                </div>
+              </div>}
             </div>}
           </div>
         </div>
