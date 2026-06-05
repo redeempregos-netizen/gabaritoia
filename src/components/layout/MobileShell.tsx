@@ -28,6 +28,7 @@ export function MobileShell({ user, nav }: MobileShellProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [credits, setCredits] = useState<number | null>(null)
+  const [claiming, setClaiming] = useState(false)
 
   const navWithLock = useMemo(() => nav.map(item => ({ ...item, locked: user.role !== 'ADMIN' && !canAccessRoute(user.plan, item.href) })), [nav, user.plan, user.role])
   const bottomNav = useMemo(() => navWithLock.filter(item => !item.locked).slice(0, 4), [navWithLock])
@@ -42,6 +43,26 @@ export function MobileShell({ user, nav }: MobileShellProps) {
   useEffect(() => {
     setOpen(false)
   }, [pathname])
+
+  async function claimBonus() {
+    setClaiming(true)
+    try {
+      const res = await fetch('/api/credits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'daily_bonus' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setCredits(typeof data.credits === 'number' ? data.credits : credits)
+        alert(`+${data.amount || 20} créditos! Bônus diário resgatado 🎉`)
+      } else {
+        alert(data.error || 'Não foi possível resgatar os créditos agora.')
+      }
+    } finally {
+      setClaiming(false)
+    }
+  }
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -73,9 +94,13 @@ export function MobileShell({ user, nav }: MobileShellProps) {
           </div>
 
           {credits !== null && (
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-amber-300 text-[11px] font-bold flex items-center gap-1">
+            <button
+              onClick={() => setOpen(true)}
+              className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-amber-300 text-[11px] font-bold flex items-center gap-1 active:scale-95"
+              aria-label="Abrir créditos"
+            >
               <Zap size={12} /> {credits}
-            </div>
+            </button>
           )}
         </div>
       </header>
@@ -115,6 +140,13 @@ export function MobileShell({ user, nav }: MobileShellProps) {
                     <div className="font-semibold text-amber-300">{credits ?? '-'}</div>
                   </div>
                 </div>
+                <button
+                  onClick={claimBonus}
+                  disabled={claiming}
+                  className="mt-3 w-full rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-300 active:scale-[0.99] disabled:opacity-50"
+                >
+                  {claiming ? 'Resgatando...' : '🎁 Resgatar 20 créditos'}
+                </button>
               </div>
             </div>
 
