@@ -156,7 +156,7 @@ export default function AdminUsuariosPage() {
           <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-brand-400" /></div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[1050px]">
               <thead>
                 <tr className="border-b border-white/[0.07]">
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Usuário</th>
@@ -165,7 +165,7 @@ export default function AdminUsuariosPage() {
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Plano</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Validade</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Créditos</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Ação</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 min-w-[190px]">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -195,15 +195,15 @@ export default function AdminUsuariosPage() {
                       <td className="px-4 py-3">
                         <input type="number" min={0} className="w-24 bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none" value={Number(edit.credits ?? user.credits)} onChange={e => updateEdit(user.id, 'credits', Number(e.target.value))} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 min-w-[190px]">
                         <div className="flex items-center gap-2">
                           <button onClick={() => saveUser(user)} disabled={isBusy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold disabled:opacity-50">
                             {saving === user.id ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
                             Salvar
                           </button>
-                          <button onClick={() => deleteUser(user)} disabled={isBusy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white text-xs font-semibold disabled:opacity-50">
+                          <button onClick={() => deleteUser(user)} disabled={isBusy} className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-sm shadow-red-950/40 disabled:opacity-50">
                             {deleting === user.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                            Excluir
+                            EXCLUIR
                           </button>
                         </div>
                       </td>
