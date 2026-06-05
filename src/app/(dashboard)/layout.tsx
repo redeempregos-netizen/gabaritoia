@@ -21,6 +21,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
     { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
     { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
+    { href: '/suporte', label: 'Suporte', emoji: '🆘' },
   ]
 
   const adminMobileNav = [
@@ -30,6 +31,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
     { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
     { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
+    { href: '/suporte', label: 'Suporte', emoji: '🆘' },
     { href: '/historico', label: 'Histórico', emoji: '🕘' },
     { href: '/mapas', label: 'Mapas Mentais', emoji: '🧠' },
     { href: '/edital', label: 'Edital Verticalizado', emoji: '📄' },
