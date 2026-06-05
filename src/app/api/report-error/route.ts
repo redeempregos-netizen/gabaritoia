@@ -3,10 +3,10 @@ import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const ADMIN_ERROR_EMAIL = 'redeempregos@gmail.com'
+const ADMIN_ERROR_EMAIL = 'impulsodigital925@gmail.com'
 
 const schema = z.object({
-  message: z.string().min(1).max(1000),
+  message: z.string().min(1).max(2000),
   page: z.string().optional(),
   action: z.string().optional(),
   details: z.any().optional(),
@@ -41,6 +41,15 @@ function safeJson(value: unknown) {
   }
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 async function sendEmailReport(input: {
   userEmail?: string | null
   message: string
@@ -54,14 +63,15 @@ async function sendEmailReport(input: {
   if (!key) return { sent: false, reason: 'missing_RESEND_API_KEY' }
 
   const html = `
-    <h2>Erro reportado no GabaritoIA</h2>
-    <p><b>Usuário:</b> ${input.userEmail || 'Não informado'}</p>
-    <p><b>Mensagem:</b> ${input.message}</p>
-    <p><b>Página:</b> ${input.page || 'Não informada'}</p>
-    <p><b>Ação:</b> ${input.action || 'Não informada'}</p>
-    <p><b>URL:</b> ${input.url || 'Não informada'}</p>
-    <p><b>Navegador:</b> ${input.userAgent || 'Não informado'}</p>
-    <pre style="white-space:pre-wrap;background:#111;color:#eee;padding:12px;border-radius:8px;">${safeJson(input.details)}</pre>
+    <h2>Suporte GabaritoIA</h2>
+    <p><b>Usuário:</b> ${escapeHtml(input.userEmail || 'Não informado')}</p>
+    <p><b>Mensagem:</b></p>
+    <p style="white-space:pre-wrap;">${escapeHtml(input.message)}</p>
+    <p><b>Página:</b> ${escapeHtml(input.page || 'Não informada')}</p>
+    <p><b>Ação:</b> ${escapeHtml(input.action || 'Não informada')}</p>
+    <p><b>URL:</b> ${escapeHtml(input.url || 'Não informada')}</p>
+    <p><b>Navegador:</b> ${escapeHtml(input.userAgent || 'Não informado')}</p>
+    <pre style="white-space:pre-wrap;background:#111;color:#eee;padding:12px;border-radius:8px;">${escapeHtml(safeJson(input.details))}</pre>
   `
 
   const res = await fetch('https://api.resend.com/emails', {
@@ -73,7 +83,7 @@ async function sendEmailReport(input: {
     body: JSON.stringify({
       from: process.env.ERROR_REPORT_FROM || 'GabaritoIA <onboarding@resend.dev>',
       to: ADMIN_ERROR_EMAIL,
-      subject: `Erro reportado no GabaritoIA: ${input.action || input.page || 'sistema'}`,
+      subject: `Suporte GabaritoIA: ${input.action || input.page || 'mensagem do usuário'}`,
       html,
     }),
   })
@@ -122,12 +132,12 @@ export async function POST(req: NextRequest) {
       url: body.url,
     }).catch(e => ({ sent: false, reason: (e as Error).message }))
 
-    if (!email.sent) console.warn('[error report email not sent]', email.reason)
+    if (!email.sent) console.warn('[support email not sent]', email.reason)
 
     return NextResponse.json({ ok: true, id, emailSent: email.sent })
   } catch (e) {
     if (e instanceof z.ZodError) return NextResponse.json({ error: e.errors[0].message }, { status: 400 })
     console.error('[report-error]', e)
-    return NextResponse.json({ error: 'Erro ao reportar problema.' }, { status: 500 })
+    return NextResponse.json({ error: 'Erro ao enviar suporte.' }, { status: 500 })
   }
 }
