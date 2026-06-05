@@ -9,6 +9,7 @@ import type { AIProvider } from '@/types'
 
 const DEFAULT_PLAN_DAYS: Record<string, number> = {
   FREE: 7,
+  PACK: 180,
   CADERNOS_500: 30,
   PRO: 30,
   ENTERPRISE: 30,
@@ -56,66 +57,14 @@ async function getAIUsageSummary() {
         created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `)
-
-    const totals = await prisma.$queryRawUnsafe<any[]>(`
-      SELECT
-        COALESCE(SUM(prompt_tokens), 0)::int AS "promptTokens",
-        COALESCE(SUM(completion_tokens), 0)::int AS "completionTokens",
-        COALESCE(SUM(total_tokens), 0)::int AS "totalTokens",
-        COALESCE(SUM(cost_usd), 0)::float AS "totalCostUsd",
-        COUNT(*)::int AS "totalCalls"
-      FROM ai_usage;
-    `)
-
-    const last7Days = await prisma.$queryRawUnsafe<any[]>(`
-      SELECT
-        TO_CHAR(DATE(created_at), 'DD/MM') AS day,
-        COALESCE(SUM(total_tokens), 0)::int AS tokens,
-        COALESCE(SUM(cost_usd), 0)::float AS cost,
-        COUNT(*)::int AS calls
-      FROM ai_usage
-      WHERE created_at >= NOW() - INTERVAL '7 days'
-      GROUP BY DATE(created_at)
-      ORDER BY DATE(created_at) ASC;
-    `)
-
-    const byProvider = await prisma.$queryRawUnsafe<any[]>(`
-      SELECT
-        provider,
-        COALESCE(SUM(total_tokens), 0)::int AS tokens,
-        COALESCE(SUM(cost_usd), 0)::float AS cost,
-        COUNT(*)::int AS calls
-      FROM ai_usage
-      GROUP BY provider
-      ORDER BY cost DESC;
-    `)
-
-    const byAction = await prisma.$queryRawUnsafe<any[]>(`
-      SELECT
-        COALESCE(action, 'unknown') AS action,
-        COALESCE(SUM(total_tokens), 0)::int AS tokens,
-        COALESCE(SUM(cost_usd), 0)::float AS cost,
-        COUNT(*)::int AS calls
-      FROM ai_usage
-      GROUP BY action
-      ORDER BY cost DESC
-      LIMIT 10;
-    `)
-
-    return {
-      totals: totals[0] || { promptTokens: 0, completionTokens: 0, totalTokens: 0, totalCostUsd: 0, totalCalls: 0 },
-      last7Days,
-      byProvider,
-      byAction,
-    }
+    const totals = await prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(prompt_tokens), 0)::int AS "promptTokens", COALESCE(SUM(completion_tokens), 0)::int AS "completionTokens", COALESCE(SUM(total_tokens), 0)::int AS "totalTokens", COALESCE(SUM(cost_usd), 0)::float AS "totalCostUsd", COUNT(*)::int AS "totalCalls" FROM ai_usage;`)
+    const last7Days = await prisma.$queryRawUnsafe<any[]>(`SELECT TO_CHAR(DATE(created_at), 'DD/MM') AS day, COALESCE(SUM(total_tokens), 0)::int AS tokens, COALESCE(SUM(cost_usd), 0)::float AS cost, COUNT(*)::int AS calls FROM ai_usage WHERE created_at >= NOW() - INTERVAL '7 days' GROUP BY DATE(created_at) ORDER BY DATE(created_at) ASC;`)
+    const byProvider = await prisma.$queryRawUnsafe<any[]>(`SELECT provider, COALESCE(SUM(total_tokens), 0)::int AS tokens, COALESCE(SUM(cost_usd), 0)::float AS cost, COUNT(*)::int AS calls FROM ai_usage GROUP BY provider ORDER BY cost DESC;`)
+    const byAction = await prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(action, 'unknown') AS action, COALESCE(SUM(total_tokens), 0)::int AS tokens, COALESCE(SUM(cost_usd), 0)::float AS cost, COUNT(*)::int AS calls FROM ai_usage GROUP BY action ORDER BY cost DESC LIMIT 10;`)
+    return { totals: totals[0] || { promptTokens: 0, completionTokens: 0, totalTokens: 0, totalCostUsd: 0, totalCalls: 0 }, last7Days, byProvider, byAction }
   } catch (e) {
     console.error('[AI usage summary error]', e)
-    return {
-      totals: { promptTokens: 0, completionTokens: 0, totalTokens: 0, totalCostUsd: 0, totalCalls: 0 },
-      last7Days: [],
-      byProvider: [],
-      byAction: [],
-    }
+    return { totals: { promptTokens: 0, completionTokens: 0, totalTokens: 0, totalCostUsd: 0, totalCalls: 0 }, last7Days: [], byProvider: [], byAction: [] }
   }
 }
 
@@ -125,29 +74,10 @@ export async function GET(req: NextRequest) {
   if (session.role !== 'ADMIN') return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 })
 
   await ensureCreditRenewalColumn()
-
-  const [apiKeys, configs] = await Promise.all([
-    prisma.apiKey.findMany(),
-    prisma.adminConfig.findMany(),
-  ])
-
+  const [apiKeys, configs] = await Promise.all([prisma.apiKey.findMany(), prisma.adminConfig.findMany()])
   const configMap = Object.fromEntries(configs.map(c => [c.key, c.value]))
-
-  const apiKeysResponse = apiKeys.map(k => ({
-    provider: k.provider,
-    isEnabled: k.isEnabled,
-    hasKey: !!k.keyHash,
-    model: k.model,
-    lastTested: k.lastTested,
-    testStatus: k.testStatus,
-  }))
-
-  const [totalUsers, totalAnswers, totalPlans, aiUsage] = await Promise.all([
-    prisma.user.count(),
-    prisma.answer.count(),
-    prisma.studyPlan.count(),
-    getAIUsageSummary(),
-  ])
+  const apiKeysResponse = apiKeys.map(k => ({ provider: k.provider, isEnabled: k.isEnabled, hasKey: !!k.keyHash, model: k.model, lastTested: k.lastTested, testStatus: k.testStatus }))
+  const [totalUsers, totalAnswers, totalPlans, aiUsage] = await Promise.all([prisma.user.count(), prisma.answer.count(), prisma.studyPlan.count(), getAIUsageSummary()])
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -158,58 +88,20 @@ export async function GET(req: NextRequest) {
     prisma.answer.count({ where: { createdAt: { gte: today } } }),
     prisma.answer.count({ where: { createdAt: { gte: weekAgo } } }),
     prisma.$queryRawUnsafe<any[]>(`
-      SELECT
-        id,
-        name,
-        email,
-        role,
-        plan,
-        credits,
-        "creditsUsed" AS "creditsUsed",
-        "createdAt" AS "createdAt",
-        streak,
-        credits_renewed_at AS "creditsRenewedAt",
-        plan_started_at AS "planStartedAt",
-        plan_expires_at AS "planExpiresAt",
-        CASE
-          WHEN plan_expires_at IS NULL THEN false
-          WHEN plan_expires_at < NOW() THEN true
-          ELSE false
-        END AS "planExpired"
-      FROM users
-      ORDER BY "createdAt" DESC
-      LIMIT 50;
+      SELECT id, name, email, role, plan, credits, "creditsUsed" AS "creditsUsed", "createdAt" AS "createdAt", streak, credits_renewed_at AS "creditsRenewedAt", plan_started_at AS "planStartedAt", plan_expires_at AS "planExpiresAt",
+      CASE WHEN plan_expires_at IS NULL THEN false WHEN plan_expires_at < NOW() THEN true ELSE false END AS "planExpired"
+      FROM users ORDER BY "createdAt" DESC LIMIT 50;
     `),
   ])
 
-  return NextResponse.json({
-    stats: {
-      totalUsers,
-      totalAnswers,
-      totalPlans,
-      configuredApis: apiKeys.filter(k => k.isEnabled && k.keyHash).length,
-      todayAnswers,
-      weekAnswers,
-    },
-    aiUsage,
-    recentUsers,
-    apiKeys: apiKeysResponse,
-    config: {
-      maxQtd: Number(configMap.maxQtd || 10),
-      defaultProvider: configMap.defaultProvider || 'claude',
-      monthlyFreeCredits: Number(configMap.monthlyFreeCredits || 1000),
-    },
-  })
+  return NextResponse.json({ stats: { totalUsers, totalAnswers, totalPlans, configuredApis: apiKeys.filter(k => k.isEnabled && k.keyHash).length, todayAnswers, weekAnswers }, aiUsage, recentUsers, apiKeys: apiKeysResponse, config: { maxQtd: Number(configMap.maxQtd || 10), defaultProvider: configMap.defaultProvider || 'claude', monthlyFreeCredits: Number(configMap.monthlyFreeCredits || 1000) } })
 }
 
 export async function POST(req: NextRequest) {
   const session = await getSession()
-  if (!session || session.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 })
-  }
+  if (!session || session.role !== 'ADMIN') return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 })
 
   await ensureCreditRenewalColumn()
-
   const body = await req.json()
   const { action, provider, key, model, enabled, maxQtd, defaultProvider, monthlyFreeCredits, userId, role, plan, credits, planDurationDays, clearPlanExpiration, name, email, password } = body
 
@@ -225,42 +117,25 @@ export async function POST(req: NextRequest) {
     if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) return NextResponse.json({ error: 'Informe um e-mail válido.' }, { status: 400 })
     if (safePassword.length < 6) return NextResponse.json({ error: 'A senha precisa ter pelo menos 6 caracteres.' }, { status: 400 })
     if (!['USER', 'ADMIN'].includes(safeRole)) return NextResponse.json({ error: 'Role inválida.' }, { status: 400 })
-    if (!['FREE', 'PRO', 'ENTERPRISE', 'CADERNOS_500'].includes(safePlan)) return NextResponse.json({ error: 'Plano inválido.' }, { status: 400 })
+    if (!['FREE', 'PACK', 'PRO', 'ENTERPRISE', 'CADERNOS_500'].includes(safePlan)) return NextResponse.json({ error: 'Plano inválido.' }, { status: 400 })
 
     const existing = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } })
     if (existing) return NextResponse.json({ error: 'Este e-mail já está cadastrado.' }, { status: 409 })
 
     const passwordHash = await bcrypt.hash(safePassword, 12)
-    const user = await prisma.user.create({
-      data: {
-        name: safeName,
-        email: normalizedEmail,
-        passwordHash,
-        role: safeRole as any,
-        plan: safePlan as any,
-        credits: safeCredits,
-      },
-      select: { id: true, name: true, email: true, role: true, plan: true, credits: true },
-    })
+    const user = await prisma.user.create({ data: { name: safeName, email: normalizedEmail, passwordHash, role: safeRole as any, plan: safePlan as any, credits: safeCredits }, select: { id: true, name: true, email: true, role: true, plan: true, credits: true } })
 
-    if (clearPlanExpiration) {
-      await prisma.$executeRawUnsafe(`UPDATE users SET plan_started_at = NOW(), plan_expires_at = NULL WHERE id = $1`, user.id)
-    } else {
+    if (clearPlanExpiration) await prisma.$executeRawUnsafe(`UPDATE users SET plan_started_at = NOW(), plan_expires_at = NULL WHERE id = $1`, user.id)
+    else {
       const days = planDurationDays !== undefined ? Math.max(1, Number(planDurationDays) || 30) : await getPlanDays(safePlan)
       await prisma.$executeRawUnsafe(`UPDATE users SET plan_started_at = NOW(), plan_expires_at = $1 WHERE id = $2`, addDays(days), user.id)
     }
-
     return NextResponse.json({ ok: true, user })
   }
 
   if (action === 'save_api_key') {
     const encryptedKey = key && !key.startsWith('••') ? encryptSecret(String(key).trim()) : undefined
-
-    await prisma.apiKey.upsert({
-      where: { provider },
-      create: { provider, keyHash: encryptedKey || '', model: model || 'default', isEnabled: enabled ?? true },
-      update: { ...(encryptedKey && { keyHash: encryptedKey }), ...(model && { model }), isEnabled: enabled ?? true },
-    })
+    await prisma.apiKey.upsert({ where: { provider }, create: { provider, keyHash: encryptedKey || '', model: model || 'default', isEnabled: enabled ?? true }, update: { ...(encryptedKey && { keyHash: encryptedKey }), ...(model && { model }), isEnabled: enabled ?? true } })
     return NextResponse.json({ ok: true })
   }
 
@@ -282,49 +157,32 @@ export async function POST(req: NextRequest) {
 
   if (action === 'save_config') {
     const updates = []
-    if (maxQtd !== undefined) updates.push(
-      prisma.adminConfig.upsert({ where: { key: 'maxQtd' }, create: { key: 'maxQtd', value: String(maxQtd) }, update: { value: String(maxQtd) } })
-    )
-    if (defaultProvider) updates.push(
-      prisma.adminConfig.upsert({ where: { key: 'defaultProvider' }, create: { key: 'defaultProvider', value: defaultProvider }, update: { value: defaultProvider } })
-    )
-    if (monthlyFreeCredits !== undefined) updates.push(
-      prisma.adminConfig.upsert({ where: { key: 'monthlyFreeCredits' }, create: { key: 'monthlyFreeCredits', value: String(Math.max(0, Number(monthlyFreeCredits) || 0)) }, update: { value: String(Math.max(0, Number(monthlyFreeCredits) || 0)) } })
-    )
+    if (maxQtd !== undefined) updates.push(prisma.adminConfig.upsert({ where: { key: 'maxQtd' }, create: { key: 'maxQtd', value: String(maxQtd) }, update: { value: String(maxQtd) } }))
+    if (defaultProvider) updates.push(prisma.adminConfig.upsert({ where: { key: 'defaultProvider' }, create: { key: 'defaultProvider', value: defaultProvider }, update: { value: defaultProvider } }))
+    if (monthlyFreeCredits !== undefined) updates.push(prisma.adminConfig.upsert({ where: { key: 'monthlyFreeCredits' }, create: { key: 'monthlyFreeCredits', value: String(Math.max(0, Number(monthlyFreeCredits) || 0)) }, update: { value: String(Math.max(0, Number(monthlyFreeCredits) || 0)) } }))
     await Promise.all(updates)
     return NextResponse.json({ ok: true })
   }
 
   if (action === 'update_user') {
     if (!userId) return NextResponse.json({ error: 'Usuário inválido.' }, { status: 400 })
-
     const currentRows = await prisma.$queryRawUnsafe<any[]>(`SELECT id, plan FROM users WHERE id = $1 LIMIT 1;`, userId)
     const current = currentRows[0]
     if (!current) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
-
     const currentPlan = normalizePlan(current.plan)
     const nextPlan = plan ? normalizePlan(plan) : currentPlan
     const planChanged = !!plan && nextPlan !== currentPlan
-
     const data: any = {}
     if (role) data.role = String(role).toUpperCase()
     if (plan) data.plan = nextPlan
-    if (credits !== undefined) {
-      data.credits = Math.max(0, Number(credits) || 0)
-    } else if (planChanged) {
-      data.credits = PLAN_CREDIT_AMOUNT[nextPlan] ?? PLAN_CREDIT_AMOUNT[PLAN_FREE]
-      data.creditsUsed = 0
-    }
-
+    if (credits !== undefined) data.credits = Math.max(0, Number(credits) || 0)
+    else if (planChanged) { data.credits = PLAN_CREDIT_AMOUNT[nextPlan] ?? PLAN_CREDIT_AMOUNT[PLAN_FREE]; data.creditsUsed = 0 }
     await prisma.user.update({ where: { id: userId }, data })
-
-    if (clearPlanExpiration) {
-      await prisma.$executeRawUnsafe(`UPDATE users SET plan_started_at = NOW(), plan_expires_at = NULL WHERE id = $1`, userId)
-    } else if (plan) {
+    if (clearPlanExpiration) await prisma.$executeRawUnsafe(`UPDATE users SET plan_started_at = NOW(), plan_expires_at = NULL WHERE id = $1`, userId)
+    else if (plan) {
       const days = planDurationDays !== undefined ? Math.max(1, Number(planDurationDays) || 30) : await getPlanDays(nextPlan)
       await prisma.$executeRawUnsafe(`UPDATE users SET plan_started_at = NOW(), plan_expires_at = $1 WHERE id = $2`, addDays(days), userId)
     }
-
     return NextResponse.json({ ok: true })
   }
 
