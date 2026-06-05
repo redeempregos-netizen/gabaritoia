@@ -11,6 +11,8 @@ const schema = z.object({
   banca: z.string().min(1),
   area: z.string().min(1),
   cargo: z.string().optional(),
+  city: z.string().optional(),
+  uf: z.string().optional(),
   education: z.string().optional(),
   difficulty: z.enum(['Fácil', 'Média', 'Difícil']),
   type: z.enum(['MULTIPLE_CHOICE', 'TRUE_FALSE']),
@@ -36,6 +38,17 @@ function extractYear(text?: string | null) {
 function cleanMeta(value?: string | null, fallback = '') {
   const s = String(value || '').replace(/\s+/g, ' ').trim()
   return s || fallback
+}
+
+function buildExamReference(params: { cargo?: string | null; city?: string | null; uf?: string | null; editalText?: string | null }) {
+  const fromEdital = cleanMeta(params.editalText?.match(/REFERÊNCIA DO EDITAL\/CONCURSO:\s*([^\n]+)/i)?.[1])
+  if (fromEdital) return fromEdital
+  const parts = [params.city, params.uf].map(v => cleanMeta(v)).filter(Boolean).join('/')
+  const cargo = cleanMeta(params.cargo)
+  if (parts && cargo) return `${parts} — ${cargo}`
+  if (parts) return parts
+  if (cargo) return cargo
+  return 'Concurso público'
 }
 
 function withOriginHeader(params: { enunciado: string; banca: string; examName: string; examYear: string; basedOn: string }) {
@@ -122,19 +135,53 @@ export async function POST(req: NextRequest) {
     const isTF = params.type === 'TRUE_FALSE'
     const isOriginal = params.format === 'Questão inédita'
     const isEdital = !!params.editalText?.trim()
-    const defaultExamName = cleanMeta(params.editalText?.match(/REFERÊNCIA DO EDITAL\/CONCURSO:\s*([^\n]+)/i)?.[1], params.cargo ? `${params.cargo}` : 'Concurso público')
+    const defaultExamName = buildExamReference({ cargo: params.cargo, city: params.city, uf: params.uf, editalText: params.editalText })
     const defaultExamYear = extractYear(params.editalText) || extractYear(params.cargo) || ''
     const defaultBasedOn = cleanMeta(params.area)
-    const systemPrompt = 'Você é especialista em concursos públicos brasileiros e conhece profundamente o estilo das principais bancas. Responda SOMENTE JSON válido, sem texto antes ou depois, sem markdown e sem backticks.'
+    const systemPrompt = 'Você é uma banca examinadora sênior e especialista em concursos públicos brasileiros. Gere questões tecnicamente corretas, contextualizadas ao edital e fiéis ao estilo da banca. Responda SOMENTE JSON válido, sem texto antes ou depois, sem markdown e sem backticks.'
 
-    const contextoBase = `BANCA OBRIGATÓRIA: ${params.banca}\nÁREA: ${params.area}\nCARGO: ${params.cargo || 'Não informado'}\nESCOLARIDADE: ${params.education || 'Não informado'}\nDIFICULDADE: ${params.difficulty}\nFORMATO: ${isOriginal ? 'questão inédita inspirada no perfil da banca ' + params.banca : 'estilo da banca ' + params.banca}\nTIPO: ${isTF ? 'Certo ou Errado' : 'Múltipla escolha com 5 alternativas'}${isEdital ? `\nCONTEXTO DO EDITAL/CONCURSO:\n${params.editalText!.substring(0, 8000)}` : ''}`
+    const contextoBase = `BANCA OBRIGATÓRIA: ${params.banca}
+ÁREA DO CONHECIMENTO: ${params.area}
+CARGO/FUNÇÃO: ${params.cargo || 'Não informado'}
+CIDADE/MUNICÍPIO: ${params.city || 'Não informado'}
+UF/ESTADO: ${params.uf || 'Não informado'}
+ANO DO EDITAL/PROVA: ${defaultExamYear || 'Não informado'}
+ESCOLARIDADE: ${params.education || 'Não informado'}
+DIFICULDADE: ${params.difficulty}
+FORMATO: ${isOriginal ? 'questão inédita inspirada no perfil real da banca ' + params.banca : 'estilo da banca ' + params.banca}
+TIPO: ${isTF ? 'Certo ou Errado' : 'Múltipla escolha com 5 alternativas'}${isEdital ? `
+CONTEXTO DO EDITAL/CONCURSO:
+${params.editalText!.substring(0, 10000)}` : ''}`
     const schemaJson = isTF
-      ? '[{"enunciado":"afirmacao completa","options":["Certo","Errado"],"correctIndex":0,"comentario":"explicacao objetiva com fundamento","subtopic":"subtopico","area":"materia","examName":"nome da prova/concurso/órgão quando informado","examYear":"ano quando informado","basedOn":"tema, tópico ou item do edital usado como base"}]'
-      : '[{"enunciado":"texto completo da questao","options":["alternativa A","alternativa B","alternativa C","alternativa D","alternativa E"],"correctIndex":0,"comentario":"explicacao detalhada com fundamento","subtopic":"subtopico","area":"materia","examName":"nome da prova/concurso/órgão quando informado","examYear":"ano quando informado","basedOn":"tema, tópico ou item do edital usado como base"}]'
+      ? '[{"enunciado":"afirmacao completa","options":["Certo","Errado"],"correctIndex":0,"comentario":"explicacao objetiva com fundamento","subtopic":"subtopico","area":"materia","examName":"nome da prova/concurso/órgão/cidade/cargo quando informado","examYear":"ano quando informado","basedOn":"tema, tópico ou item do edital usado como base"}]'
+      : '[{"enunciado":"texto completo da questao","options":["alternativa A","alternativa B","alternativa C","alternativa D","alternativa E"],"correctIndex":0,"comentario":"explicacao detalhada com fundamento","subtopic":"subtopico","area":"materia","examName":"nome da prova/concurso/órgão/cidade/cargo quando informado","examYear":"ano quando informado","basedOn":"tema, tópico ou item do edital usado como base"}]'
 
-    const prompt = `Crie EXATAMENTE ${params.quantity} questão(ões) para concurso público brasileiro.\n\n${contextoBase}\n\nREGRAS:\n- A banca ${params.banca} é OBRIGATÓRIA e deve orientar enunciado, alternativas, nível de pegadinha, extensão do texto, vocabulário e forma de cobrança.\n- Antes de escrever, simule mentalmente o padrão da banca ${params.banca}. Ex.: se for CEBRASPE, cobre julgamento e detalhes conceituais; se for FGV, use interpretação, casuística e alternativas próximas; se for FCC/VUNESP/IBFC/AOCP, adapte o tom e a objetividade conforme o perfil.\n- Use o contexto do edital quando fornecido para escolher temas, subtemas, cargo, órgão, banca e nível de cobrança.\n- Em cada questão, preencha examName, examYear e basedOn.\n- examName deve ser o nome da prova/concurso/órgão/cargo quando houver referência; se não houver, use "Concurso público".\n- examYear deve ser o ano citado no edital/referência; se não houver ano, deixe string vazia.\n- basedOn deve indicar o tópico/subtópico/item de edital que inspirou a questão.\n- Se houver apenas referência do edital/concurso, use apenas como orientação e não invente dados factuais específicos.\n- As questões devem ser plausíveis para a banca ${params.banca}, com pegadinhas e linguagem compatíveis.\n- Não copie questões reais literalmente.\n- Cada comentário deve explicar a resposta correta e apontar a armadilha da banca quando existir.\n- Responda SOMENTE com JSON válido no formato: ${schemaJson}`
+    const prompt = `Crie EXATAMENTE ${params.quantity} questão(ões) para concurso público brasileiro.
 
-    const aiResult = await callAIWithFallback({ prompt, systemPrompt, provider: params.provider as AIProvider | undefined, maxTokens: 3500, queueJobId: params.queueJobId })
+${contextoBase}
+
+PROTOCOLO PROFISSIONAL OBRIGATÓRIO:
+1. Use a BANCA como filtro principal de estilo: tamanho do enunciado, nível de literalidade, pegadinhas, profundidade, vocabulário, alternativas e padrão de comentário.
+2. Use a ÁREA DO CONHECIMENTO como limite técnico. Não misture matéria fora da área informada.
+3. Use o CARGO/FUNÇÃO para calibrar atribuições, situações práticas, linguagem e profundidade esperada.
+4. Use CIDADE/UF apenas quando fizer sentido jurídico, administrativo, educacional, municipal ou contextual. Não invente leis locais, números, datas ou fatos não informados.
+5. Use o ANO para manter atualidade normativa e estilo de prova. Não cite legislação desatualizada quando houver referência temporal mais recente.
+6. Use o CONTEXTO DO EDITAL para escolher temas, subtópicos e nível de cobrança. Priorize itens textuais do edital quando existirem.
+7. Se o edital trouxer conteúdo programático, a questão deve nascer de um item real do conteúdo programático.
+8. Se o edital estiver incompleto, use os dados fornecidos como orientação e deixe basedOn claro.
+9. Não copie questões reais literalmente. Gere questão inédita, plausível e profissional.
+10. Evite enunciados genéricos demais. A questão precisa parecer pronta para prova.
+11. Em múltipla escolha, gere 5 alternativas equilibradas, com apenas uma correta, distratores plausíveis e sem alternativas absurdas.
+12. Em certo/errado, gere afirmação objetiva, tecnicamente julgável, sem ambiguidade.
+13. O comentário deve explicar por que a alternativa correta está correta, por que as principais armadilhas estão erradas e qual ponto do edital foi cobrado.
+14. Preencha obrigatoriamente examName, examYear e basedOn.
+15. examName deve combinar órgão/concurso/cidade/cargo quando essas informações existirem.
+16. examYear deve ser o ano informado ou extraído do edital; se não existir, deixe string vazia.
+17. basedOn deve indicar o tópico, subtópico ou item do edital usado como base.
+18. Nunca invente cargo, cidade, UF, órgão, lei local ou número de edital se não estiver no contexto.
+19. A resposta deve ser SOMENTE JSON válido no formato: ${schemaJson}`
+
+    const aiResult = await callAIWithFallback({ prompt, systemPrompt, provider: params.provider as AIProvider | undefined, maxTokens: 5000, queueJobId: params.queueJobId })
     const provider = aiResult.provider
     const parsed = parseAIJson<Array<{ enunciado: string; options: string[]; correctIndex: number; comentario: string; subtopic?: string; area?: string; examName?: string; examYear?: string; basedOn?: string }>>(aiResult.raw)
 
