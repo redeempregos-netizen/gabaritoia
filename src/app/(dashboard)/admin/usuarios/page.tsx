@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Search, Save, UserCog } from 'lucide-react'
+import { Loader2, Search, Save, Trash2, UserCog } from 'lucide-react'
 
 type UserRow = {
   id: string
@@ -21,6 +21,7 @@ type UserRow = {
 
 const PLANS = [
   { value: 'FREE', label: 'Teste — 7 dias' },
+  { value: 'PACK', label: 'Plano Pack — 180 dias' },
   { value: 'CADERNOS_500', label: 'Básico — 30 dias' },
   { value: 'PRO', label: 'Pro — 30 dias' },
   { value: 'ENTERPRISE', label: 'Premium — 30 dias' },
@@ -43,6 +44,7 @@ export default function AdminUsuariosPage() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const [edits, setEdits] = useState<Record<string, Partial<UserRow>>>({})
 
   useEffect(() => { loadUsers() }, [])
@@ -103,13 +105,42 @@ export default function AdminUsuariosPage() {
     }
   }
 
+  async function deleteUser(user: UserRow) {
+    const label = user.email || user.name || 'este usuário'
+    const confirmed = window.confirm(`Tem certeza que deseja excluir ${label}? Essa ação não pode ser desfeita.`)
+    if (!confirmed) return
+
+    setDeleting(user.id)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error || 'Erro ao excluir usuário')
+        return
+      }
+      toast.success('Usuário excluído')
+      setEdits(prev => {
+        const next = { ...prev }
+        delete next[user.id]
+        return next
+      })
+      await loadUsers()
+    } finally {
+      setDeleting(null)
+    }
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-6">
         <h1 className="font-heading text-2xl font-bold flex items-center gap-2">
           <UserCog size={24} className="text-brand-400" /> Usuários
         </h1>
-        <p className="text-zinc-400 text-sm mt-1">Altere plano, créditos, permissão e confira a validade de cada usuário.</p>
+        <p className="text-zinc-400 text-sm mt-1">Altere plano, créditos, permissão, confira a validade e exclua usuários quando necessário.</p>
       </div>
 
       <div className="card p-4 mb-6 flex gap-2">
@@ -140,6 +171,7 @@ export default function AdminUsuariosPage() {
               <tbody>
                 {users.map(user => {
                   const edit = edits[user.id] || {}
+                  const isBusy = saving === user.id || deleting === user.id
                   return (
                     <tr key={user.id} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
                       <td className="px-4 py-3 text-sm text-zinc-100">{user.name}</td>
@@ -164,10 +196,16 @@ export default function AdminUsuariosPage() {
                         <input type="number" min={0} className="w-24 bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none" value={Number(edit.credits ?? user.credits)} onChange={e => updateEdit(user.id, 'credits', Number(e.target.value))} />
                       </td>
                       <td className="px-4 py-3">
-                        <button onClick={() => saveUser(user)} disabled={saving === user.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold disabled:opacity-50">
-                          {saving === user.id ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                          Salvar
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => saveUser(user)} disabled={isBusy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold disabled:opacity-50">
+                            {saving === user.id ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                            Salvar
+                          </button>
+                          <button onClick={() => deleteUser(user)} disabled={isBusy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white text-xs font-semibold disabled:opacity-50">
+                            {deleting === user.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                            Excluir
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
