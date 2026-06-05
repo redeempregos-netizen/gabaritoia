@@ -32,6 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
     { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
     { href: '/suporte', label: 'Suporte', emoji: '🆘' },
+    { href: '/admin/suporte', label: 'Admin Suporte', emoji: '📬' },
     { href: '/historico', label: 'Histórico', emoji: '🕘' },
     { href: '/mapas', label: 'Mapas Mentais', emoji: '🧠' },
     { href: '/edital', label: 'Edital Verticalizado', emoji: '📄' },
