@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { canAccessRoute, getPlanLabel } from '@/lib/plans'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
-  History, Settings, LogOut, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target, UserCircle, Lock,
+  History, Settings, LogOut, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target, UserCircle, Lock, HelpCircle,
   type LucideIcon
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -29,6 +29,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
   { href: '/historico',  label: 'Histórico',            icon: History },
+  { href: '/suporte',    label: 'Suporte',              icon: HelpCircle },
 ]
 
 const USER_NAV: NavItem[] = [
@@ -41,6 +42,7 @@ const USER_NAV: NavItem[] = [
   { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket, badge: 'Upgrade', upgradeText: 'Premium' },
   { href: '/mapas',      label: 'Mapas Mentais',        icon: Brain, badge: 'Beta', upgradeText: 'Premium' },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
+  { href: '/suporte',    label: 'Suporte',              icon: HelpCircle },
 ]
 
 interface SidebarProps {
