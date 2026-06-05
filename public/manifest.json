@@ -1,0 +1,36 @@
+{
+  "name": "GabaritoIA",
+  "short_name": "GabaritoIA",
+  "description": "Gere questões comentadas para concursos públicos com inteligência artificial.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#09090b",
+  "theme_color": "#7c3aed",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Gerar Questões",
+      "short_name": "Gerar",
+      "description": "Abrir o gerador de questões",
+      "url": "/gerar",
+      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Meus Gerados",
+      "short_name": "Gerados",
+      "description": "Ver questões já geradas",
+      "url": "/gerados",
+      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}
