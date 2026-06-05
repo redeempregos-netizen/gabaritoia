@@ -10,9 +10,14 @@ const DEFAULT_PLAN_DAYS: Record<string, number> = {
   ENTERPRISE: 30,
 }
 
-async function assertAdmin() {
+async function getAdminSession() {
   const session = await getSession()
-  return !!session && session.role === 'ADMIN'
+  if (!session || session.role !== 'ADMIN') return null
+  return session
+}
+
+async function assertAdmin() {
+  return Boolean(await getAdminSession())
 }
 
 async function ensurePlanColumns() {
@@ -94,7 +99,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Informe o e-mail ou ID do usuário.' }, { status: 400 })
   }
 
-  if (plan && !['FREE', 'CADERNOS_500', 'PRO', 'ENTERPRISE'].includes(plan)) {
+  if (plan && !['FREE', 'CADERNOS_500', 'PRO', 'ENTERPRISE', 'PACK'].includes(plan)) {
     return NextResponse.json({ error: 'Plano inválido.' }, { status: 400 })
   }
   if (role && !['USER', 'ADMIN'].includes(role)) {
@@ -161,4 +166,35 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, user: { ...updated, plan: normalizePlan(updated.plan), planExpiresAt: expiresAt } })
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await getAdminSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 })
+  }
+
+  const body = await req.json().catch(() => ({}))
+  const userId = String(body.userId || '').trim()
+
+  if (!userId) {
+    return NextResponse.json({ error: 'Informe o ID do usuário.' }, { status: 400 })
+  }
+
+  if (userId === session.userId) {
+    return NextResponse.json({ error: 'Você não pode excluir o próprio usuário administrador.' }, { status: 400 })
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, email: true, role: true },
+  })
+
+  if (!user) {
+    return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
+  }
+
+  await prisma.user.delete({ where: { id: userId } })
+
+  return NextResponse.json({ ok: true, deletedUser: user })
 }
