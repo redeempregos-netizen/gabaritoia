@@ -7,6 +7,13 @@ import { BookOpen, CheckCircle2, Filter, Loader2, Trash2, Upload, XCircle } from
 type Book = { id: string; title: string; area?: string; totalQuestions: number; createdAt: string; answered: number; correct: number }
 type Question = { id: string; number: number; externalId?: string; topic?: string; exam?: string; banca?: string; statement: string; options: string[]; correctAnswer?: string; correctIndex: number; comment?: string; selectedIndex?: number | null; isCorrect?: boolean | null }
 
+type ImportSummary = {
+  title: string
+  totalQuestions: number
+  alreadyImported?: boolean
+  fromCache?: boolean
+}
+
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 function cleanExtractedText(s: string) {
@@ -38,6 +45,28 @@ function inferUf(q: Question) {
   return UFS.find(uf => new RegExp(`(?:^|[^A-Z])${uf}(?:[^A-Z]|$)`, 'i').test(exam)) || ''
 }
 
+function ImportProgressBox({ percent, stage, seconds }: { percent: number; stage: string; seconds: number }) {
+  return (
+    <div className="mb-6 rounded-3xl border border-brand-500/20 bg-brand-500/10 p-5">
+      <div className="flex items-center gap-3 mb-4">
+        <Loader2 size={22} className="animate-spin text-brand-300" />
+        <div>
+          <div className="font-heading font-bold text-zinc-100">Importando PDF...</div>
+          <div className="text-xs text-zinc-400 mt-1">{stage}</div>
+        </div>
+      </div>
+      <div className="flex items-center justify-between text-xs mb-2">
+        <span className="text-zinc-500">Progresso da importação</span>
+        <span className="font-bold text-brand-300">{percent}%</span>
+      </div>
+      <div className="h-3 rounded-full bg-zinc-800 overflow-hidden border border-white/5">
+        <div className="h-full rounded-full bg-gradient-to-r from-brand-600 to-purple-500 transition-all duration-500" style={{ width: `${percent}%` }} />
+      </div>
+      <div className="mt-3 text-[11px] text-zinc-500">Tempo decorrido: {seconds}s · PDFs grandes podem demorar mais.</div>
+    </div>
+  )
+}
+
 export default function CadernosPage() {
   const [books, setBooks] = useState<Book[]>([])
   const [activeBook, setActiveBook] = useState<Book | null>(null)
@@ -45,6 +74,10 @@ export default function CadernosPage() {
   const [stats, setStats] = useState({ answered: 0, correct: 0, total: 0 })
   const [loading, setLoading] = useState(true)
   const [importing, setImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState(0)
+  const [importStage, setImportStage] = useState('Preparando arquivo...')
+  const [importSeconds, setImportSeconds] = useState(0)
+  const [lastImport, setLastImport] = useState<ImportSummary | null>(null)
   const [answering, setAnswering] = useState<string | null>(null)
   const [current, setCurrent] = useState(0)
   const [filterBanca, setFilterBanca] = useState('')
@@ -53,6 +86,13 @@ export default function CadernosPage() {
   const [search, setSearch] = useState('')
 
   useEffect(() => { loadBooks() }, [])
+
+  useEffect(() => {
+    if (!importing) return
+    setImportSeconds(0)
+    const timer = window.setInterval(() => setImportSeconds(prev => prev + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [importing])
 
   async function loadBooks() {
     setLoading(true)
@@ -81,17 +121,34 @@ export default function CadernosPage() {
 
   async function importFile(file: File) {
     setImporting(true)
+    setImportProgress(2)
+    setImportStage('Preparando arquivo...')
+    setLastImport(null)
     try {
       let text = ''
       let fileHash = ''
-      if (file.name.toLowerCase().endsWith('.pdf')) {
+      const isPdf = file.name.toLowerCase().endsWith('.pdf')
+
+      setImportStage('Lendo arquivo...')
+      setImportProgress(5)
+
+      if (isPdf) {
         const buffer = await file.arrayBuffer()
+        setImportStage('Calculando identificação do arquivo...')
+        setImportProgress(8)
         fileHash = await hashBuffer(buffer)
+
+        setImportStage('Abrindo PDF...')
+        setImportProgress(12)
         const pdfjs = await import('pdfjs-dist')
         pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
         const pdf = await pdfjs.getDocument({ data: buffer.slice(0) }).promise
         const parts: string[] = []
-        for (let i = 1; i <= Math.min(pdf.numPages, 2500); i++) {
+        const totalPages = Math.min(pdf.numPages, 2500)
+
+        for (let i = 1; i <= totalPages; i++) {
+          setImportStage(`Lendo página ${i} de ${totalPages}...`)
+          setImportProgress(Math.min(72, 12 + Math.round((i / totalPages) * 60)))
           const page = await pdf.getPage(i)
           const content = await page.getTextContent()
           const pageText = content.items.map((x: any) => x.str || '').join(' ')
@@ -100,22 +157,44 @@ export default function CadernosPage() {
         text = parts.join('\n\n')
       } else {
         const buffer = await file.arrayBuffer()
+        setImportStage('Calculando identificação do arquivo...')
+        setImportProgress(25)
         fileHash = await hashBuffer(buffer)
+        setImportStage('Lendo texto do arquivo...')
+        setImportProgress(50)
         text = new TextDecoder('utf-8').decode(buffer)
       }
 
+      setImportStage('Limpando texto extraído...')
+      setImportProgress(75)
       text = cleanExtractedText(text)
       if (text.length < 50) { toast.error('Não consegui extrair texto do arquivo.'); return }
 
+      setImportStage('Enviando para identificar e salvar questões...')
+      setImportProgress(82)
       const res = await fetch('/api/question-books', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'import', title: file.name.replace(/\.pdf$/i, ''), text, fileHash }),
       })
+
+      setImportStage('Finalizando caderno...')
+      setImportProgress(94)
       const data = await readJsonSafe(res)
       if (!res.ok) { toast.error(data.error || 'Erro ao importar'); return }
+
+      const summary: ImportSummary = {
+        title: data.book?.title || file.name.replace(/\.pdf$/i, ''),
+        totalQuestions: Number(data.book?.totalQuestions || 0),
+        alreadyImported: Boolean(data.alreadyImported),
+        fromCache: Boolean(data.book?.fromCache),
+      }
+      setLastImport(summary)
+      setImportStage('Importação concluída.')
+      setImportProgress(100)
+
       if (data.alreadyImported) toast.info('Este caderno já foi importado na sua conta. Não dupliquei o arquivo.')
-      else toast.success(`${data.book.totalQuestions} questões importadas${data.book.fromCache ? ' pelo cache' : ''}!`)
+      else toast.success(`${summary.totalQuestions} questões importadas${summary.fromCache ? ' pelo cache' : ''}!`)
       await loadBooks()
     } catch (e) {
       toast.error((e as Error).message || 'Erro ao importar PDF')
@@ -184,11 +263,20 @@ export default function CadernosPage() {
             <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Importe PDFs comentados, não importe mais que um por vez, pode acontecer de não importar todas as questões.</p>
           </div>
           <button disabled={importing} onClick={() => document.getElementById('book-file')?.click()} className="btn-primary flex items-center justify-center gap-2">
-            {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Importar PDF
+            {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} {importing ? 'Importando...' : 'Importar PDF'}
           </button>
-          <input id="book-file" type="file" accept=".pdf,.txt" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) importFile(f) }} />
+          <input id="book-file" type="file" accept=".pdf,.txt" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) importFile(f); e.currentTarget.value = '' }} />
         </div>
       </div>
+
+      {importing && <ImportProgressBox percent={importProgress} stage={importStage} seconds={importSeconds} />}
+
+      {!importing && lastImport && (
+        <div className="mb-6 rounded-3xl border border-green-500/20 bg-green-500/10 p-5 text-sm text-green-100">
+          <div className="font-semibold mb-1">Caderno carregado</div>
+          <div>{lastImport.title} · {lastImport.totalQuestions} questão(ões) {lastImport.alreadyImported ? 'já estavam importadas' : 'importadas'}{lastImport.fromCache ? ' pelo cache' : ''}.</div>
+        </div>
+      )}
 
       {loading ? <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-brand-400" /></div> : (
         <div className="grid lg:grid-cols-[340px_1fr] gap-6">
@@ -219,6 +307,12 @@ export default function CadernosPage() {
                   <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tópico ou texto" />
                 </div>
                 <div className="text-xs text-zinc-500 mt-3">Mostrando {filteredQuestions.length} de {questions.length} questões.</div>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-3">
+                <div className="card p-4"><div className="text-xs text-zinc-500">Progresso</div><div className="font-heading text-2xl font-bold text-white">{percent}%</div></div>
+                <div className="card p-4"><div className="text-xs text-zinc-500">Respondidas</div><div className="font-heading text-2xl font-bold text-brand-300">{stats.answered}/{stats.total}</div></div>
+                <div className="card p-4"><div className="text-xs text-zinc-500">Acertos</div><div className="font-heading text-2xl font-bold text-green-300">{score}%</div></div>
               </div>
 
               {!q ? <div className="card p-8 text-center text-zinc-500">Nenhuma questão encontrada com os filtros atuais.</div> : <div className="card p-5 md:p-6">
