@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
   activationUrl,
+  cancelPurchaseAccess,
   createPurchaseAccessToken,
   extractBuyerFromPayload,
   extractProductInfo,
   extractPurchaseStatus,
   inferCaktoPlan,
   isApprovedPurchaseStatus,
+  isCanceledPurchaseStatus,
 } from '@/lib/purchase-access'
 
 function isAuthorized(req: NextRequest) {
@@ -25,17 +27,23 @@ export async function POST(req: NextRequest) {
 
     const payload = await req.json().catch(() => ({}))
     const status = extractPurchaseStatus(payload)
+    const { email, name } = extractBuyerFromPayload(payload)
+    const product = extractProductInfo(payload)
+
+    if (isCanceledPurchaseStatus(status)) {
+      if (!email) return NextResponse.json({ error: 'E-mail do comprador não encontrado no cancelamento.' }, { status: 400 })
+      const result = await cancelPurchaseAccess({ email, checkout: 'cakto', purchaseId: product.purchaseId })
+      return NextResponse.json({ ok: true, checkout: 'cakto', email, status, action: 'canceled', ...result })
+    }
 
     if (!isApprovedPurchaseStatus(status)) {
       return NextResponse.json({ ok: true, ignored: true, reason: 'status_not_approved', status })
     }
 
-    const { email, name } = extractBuyerFromPayload(payload)
     if (!email) {
       return NextResponse.json({ error: 'E-mail do comprador não encontrado no webhook.' }, { status: 400 })
     }
 
-    const product = extractProductInfo(payload)
     const plan = inferCaktoPlan(payload)
 
     const access = await createPurchaseAccessToken({
