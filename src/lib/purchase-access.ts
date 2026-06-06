@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'crypto'
 import { prisma } from '@/lib/prisma'
-import { normalizePlan, PLAN_CADERNOS_500, PLAN_CADERNOS_QUESTOES, PLAN_FULL, PLAN_CREDIT_AMOUNT } from '@/lib/plans'
+import { normalizePlan, PLAN_CADERNOS_500, PLAN_CADERNOS_QUESTOES, PLAN_FULL, PLAN_CREDIT_AMOUNT, PLAN_FREE } from '@/lib/plans'
 
 export const PURCHASE_TOKEN_TTL_HOURS = 24
 
@@ -95,21 +95,47 @@ export function extractPurchaseStatus(payload: any) {
     payload?.status ||
     payload?.payment_status ||
     payload?.order_status ||
+    payload?.subscription_status ||
     payload?.event ||
+    payload?.event_type ||
+    payload?.type ||
     payload?.data?.status ||
+    payload?.data?.event ||
     ''
   ).trim().toLowerCase()
 }
 
 export function isApprovedPurchaseStatus(status: string) {
-  return ['paid', 'approved', 'aprovado', 'compra_aprovada', 'payment_approved', 'order_paid', 'completed', 'complete', 'success', 'succeeded'].some(key => status.includes(key))
+  return ['paid', 'approved', 'aprovado', 'compra_aprovada', 'payment_approved', 'order_paid', 'completed', 'complete', 'success', 'succeeded', 'subscription_paid', 'subscription_renewed'].some(key => status.includes(key))
+}
+
+export function isCanceledPurchaseStatus(status: string) {
+  return [
+    'cancel',
+    'canceled',
+    'cancelled',
+    'cancelado',
+    'assinatura_cancelada',
+    'subscription_canceled',
+    'subscription_cancelled',
+    'refunded',
+    'refund',
+    'reembolsado',
+    'chargeback',
+    'dispute',
+    'estornado',
+    'expired',
+    'overdue',
+    'past_due',
+    'unpaid',
+  ].some(key => status.includes(key))
 }
 
 export function extractProductInfo(payload: any) {
   return {
     productId: String(payload?.product_id || payload?.product?.id || payload?.product?.code || payload?.offer?.id || payload?.data?.product?.id || '').trim(),
     productName: String(payload?.product_name || payload?.product?.name || payload?.offer?.name || payload?.item?.name || payload?.data?.product?.name || '').trim(),
-    purchaseId: String(payload?.purchase_id || payload?.order_id || payload?.transaction_id || payload?.sale_id || payload?.id || payload?.data?.id || payload?.data?.order_id || '').trim(),
+    purchaseId: String(payload?.purchase_id || payload?.order_id || payload?.transaction_id || payload?.sale_id || payload?.subscription_id || payload?.id || payload?.data?.id || payload?.data?.order_id || '').trim(),
   }
 }
 
@@ -144,6 +170,54 @@ export async function createPurchaseAccessToken(input: {
   `, id, input.email.toLowerCase(), input.name || null, plan, input.checkout, input.productId || null, input.productName || null, input.purchaseId || null, tokenHash)
 
   return { id, token, plan, expiresInHours: PURCHASE_TOKEN_TTL_HOURS }
+}
+
+export async function cancelPurchaseAccess(input: { email: string; purchaseId?: string; checkout: string }) {
+  await ensurePurchaseAccessTables()
+  const email = input.email.toLowerCase()
+
+  await prisma.$executeRawUnsafe(`
+    UPDATE purchase_access_tokens
+    SET status = 'canceled', updated_at = CURRENT_TIMESTAMP
+    WHERE checkout = $1
+      AND email = $2
+      AND ($3::text IS NULL OR purchase_id = $3)
+      AND status IN ('pending', 'used');
+  `, input.checkout, email, input.purchaseId || null).catch(() => null)
+
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_started_at TIMESTAMP(3);
+  `).catch(() => null)
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMP(3);
+  `).catch(() => null)
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_renewed_at TIMESTAMP(3);
+  `).catch(() => null)
+
+  const rows = await prisma.$queryRawUnsafe<any[]>(`
+    SELECT id, plan FROM users WHERE email = $1 LIMIT 1;
+  `, email).catch(() => [])
+  const user = rows[0]
+  if (!user) return { foundUser: false, canceled: true }
+
+  const currentPlan = normalizePlan(user.plan)
+  if (currentPlan === PLAN_CADERNOS_500 || currentPlan === PLAN_CADERNOS_QUESTOES || currentPlan === PLAN_FULL) {
+    await prisma.$executeRawUnsafe(`
+      UPDATE users
+      SET plan = $1,
+          credits = $2,
+          "creditsUsed" = 0,
+          plan_started_at = NOW(),
+          plan_expires_at = NOW() + INTERVAL '7 days',
+          credits_renewed_at = NOW(),
+          "updatedAt" = NOW()
+      WHERE id = $3;
+    `, PLAN_FREE, PLAN_CREDIT_AMOUNT[PLAN_FREE], user.id)
+    return { foundUser: true, downgraded: true, canceled: true }
+  }
+
+  return { foundUser: true, downgraded: false, canceled: true }
 }
 
 export function activationUrl(token: string) {
