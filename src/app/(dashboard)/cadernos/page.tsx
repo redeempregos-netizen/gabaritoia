@@ -12,7 +12,6 @@ type ImportSummary = {
   totalQuestions: number
   expectedQuestions?: number
   alreadyImported?: boolean
-  fromCache?: boolean
 }
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
@@ -233,7 +232,6 @@ export default function CadernosPage() {
         totalQuestions: Number(data.book?.totalQuestions || 0),
         expectedQuestions: inferExpectedQuestions(data.book?.title || file.name),
         alreadyImported: Boolean(data.alreadyImported),
-        fromCache: Boolean(data.book?.fromCache),
       }
       setLastImport(summary)
       setImportStage('Importação concluída.')
@@ -241,7 +239,7 @@ export default function CadernosPage() {
 
       const label = importCountLabel(summary)
       if (data.alreadyImported) toast.info(`Este caderno já foi importado na sua conta. ${label}.`)
-      else toast.success(`${label}${summary.fromCache ? ' pelo cache' : ''}!`)
+      else toast.success(`${label}!`)
       await loadBooks()
     } catch (e) {
       serverProcessingRef.current = false
@@ -271,7 +269,7 @@ export default function CadernosPage() {
   }
 
   async function deleteBook(book: Book) {
-    if (!confirm('Excluir este caderno importado? O cache global continua salvo para reaproveitamento.')) return
+    if (!confirm('Excluir este caderno importado?')) return
     const res = await fetch('/api/question-books', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', id: book.id }) })
     if (!res.ok) { toast.error('Erro ao excluir'); return }
     if (activeBook?.id === book.id) { setActiveBook(null); setQuestions([]) }
@@ -307,7 +305,7 @@ export default function CadernosPage() {
       <div className="mb-6 rounded-3xl border border-brand-500/20 bg-gradient-to-br from-brand-500/10 via-zinc-900 to-zinc-950 p-5 md:p-7">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-xs text-brand-200 mb-3"><BookOpen size={13} /> Caderno com cache</div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-xs text-brand-200 mb-3"><BookOpen size={13} /> Caderno PDF</div>
             <h1 className="font-heading text-2xl md:text-3xl font-bold">Cadernos de Questões PDF</h1>
             <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Importe PDFs comentados, não importe mais que um por vez, pode acontecer de não importar todas as questões.</p>
           </div>
@@ -323,7 +321,7 @@ export default function CadernosPage() {
       {!importing && lastImport && (
         <div className="mb-6 rounded-3xl border border-green-500/20 bg-green-500/10 p-5 text-sm text-green-100">
           <div className="font-semibold mb-1">Caderno carregado</div>
-          <div>{lastImport.title} · {importCountLabel(lastImport)}{lastImport.fromCache ? ' pelo cache' : ''}.</div>
+          <div>{lastImport.title} · {importCountLabel(lastImport)}.</div>
           {lastImport.expectedQuestions && lastImport.expectedQuestions > lastImport.totalQuestions && (
             <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
               O PDF informa {lastImport.expectedQuestions} questões, mas o sistema reconheceu {lastImport.totalQuestions}. As demais podem estar em formato diferente, imagem, tabela quebrada ou sem padrão de gabarito/comentário.
