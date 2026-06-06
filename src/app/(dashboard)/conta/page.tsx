@@ -45,10 +45,10 @@ function nextCreditRenewal(value?: string | null) {
 }
 
 const CHECKOUT_LINKS: Record<string, string> = {
-  FREE: 'https://pay.kiwify.com.br/2RXraOb',
-  CADERNOS_500: 'https://pay.kiwify.com.br/B9iJ7G6',
-  PRO: 'https://pay.kiwify.com.br/UCpf3R6',
-  ENTERPRISE: 'https://pay.kiwify.com.br/MB01Fh7',
+  FREE: 'https://pay.cakto.com.br/epr62sh_915964',
+  CADERNOS_500: 'https://pay.cakto.com.br/epr62sh_915964',
+  PRO: 'https://pay.cakto.com.br/smhnbod',
+  ENTERPRISE: 'https://pay.cakto.com.br/7c9386a',
 }
 
 export default function MinhaContaPage() {
