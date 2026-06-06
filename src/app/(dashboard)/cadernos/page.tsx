@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { BookOpen, CheckCircle2, Filter, Loader2, Trash2, Upload, XCircle } from 'lucide-react'
 
@@ -62,7 +62,14 @@ function ImportProgressBox({ percent, stage, seconds }: { percent: number; stage
       <div className="h-3 rounded-full bg-zinc-800 overflow-hidden border border-white/5">
         <div className="h-full rounded-full bg-gradient-to-r from-brand-600 to-purple-500 transition-all duration-500" style={{ width: `${percent}%` }} />
       </div>
-      <div className="mt-3 text-[11px] text-zinc-500">Tempo decorrido: {seconds}s · PDFs grandes podem demorar mais.</div>
+      <div className="mt-3 text-[11px] text-zinc-500">
+        Tempo decorrido: {seconds}s · Nesta etapa o servidor está separando enunciados, alternativas, gabaritos e comentários.
+      </div>
+      {seconds > 90 && (
+        <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
+          PDFs grandes ou com texto bagunçado podem demorar. Não feche esta página enquanto o processamento termina.
+        </div>
+      )}
     </div>
   )
 }
@@ -84,6 +91,7 @@ export default function CadernosPage() {
   const [filterYear, setFilterYear] = useState('')
   const [filterUf, setFilterUf] = useState('')
   const [search, setSearch] = useState('')
+  const serverProcessingRef = useRef(false)
 
   useEffect(() => { loadBooks() }, [])
 
@@ -91,6 +99,24 @@ export default function CadernosPage() {
     if (!importing) return
     setImportSeconds(0)
     const timer = window.setInterval(() => setImportSeconds(prev => prev + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [importing])
+
+  useEffect(() => {
+    if (!importing) return
+    const timer = window.setInterval(() => {
+      if (!serverProcessingRef.current) return
+      setImportProgress(prev => {
+        if (prev < 90) return prev + 1
+        if (prev < 96) return prev + 0.5
+        if (prev < 98) return prev + 0.2
+        return prev
+      })
+      setImportStage(prev => {
+        if (prev.includes('servidor') || prev.includes('identificando')) return prev
+        return 'Processando no servidor: identificando questões, alternativas, gabaritos e comentários...'
+      })
+    }, 2500)
     return () => window.clearInterval(timer)
   }, [importing])
 
@@ -121,6 +147,7 @@ export default function CadernosPage() {
 
   async function importFile(file: File) {
     setImporting(true)
+    serverProcessingRef.current = false
     setImportProgress(2)
     setImportStage('Preparando arquivo...')
     setLastImport(null)
@@ -170,16 +197,18 @@ export default function CadernosPage() {
       text = cleanExtractedText(text)
       if (text.length < 50) { toast.error('Não consegui extrair texto do arquivo.'); return }
 
-      setImportStage('Enviando para identificar e salvar questões...')
+      setImportStage('Processando no servidor: identificando questões, alternativas, gabaritos e comentários...')
       setImportProgress(82)
+      serverProcessingRef.current = true
       const res = await fetch('/api/question-books', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'import', title: file.name.replace(/\.pdf$/i, ''), text, fileHash }),
       })
+      serverProcessingRef.current = false
 
       setImportStage('Finalizando caderno...')
-      setImportProgress(94)
+      setImportProgress(prev => Math.max(94, prev))
       const data = await readJsonSafe(res)
       if (!res.ok) { toast.error(data.error || 'Erro ao importar'); return }
 
@@ -197,8 +226,10 @@ export default function CadernosPage() {
       else toast.success(`${summary.totalQuestions} questões importadas${summary.fromCache ? ' pelo cache' : ''}!`)
       await loadBooks()
     } catch (e) {
+      serverProcessingRef.current = false
       toast.error((e as Error).message || 'Erro ao importar PDF')
     } finally {
+      serverProcessingRef.current = false
       setImporting(false)
     }
   }
@@ -226,7 +257,7 @@ export default function CadernosPage() {
     const res = await fetch('/api/question-books', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', id: book.id }) })
     if (!res.ok) { toast.error('Erro ao excluir'); return }
     if (activeBook?.id === book.id) { setActiveBook(null); setQuestions([]) }
-    setBooks(prev => prev.filter(b => b.id !== book.id))
+    setBooks(prev => prev.filter(b => b.id === book.id ? false : true))
     toast.success('Caderno excluído da sua conta')
   }
 
@@ -269,7 +300,7 @@ export default function CadernosPage() {
         </div>
       </div>
 
-      {importing && <ImportProgressBox percent={importProgress} stage={importStage} seconds={importSeconds} />}
+      {importing && <ImportProgressBox percent={Math.round(importProgress)} stage={importStage} seconds={importSeconds} />}
 
       {!importing && lastImport && (
         <div className="mb-6 rounded-3xl border border-green-500/20 bg-green-500/10 p-5 text-sm text-green-100">
