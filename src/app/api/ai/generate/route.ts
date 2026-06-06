@@ -8,7 +8,7 @@ import { hasCredits, deductCredits, getQuestionCost } from '@/lib/credits'
 import type { AIProvider } from '@/types'
 
 const schema = z.object({
-  banca: z.string().min(1),
+  banca: z.string().optional().default(''),
   area: z.string().min(1),
   cargo: z.string().optional(),
   city: z.string().optional(),
@@ -24,6 +24,8 @@ const schema = z.object({
 })
 
 const ALL_PROVIDERS: AIProvider[] = ['openai', 'gemini', 'openrouter', 'grok', 'claude']
+const KNOWN_BANCAS = ['CEBRASPE', 'CESPE', 'FCC', 'FGV', 'VUNESP', 'IBFC', 'IDECAN', 'FURB', 'FEPESE', 'FAURGS', 'FUNDATEC', 'AOCP', 'INSTITUTO AOCP', 'QUADRIX', 'CONSULPLAN', 'OBJETIVA', 'LEGALLE', 'FAFIPA', 'AVANÇA SP']
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 async function ensureQuestionOriginColumns() {
   await prisma.$executeRawUnsafe(`ALTER TABLE questions ADD COLUMN IF NOT EXISTS "examName" TEXT;`).catch(() => null)
@@ -31,18 +33,65 @@ async function ensureQuestionOriginColumns() {
   await prisma.$executeRawUnsafe(`ALTER TABLE questions ADD COLUMN IF NOT EXISTS "basedOn" TEXT;`).catch(() => null)
 }
 
-function extractYear(text?: string | null) {
-  return String(text || '').match(/\b(20\d{2}|19\d{2})\b/)?.[1] || ''
-}
-
 function cleanMeta(value?: string | null, fallback = '') {
   const s = String(value || '').replace(/\s+/g, ' ').trim()
   return s || fallback
 }
 
-function buildExamReference(params: { cargo?: string | null; city?: string | null; uf?: string | null; editalText?: string | null }) {
-  const fromEdital = cleanMeta(params.editalText?.match(/REFERÊNCIA DO EDITAL\/CONCURSO:\s*([^\n]+)/i)?.[1])
-  if (fromEdital) return fromEdital
+function extractYear(text?: string | null) {
+  const source = String(text || '')
+  return source.match(/(?:ANO DO EDITAL\/PROVA|ANO|EDITAL)\s*:?\s*(20[0-3][0-9]|19[8-9][0-9])/i)?.[1]
+    || source.match(/\b(20[0-3][0-9]|19[8-9][0-9])\b/)?.[1]
+    || ''
+}
+
+function extractBanca(text?: string | null) {
+  const source = String(text || '')
+  const labeled = source.match(/(?:BANCA|ORGANIZADORA|INSTITUIÇÃO ORGANIZADORA|INSTITUTO ORGANIZADOR)\s*(?:OBRIGATÓRIA)?\s*:?\s*([A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 .\/\-]{2,80})/i)?.[1]
+  if (labeled) {
+    const normalized = labeled.toUpperCase()
+    const known = KNOWN_BANCAS.find(b => normalized.includes(b))
+    if (known) return known
+    return cleanMeta(labeled).replace(/[.;,].*$/, '')
+  }
+  const upper = source.toUpperCase()
+  return KNOWN_BANCAS.find(banca => upper.includes(banca)) || ''
+}
+
+function extractUf(text?: string | null) {
+  const source = String(text || '')
+  const labeled = source.match(/(?:UF|ESTADO)\s*:?\s*([A-Z]{2}|[A-Za-zÀ-ú\s]{4,30})/i)?.[1]
+  if (labeled) {
+    const raw = labeled.trim().toUpperCase()
+    if (UFS.includes(raw)) return raw
+    const map: Record<string, string> = {
+      ACRE: 'AC', ALAGOAS: 'AL', AMAPA: 'AP', AMAPÁ: 'AP', AMAZONAS: 'AM', BAHIA: 'BA', CEARA: 'CE', CEARÁ: 'CE', 'DISTRITO FEDERAL': 'DF', ESPIRITO: 'ES', 'ESPÍRITO SANTO': 'ES', GOIAS: 'GO', GOIÁS: 'GO', MARANHAO: 'MA', MARANHÃO: 'MA', 'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS', MINAS: 'MG', 'MINAS GERAIS': 'MG', PARA: 'PA', PARÁ: 'PA', PARAIBA: 'PB', PARAÍBA: 'PB', PARANA: 'PR', PARANÁ: 'PR', PERNAMBUCO: 'PE', PIAUI: 'PI', PIAUÍ: 'PI', 'RIO DE JANEIRO': 'RJ', 'RIO GRANDE DO NORTE': 'RN', 'RIO GRANDE DO SUL': 'RS', RONDONIA: 'RO', RONDÔNIA: 'RO', RORAIMA: 'RR', 'SANTA CATARINA': 'SC', 'SAO PAULO': 'SP', 'SÃO PAULO': 'SP', SERGIPE: 'SE', TOCANTINS: 'TO'
+    }
+    const key = Object.keys(map).find(k => raw.includes(k))
+    if (key) return map[key]
+  }
+  const upper = source.toUpperCase()
+  return UFS.find(uf => new RegExp(`(?:^|[^A-Z])${uf}(?:[^A-Z]|$)`).test(upper)) || ''
+}
+
+function extractCity(text?: string | null) {
+  const source = String(text || '')
+  const labeled = source.match(/(?:CIDADE|MUNICÍPIO|MUNICIPIO|PREFEITURA MUNICIPAL DE|PREFEITURA DE|CÂMARA MUNICIPAL DE|CAMARA MUNICIPAL DE)\s*:?\s*([A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-Za-zÀ-ú .'-]{2,70})(?:\s*[-/]\s*[A-Z]{2})?/i)?.[1]
+  if (labeled) return cleanMeta(labeled).replace(/\b(ESTADO|EDITAL|CONCURSO|PROCESSO SELETIVO)\b.*$/i, '').trim()
+  const match = source.match(/\b(?:de|do|da)\s+([A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-Za-zÀ-ú .'-]{2,70})\s*[-/]\s*([A-Z]{2})\b/)
+  return cleanMeta(match?.[1])
+}
+
+function extractReference(text?: string | null) {
+  const source = String(text || '')
+  const labeled = source.match(/REFERÊNCIA DO EDITAL\/CONCURSO:\s*([^\n]+)/i)?.[1]
+    || source.match(/(?:EDITAL|PROCESSO SELETIVO|CONCURSO PÚBLICO|CONCURSO PUBLICO)\s*(?:N[ºO.]|NÚMERO|NUMERO)?\s*[:º.-]?\s*([^\n]{4,120})/i)?.[0]
+  return cleanMeta(labeled).replace(/\s{2,}/g, ' ')
+}
+
+function buildExamReference(params: { cargo?: string | null; city?: string | null; uf?: string | null; editalText?: string | null; reference?: string | null }) {
+  const explicit = cleanMeta(params.reference) || extractReference(params.editalText)
+  if (explicit) return explicit
   const parts = [params.city, params.uf].map(v => cleanMeta(v)).filter(Boolean).join('/')
   const cargo = cleanMeta(params.cargo)
   if (parts && cargo) return `${parts} — ${cargo}`
@@ -51,11 +100,13 @@ function buildExamReference(params: { cargo?: string | null; city?: string | nul
   return 'Concurso público'
 }
 
-function withOriginHeader(params: { enunciado: string; banca: string; examName: string; examYear: string; basedOn: string }) {
+function withOriginHeader(params: { enunciado: string; banca: string; examName: string; examYear: string; basedOn: string; city?: string; uf?: string }) {
   const header = [
     `Banca: ${params.banca || 'Não informada'}`,
     `Prova: ${params.examName || 'Concurso público'}`,
     params.examYear ? `Ano: ${params.examYear}` : '',
+    params.city ? `Cidade: ${params.city}` : '',
+    params.uf ? `UF: ${params.uf}` : '',
     `Baseado em: ${params.basedOn || 'Conteúdo programático informado'}`,
   ].filter(Boolean).join(' | ')
   const enunciado = String(params.enunciado || '').trim()
@@ -128,6 +179,15 @@ export async function POST(req: NextRequest) {
   try {
     await ensureQuestionOriginColumns()
     const params = schema.parse(await req.json())
+    const detectedBanca = extractBanca(params.editalText)
+    const effectiveBanca = cleanMeta(params.banca, detectedBanca || '')
+    if (!effectiveBanca) return NextResponse.json({ error: 'Informe a banca ou envie um edital/texto onde a banca possa ser identificada.' }, { status: 400 })
+
+    const effectiveCity = cleanMeta(params.city, extractCity(params.editalText))
+    const effectiveUf = cleanMeta(params.uf, extractUf(params.editalText))
+    const effectiveYear = extractYear(params.editalText) || extractYear(params.cargo) || ''
+    const effectiveReference = extractReference(params.editalText)
+
     const cost = getQuestionCost(params.quantity)
     const sufficient = await hasCredits(session.userId, cost)
     if (!sufficient) return NextResponse.json({ error: `Créditos insuficientes. Precisa de ${cost} crédito(s).`, code: 'insufficient_credits' }, { status: 402 })
@@ -135,64 +195,69 @@ export async function POST(req: NextRequest) {
     const isTF = params.type === 'TRUE_FALSE'
     const isOriginal = params.format === 'Questão inédita'
     const isEdital = !!params.editalText?.trim()
-    const defaultExamName = buildExamReference({ cargo: params.cargo, city: params.city, uf: params.uf, editalText: params.editalText })
-    const defaultExamYear = extractYear(params.editalText) || extractYear(params.cargo) || ''
+    const defaultExamName = buildExamReference({ cargo: params.cargo, city: effectiveCity, uf: effectiveUf, editalText: params.editalText, reference: effectiveReference })
+    const defaultExamYear = effectiveYear
     const defaultBasedOn = cleanMeta(params.area)
     const systemPrompt = 'Você é uma banca examinadora sênior e especialista em concursos públicos brasileiros. Gere questões tecnicamente corretas, contextualizadas ao edital e fiéis ao estilo da banca. Responda SOMENTE JSON válido, sem texto antes ou depois, sem markdown e sem backticks.'
 
-    const contextoBase = `BANCA OBRIGATÓRIA: ${params.banca}
+    const contextoBase = `BANCA IDENTIFICADA: ${effectiveBanca}
+REFERÊNCIA DO EDITAL/CONCURSO IDENTIFICADA: ${defaultExamName}
 ÁREA DO CONHECIMENTO: ${params.area}
 CARGO/FUNÇÃO: ${params.cargo || 'Não informado'}
-CIDADE/MUNICÍPIO: ${params.city || 'Não informado'}
-UF/ESTADO: ${params.uf || 'Não informado'}
-ANO DO EDITAL/PROVA: ${defaultExamYear || 'Não informado'}
+CIDADE/MUNICÍPIO IDENTIFICADO: ${effectiveCity || 'Não informado'}
+UF/ESTADO IDENTIFICADO: ${effectiveUf || 'Não informado'}
+ANO DO EDITAL/PROVA IDENTIFICADO: ${defaultExamYear || 'Não informado'}
 ESCOLARIDADE: ${params.education || 'Não informado'}
 DIFICULDADE: ${params.difficulty}
-FORMATO: ${isOriginal ? 'questão inédita inspirada no perfil real da banca ' + params.banca : 'estilo da banca ' + params.banca}
+FORMATO: ${isOriginal ? 'questão inédita inspirada no perfil real da banca ' + effectiveBanca : 'estilo da banca ' + effectiveBanca}
 TIPO: ${isTF ? 'Certo ou Errado' : 'Múltipla escolha com 5 alternativas'}${isEdital ? `
 CONTEXTO DO EDITAL/CONCURSO:
 ${params.editalText!.substring(0, 10000)}` : ''}`
     const schemaJson = isTF
-      ? '[{"enunciado":"afirmacao completa","options":["Certo","Errado"],"correctIndex":0,"comentario":"explicacao objetiva com fundamento","subtopic":"subtopico","area":"materia","examName":"nome da prova/concurso/órgão/cidade/cargo quando informado","examYear":"ano quando informado","basedOn":"tema, tópico ou item do edital usado como base"}]'
-      : '[{"enunciado":"texto completo da questao","options":["alternativa A","alternativa B","alternativa C","alternativa D","alternativa E"],"correctIndex":0,"comentario":"explicacao detalhada com fundamento","subtopic":"subtopico","area":"materia","examName":"nome da prova/concurso/órgão/cidade/cargo quando informado","examYear":"ano quando informado","basedOn":"tema, tópico ou item do edital usado como base"}]'
+      ? '[{"enunciado":"afirmacao completa","options":["Certo","Errado"],"correctIndex":0,"comentario":"explicacao objetiva com fundamento","subtopic":"subtopico","area":"materia","examName":"referência do edital/concurso identificada","examYear":"ano identificado","basedOn":"tema, tópico ou item do edital usado como base"}]'
+      : '[{"enunciado":"texto completo da questao","options":["alternativa A","alternativa B","alternativa C","alternativa D","alternativa E"],"correctIndex":0,"comentario":"explicacao detalhada com fundamento","subtopic":"subtopico","area":"materia","examName":"referência do edital/concurso identificada","examYear":"ano identificado","basedOn":"tema, tópico ou item do edital usado como base"}]'
 
     const prompt = `Crie EXATAMENTE ${params.quantity} questão(ões) para concurso público brasileiro.
 
 ${contextoBase}
 
+IDENTIFICAÇÃO OBRIGATÓRIA DE ORIGEM:
+1. Use sempre a BANCA IDENTIFICADA como banca da questão: ${effectiveBanca}.
+2. Use sempre a REFERÊNCIA DO EDITAL/CONCURSO IDENTIFICADA como origem da prova: ${defaultExamName}.
+3. Use sempre o ANO IDENTIFICADO quando houver: ${defaultExamYear || 'não informado'}.
+4. Use sempre a CIDADE e UF identificadas quando houver: ${effectiveCity || 'não informada'} ${effectiveUf || ''}.
+5. Se o texto do edital tiver órgão, prefeitura, câmara, secretaria, cargo ou número do edital, use isso em examName.
+6. Se houver conflito entre campos manuais e o texto do edital, priorize o campo manual e use o edital só para completar.
+
 PROTOCOLO PROFISSIONAL OBRIGATÓRIO:
-1. Use a BANCA como filtro principal de estilo: tamanho do enunciado, nível de literalidade, pegadinhas, profundidade, vocabulário, alternativas e padrão de comentário.
-2. Use a ÁREA DO CONHECIMENTO como limite técnico. Não misture matéria fora da área informada.
-3. Use o CARGO/FUNÇÃO para calibrar atribuições, situações práticas, linguagem e profundidade esperada.
-4. Use CIDADE/UF apenas quando fizer sentido jurídico, administrativo, educacional, municipal ou contextual. Não invente leis locais, números, datas ou fatos não informados.
-5. Use o ANO para manter atualidade normativa e estilo de prova. Não cite legislação desatualizada quando houver referência temporal mais recente.
-6. Use o CONTEXTO DO EDITAL para escolher temas, subtópicos e nível de cobrança. Priorize itens textuais do edital quando existirem.
+1. Use a banca como filtro principal de estilo: tamanho do enunciado, nível de literalidade, pegadinhas, profundidade, vocabulário, alternativas e padrão de comentário.
+2. Use a área do conhecimento como limite técnico. Não misture matéria fora da área informada.
+3. Use o cargo/função para calibrar atribuições, situações práticas, linguagem e profundidade esperada.
+4. Use cidade/UF apenas quando fizer sentido jurídico, administrativo, educacional, municipal ou contextual. Não invente leis locais, números, datas ou fatos não informados.
+5. Use o ano para manter atualidade normativa e estilo de prova. Não cite legislação desatualizada quando houver referência temporal mais recente.
+6. Use o contexto do edital para escolher temas, subtópicos e nível de cobrança. Priorize itens textuais do edital quando existirem.
 7. Se o edital trouxer conteúdo programático, a questão deve nascer de um item real do conteúdo programático.
-8. Se o edital estiver incompleto, use os dados fornecidos como orientação e deixe basedOn claro.
-9. Não copie questões reais literalmente. Gere questão inédita, plausível e profissional.
-10. Evite enunciados genéricos demais. A questão precisa parecer pronta para prova.
-11. Em múltipla escolha, gere 5 alternativas equilibradas, com apenas uma correta, distratores plausíveis e sem alternativas absurdas.
-12. Em certo/errado, gere afirmação objetiva, tecnicamente julgável, sem ambiguidade.
-13. O comentário deve explicar por que a alternativa correta está correta, por que as principais armadilhas estão erradas e qual ponto do edital foi cobrado.
-14. Preencha obrigatoriamente examName, examYear e basedOn.
-15. examName deve combinar órgão/concurso/cidade/cargo quando essas informações existirem.
-16. examYear deve ser o ano informado ou extraído do edital; se não existir, deixe string vazia.
-17. basedOn deve indicar o tópico, subtópico ou item do edital usado como base.
-18. Nunca invente cargo, cidade, UF, órgão, lei local ou número de edital se não estiver no contexto.
-19. A resposta deve ser SOMENTE JSON válido no formato: ${schemaJson}`
+8. Não copie questões reais literalmente. Gere questão inédita, plausível e profissional.
+9. O comentário deve explicar por que a alternativa correta está correta, por que as principais armadilhas estão erradas e qual ponto do edital foi cobrado.
+10. Preencha obrigatoriamente examName, examYear e basedOn.
+11. examName deve combinar órgão/concurso/cidade/UF/cargo quando essas informações existirem.
+12. examYear deve ser o ano identificado; se não existir, deixe string vazia.
+13. basedOn deve indicar o tópico, subtópico ou item do edital usado como base.
+14. Nunca invente cargo, cidade, UF, órgão, lei local ou número de edital se não estiver no contexto.
+15. A resposta deve ser SOMENTE JSON válido no formato: ${schemaJson}`
 
     const aiResult = await callAIWithFallback({ prompt, systemPrompt, provider: params.provider as AIProvider | undefined, maxTokens: 5000, queueJobId: params.queueJobId })
     const provider = aiResult.provider
     const parsed = parseAIJson<Array<{ enunciado: string; options: string[]; correctIndex: number; comentario: string; subtopic?: string; area?: string; examName?: string; examYear?: string; basedOn?: string }>>(aiResult.raw)
 
-    await deductCredits(session.userId, cost, 'generate_question', `${params.quantity}x ${params.banca}`)
+    await deductCredits(session.userId, cost, 'generate_question', `${params.quantity}x ${effectiveBanca}`)
 
     const questions = await Promise.all(parsed.map((q) => {
       const examName = cleanMeta(q.examName, defaultExamName)
       const examYear = cleanMeta(q.examYear, defaultExamYear)
       const basedOn = cleanMeta(q.basedOn, q.subtopic || defaultBasedOn)
       return prisma.question.create({ data: {
-        banca: params.banca,
+        banca: effectiveBanca,
         area: q.area || params.area,
         subtopic: q.subtopic,
         cargo: params.cargo,
@@ -203,7 +268,7 @@ PROTOCOLO PROFISSIONAL OBRIGATÓRIO:
         difficulty: params.difficulty,
         type: params.type,
         format: params.format,
-        enunciado: withOriginHeader({ enunciado: q.enunciado, banca: params.banca, examName, examYear, basedOn }),
+        enunciado: withOriginHeader({ enunciado: q.enunciado, banca: effectiveBanca, examName, examYear, basedOn, city: effectiveCity, uf: effectiveUf }),
         options: q.options,
         correctIndex: q.correctIndex,
         comentario: q.comentario,
@@ -215,7 +280,7 @@ PROTOCOLO PROFISSIONAL OBRIGATÓRIO:
     await saveGeneratedQuestionLinks(session.userId, questions.map(q => q.id))
 
     const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { credits: true } })
-    return NextResponse.json({ ok: true, questions, provider, creditsUsed: cost, creditsRemaining: user?.credits ?? 0 }, { headers: rateLimitHeaders(userLimit.remaining, userLimit.resetAt) })
+    return NextResponse.json({ ok: true, questions, provider, creditsUsed: cost, creditsRemaining: user?.credits ?? 0, detected: { banca: effectiveBanca, city: effectiveCity, uf: effectiveUf, year: defaultExamYear, reference: defaultExamName } }, { headers: rateLimitHeaders(userLimit.remaining, userLimit.resetAt) })
   } catch (e) {
     if (e instanceof z.ZodError) return NextResponse.json({ error: e.errors[0].message }, { status: 400 })
     console.error(e)
