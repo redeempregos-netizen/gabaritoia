@@ -39,7 +39,7 @@ export function hashActivationToken(token: string) {
 export function planValidityDays(plan: string) {
   const normalized = normalizePlan(plan)
   if (normalized === PLAN_CADERNOS_500) return 30
-  if (normalized === PLAN_CADERNOS_QUESTOES) return 180
+  if (normalized === PLAN_CADERNOS_QUESTOES) return 90
   if (normalized === PLAN_FULL) return 365
   return 30
 }
@@ -57,9 +57,9 @@ export function inferCaktoPlan(payload: any) {
   const productName = String(payload?.product_name || payload?.product?.name || payload?.offer?.name || payload?.item?.name || '').toLowerCase()
   const source = `${productId} ${productName}`
 
-  if (/anual|annual|12\s*mes|365/.test(source)) return PLAN_FULL
-  if (/semestral|semester|6\s*mes|180/.test(source)) return PLAN_CADERNOS_QUESTOES
-  if (/mensal|monthly|1\s*mes|30/.test(source)) return PLAN_CADERNOS_500
+  if (/anual|annual|12\s*mes|365|7c9386a/.test(source)) return PLAN_FULL
+  if (/trimestral|trimestre|quarter|3\s*mes|90|smhnbod/.test(source)) return PLAN_CADERNOS_QUESTOES
+  if (/mensal|monthly|1\s*mes|30|epr62sh/.test(source)) return PLAN_CADERNOS_500
 
   return PLAN_CADERNOS_500
 }
