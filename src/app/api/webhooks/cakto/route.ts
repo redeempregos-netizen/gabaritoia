@@ -14,9 +14,30 @@ import {
 function isAuthorized(req: NextRequest) {
   const secret = process.env.CAKTO_WEBHOOK_SECRET
   if (!secret) return true
+
   const auth = req.headers.get('authorization') || ''
-  const headerSecret = req.headers.get('x-webhook-secret') || req.headers.get('x-cakto-secret') || ''
-  return auth === `Bearer ${secret}` || headerSecret === secret
+  const headerSecret =
+    req.headers.get('x-webhook-secret') ||
+    req.headers.get('x-cakto-secret') ||
+    req.headers.get('x-cakto-token') ||
+    req.headers.get('x-api-key') ||
+    req.headers.get('webhook-secret') ||
+    ''
+  const querySecret = req.nextUrl.searchParams.get('secret') || ''
+
+  return auth === `Bearer ${secret}` || headerSecret === secret || querySecret === secret
+}
+
+function isTestPayload(payload: any, status: string) {
+  const event = String(payload?.event || payload?.event_type || payload?.type || payload?.test || payload?.data?.event || '').toLowerCase()
+  return !status || event.includes('test') || event.includes('ping') || payload?.test === true
+}
+
+export async function GET(req: NextRequest) {
+  if (!isAuthorized(req)) {
+    return NextResponse.json({ error: 'Webhook não autorizado.' }, { status: 401 })
+  }
+  return NextResponse.json({ ok: true, webhook: 'cakto', method: 'GET', message: 'Webhook ativo.' })
 }
 
 export async function POST(req: NextRequest) {
@@ -27,6 +48,11 @@ export async function POST(req: NextRequest) {
 
     const payload = await req.json().catch(() => ({}))
     const status = extractPurchaseStatus(payload)
+
+    if (isTestPayload(payload, status)) {
+      return NextResponse.json({ ok: true, webhook: 'cakto', test: true, message: 'Evento de teste recebido com sucesso.' })
+    }
+
     const { email, name } = extractBuyerFromPayload(payload)
     const product = extractProductInfo(payload)
 
