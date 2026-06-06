@@ -24,7 +24,7 @@ const schema = z.object({
 })
 
 const ALL_PROVIDERS: AIProvider[] = ['openai', 'gemini', 'openrouter', 'grok', 'claude']
-const KNOWN_BANCAS = ['CEBRASPE', 'CESPE', 'FCC', 'FGV', 'VUNESP', 'IBFC', 'IDECAN', 'FURB', 'FEPESE', 'FAURGS', 'FUNDATEC', 'AOCP', 'INSTITUTO AOCP', 'QUADRIX', 'CONSULPLAN', 'OBJETIVA', 'LEGALLE', 'FAFIPA', 'AVANÇA SP']
+const KNOWN_BANCAS = ['INSTITUTO AOCP', 'AVANÇA SP', 'CEBRASPE', 'CONSULPLAN', 'FUNDATEC', 'OBJETIVA', 'QUADRIX', 'VUNESP', 'FEPESE', 'FAURGS', 'FAFIPA', 'IDECAN', 'CESPE', 'AOCP', 'IBFC', 'FURB', 'FGV', 'FCC']
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 async function ensureQuestionOriginColumns() {
@@ -38,6 +38,32 @@ function cleanMeta(value?: string | null, fallback = '') {
   return s || fallback
 }
 
+function normalizeSearch(value?: string | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function findKnownBancas(text?: string | null) {
+  const normalized = normalizeSearch(text)
+  const found: string[] = []
+  for (const banca of KNOWN_BANCAS) {
+    const key = normalizeSearch(banca)
+    const pattern = new RegExp(`(?:^|[^A-Z0-9])${escapeRegex(key)}(?:[^A-Z0-9]|$)`, 'i')
+    if (pattern.test(normalized) && !found.some(existing => normalizeSearch(existing).includes(key) || key.includes(normalizeSearch(existing)))) {
+      found.push(banca)
+    }
+  }
+  return found
+}
+
 function extractYear(text?: string | null) {
   const source = String(text || '')
   return source.match(/(?:ANO DO EDITAL\/PROVA|ANO|EDITAL)\s*:?\s*(20[0-3][0-9]|19[8-9][0-9])/i)?.[1]
@@ -47,15 +73,41 @@ function extractYear(text?: string | null) {
 
 function extractBanca(text?: string | null) {
   const source = String(text || '')
-  const labeled = source.match(/(?:BANCA|ORGANIZADORA|INSTITUIÇÃO ORGANIZADORA|INSTITUTO ORGANIZADOR)\s*(?:OBRIGATÓRIA)?\s*:?\s*([A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 .\/\-]{2,80})/i)?.[1]
-  if (labeled) {
-    const normalized = labeled.toUpperCase()
-    const known = KNOWN_BANCAS.find(b => normalized.includes(b))
-    if (known) return known
-    return cleanMeta(labeled).replace(/[.;,].*$/, '')
+  if (!source.trim()) return ''
+
+  const lines = source.split(/\n|\r/).map(line => line.trim()).filter(Boolean)
+  const organizerTerms = [
+    'BANCA', 'BANCA ORGANIZADORA', 'ORGANIZADORA', 'EMPRESA ORGANIZADORA', 'INSTITUICAO ORGANIZADORA', 'INSTITUIÇÃO ORGANIZADORA',
+    'INSTITUTO ORGANIZADOR', 'EXECUTORA', 'EMPRESA EXECUTORA', 'RESPONSAVEL PELA ORGANIZACAO', 'RESPONSÁVEL PELA ORGANIZAÇÃO',
+    'SOB RESPONSABILIDADE', 'A CARGO', 'REALIZACAO', 'REALIZAÇÃO'
+  ]
+
+  for (const line of lines) {
+    const normalizedLine = normalizeSearch(line)
+    const isOrganizerLine = organizerTerms.some(term => normalizedLine.includes(normalizeSearch(term)))
+    if (!isOrganizerLine) continue
+    const found = findKnownBancas(line)
+    if (found.length) return found[0]
   }
-  const upper = source.toUpperCase()
-  return KNOWN_BANCAS.find(banca => upper.includes(banca)) || ''
+
+  const normalized = normalizeSearch(source)
+  const contextRegexes = [
+    /(?:BANCA(?: ORGANIZADORA)?|ORGANIZADORA|EMPRESA ORGANIZADORA|INSTITUICAO ORGANIZADORA|INSTITUTO ORGANIZADOR|EXECUTORA|EMPRESA EXECUTORA)\s*(?:E|É|:|\-|–|—|SERA|SERÁ|FICARA|FICARÁ|A CARGO DE|SOB RESPONSABILIDADE DE)?\s*([A-Z0-9 .\/-]{2,160})/g,
+    /(?:SOB RESPONSABILIDADE DE|A CARGO DE|REALIZACAO DA|REALIZACAO DO|REALIZAÇÃO DA|REALIZAÇÃO DO)\s*([A-Z0-9 .\/-]{2,160})/g,
+  ]
+
+  for (const regex of contextRegexes) {
+    const matches = normalized.matchAll(regex)
+    for (const match of matches) {
+      const windowText = match[0] + ' ' + (match[1] || '')
+      const found = findKnownBancas(windowText)
+      if (found.length) return found[0]
+    }
+  }
+
+  const allFound = findKnownBancas(source)
+  if (allFound.length === 1) return allFound[0]
+  return ''
 }
 
 function extractUf(text?: string | null) {
@@ -181,7 +233,7 @@ export async function POST(req: NextRequest) {
     const params = schema.parse(await req.json())
     const detectedBanca = extractBanca(params.editalText)
     const effectiveBanca = cleanMeta(params.banca, detectedBanca || '')
-    if (!effectiveBanca) return NextResponse.json({ error: 'Informe a banca ou envie um edital/texto onde a banca possa ser identificada.' }, { status: 400 })
+    if (!effectiveBanca) return NextResponse.json({ error: 'Não consegui identificar a banca com segurança. Informe a banca manualmente para evitar gerar questões com banca errada.' }, { status: 400 })
 
     const effectiveCity = cleanMeta(params.city, extractCity(params.editalText))
     const effectiveUf = cleanMeta(params.uf, extractUf(params.editalText))
