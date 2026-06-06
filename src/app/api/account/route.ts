@@ -5,9 +5,9 @@ import { prisma } from '@/lib/prisma'
 const DEFAULT_PLANS = [
   { id: 'FREE', name: 'Teste', price: '19,90', credits: 300, validityDays: 7, active: true, description: 'Plano de entrada para testar o sistema.' },
   { id: 'PACK', name: 'Plano Pack', price: '69,90', credits: 300, validityDays: 180, active: true, description: 'Inclui o Pack com 400 mil questões + acesso por 6 meses, com 300 créditos iniciais e 20 créditos de bônus por dia.' },
-  { id: 'CADERNOS_500', name: 'Básico', price: '29,90', credits: 1000, validityDays: 30, active: true, description: 'Para uso leve e estudo inicial.' },
-  { id: 'PRO', name: 'Pro', price: '47,00', credits: 3000, validityDays: 30, active: true, description: 'Plano principal para estudar com frequência.' },
-  { id: 'ENTERPRISE', name: 'Premium', price: '97,00', credits: 8000, validityDays: 30, active: true, description: 'Para uso pesado com mais créditos.' },
+  { id: 'CADERNOS_500', name: 'Mensal', price: '29,90', credits: 1000, validityDays: 30, active: true, description: 'Acesso mensal para estudar com IA e plano de questões.' },
+  { id: 'PRO', name: 'Semestral', price: '47,00', credits: 3000, validityDays: 180, active: true, description: 'Acesso semestral para estudar com mais créditos e recursos avançados.' },
+  { id: 'ENTERPRISE', name: 'Anual', price: '97,00', credits: 8000, validityDays: 365, active: true, description: 'Acesso anual com todos os recursos e mais créditos.' },
 ]
 
 async function ensureColumns() {
@@ -28,9 +28,9 @@ function normalizePlans(value?: string | null) {
       const found = parsed.find((p: any) => p?.id === defaultPlan.id) || {}
       return {
         ...defaultPlan,
-        name: String(found.name || defaultPlan.name),
+        name: defaultPlan.id === 'PACK' ? defaultPlan.name : String(found.name || defaultPlan.name),
         price: defaultPlan.id === 'PACK' ? defaultPlan.price : String(found.price || defaultPlan.price),
-        credits: Math.max(0, Number(found.credits ?? defaultPlan.credits) || 0),
+        credits: defaultPlan.id === 'PACK' ? defaultPlan.credits : Math.max(0, Number(found.credits ?? defaultPlan.credits) || 0),
         validityDays: defaultPlan.id === 'PACK' ? 180 : Math.max(1, Number(found.validityDays ?? defaultPlan.validityDays) || defaultPlan.validityDays),
         active: found.active !== false,
         description: defaultPlan.id === 'PACK' ? defaultPlan.description : String(found.description || defaultPlan.description),
