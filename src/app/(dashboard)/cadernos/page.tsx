@@ -10,6 +10,7 @@ type Question = { id: string; number: number; externalId?: string; topic?: strin
 type ImportSummary = {
   title: string
   totalQuestions: number
+  expectedQuestions?: number
   alreadyImported?: boolean
   fromCache?: boolean
 }
@@ -34,6 +35,21 @@ async function readJsonSafe(res: Response) {
 function safe(v?: string | null, fallback = 'Não informado') {
   const s = String(v || '').trim()
   return s || fallback
+}
+
+function inferExpectedQuestions(text?: string | null) {
+  const source = String(text || '')
+  const match = source.match(/(\d{1,3}(?:[\.\s]\d{3})+|\d{2,5})\s*(?:quest(?:ões|oes|ao|ão)|q\b)/i)
+  if (!match?.[1]) return undefined
+  const value = Number(match[1].replace(/[^0-9]/g, ''))
+  return Number.isFinite(value) && value > 0 ? value : undefined
+}
+
+function importCountLabel(summary: ImportSummary) {
+  if (summary.expectedQuestions && summary.expectedQuestions > summary.totalQuestions) {
+    return `${summary.totalQuestions} de ${summary.expectedQuestions} questões reconhecidas`
+  }
+  return `${summary.totalQuestions} questão(ões) importadas`
 }
 
 function inferYear(q: Question) {
@@ -215,6 +231,7 @@ export default function CadernosPage() {
       const summary: ImportSummary = {
         title: data.book?.title || file.name.replace(/\.pdf$/i, ''),
         totalQuestions: Number(data.book?.totalQuestions || 0),
+        expectedQuestions: inferExpectedQuestions(data.book?.title || file.name),
         alreadyImported: Boolean(data.alreadyImported),
         fromCache: Boolean(data.book?.fromCache),
       }
@@ -222,8 +239,9 @@ export default function CadernosPage() {
       setImportStage('Importação concluída.')
       setImportProgress(100)
 
-      if (data.alreadyImported) toast.info('Este caderno já foi importado na sua conta. Não dupliquei o arquivo.')
-      else toast.success(`${summary.totalQuestions} questões importadas${summary.fromCache ? ' pelo cache' : ''}!`)
+      const label = importCountLabel(summary)
+      if (data.alreadyImported) toast.info(`Este caderno já foi importado na sua conta. ${label}.`)
+      else toast.success(`${label}${summary.fromCache ? ' pelo cache' : ''}!`)
       await loadBooks()
     } catch (e) {
       serverProcessingRef.current = false
@@ -305,7 +323,12 @@ export default function CadernosPage() {
       {!importing && lastImport && (
         <div className="mb-6 rounded-3xl border border-green-500/20 bg-green-500/10 p-5 text-sm text-green-100">
           <div className="font-semibold mb-1">Caderno carregado</div>
-          <div>{lastImport.title} · {lastImport.totalQuestions} questão(ões) {lastImport.alreadyImported ? 'já estavam importadas' : 'importadas'}{lastImport.fromCache ? ' pelo cache' : ''}.</div>
+          <div>{lastImport.title} · {importCountLabel(lastImport)}{lastImport.fromCache ? ' pelo cache' : ''}.</div>
+          {lastImport.expectedQuestions && lastImport.expectedQuestions > lastImport.totalQuestions && (
+            <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
+              O PDF informa {lastImport.expectedQuestions} questões, mas o sistema reconheceu {lastImport.totalQuestions}. As demais podem estar em formato diferente, imagem, tabela quebrada ou sem padrão de gabarito/comentário.
+            </div>
+          )}
         </div>
       )}
 
