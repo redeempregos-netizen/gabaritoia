@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2, LockKeyhole } from 'lucide-react'
 import { toast } from 'sonner'
 
-export default function AtivarAcessoPage() {
+function AtivarAcessoContent() {
   const router = useRouter()
   const params = useSearchParams()
   const token = params.get('token') || ''
@@ -88,5 +88,23 @@ export default function AtivarAcessoPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function AtivarAcessoFallback() {
+  return (
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+      <div className="card p-6 text-sm text-zinc-300 flex items-center gap-2">
+        <Loader2 size={16} className="animate-spin text-brand-300" /> Carregando ativação...
+      </div>
+    </div>
+  )
+}
+
+export default function AtivarAcessoPage() {
+  return (
+    <Suspense fallback={<AtivarAcessoFallback />}>
+      <AtivarAcessoContent />
+    </Suspense>
   )
 }
