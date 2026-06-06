@@ -6,7 +6,7 @@ const DEFAULT_PLANS = [
   { id: 'FREE', name: 'Teste', price: '19,90', credits: 300, validityDays: 7, active: true, description: 'Plano de entrada para testar o sistema.' },
   { id: 'PACK', name: 'Plano Pack', price: '69,90', credits: 300, validityDays: 180, active: true, description: 'Inclui o Pack com 400 mil questões + acesso por 6 meses, com 300 créditos iniciais e 20 créditos de bônus por dia.' },
   { id: 'CADERNOS_500', name: 'Mensal', price: '29,90', credits: 1000, validityDays: 30, active: true, description: 'Acesso mensal para estudar com IA e plano de questões.' },
-  { id: 'PRO', name: 'Semestral', price: '47,00', credits: 3000, validityDays: 180, active: true, description: 'Acesso semestral para estudar com mais créditos e recursos avançados.' },
+  { id: 'PRO', name: 'Trimestral', price: '47,00', credits: 3000, validityDays: 90, active: true, description: 'Acesso trimestral para estudar com mais créditos e recursos avançados.' },
   { id: 'ENTERPRISE', name: 'Anual', price: '97,00', credits: 8000, validityDays: 365, active: true, description: 'Acesso anual com todos os recursos e mais créditos.' },
 ]
 
