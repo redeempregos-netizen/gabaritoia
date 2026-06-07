@@ -6,7 +6,7 @@ import {
   extractBuyerFromPayload,
   extractProductInfo,
 } from '@/lib/purchase-access'
-import { normalizePlan, PLAN_CADERNOS_500, PLAN_CADERNOS_QUESTOES, PLAN_FULL } from '@/lib/plans'
+import { normalizePlan, PLAN_FREE, PLAN_CADERNOS_500, PLAN_CADERNOS_QUESTOES, PLAN_FULL } from '@/lib/plans'
 
 const APPROVED_EVENTS = new Set([
   'sale.paid',
@@ -38,6 +38,10 @@ const IGNORED_EVENTS = new Set([
   'trial.expired',
 ])
 
+const MIVVO_CHECKOUT_PLAN_MAP: Record<string, string> = {
+  monmubbmq4duiyo: PLAN_FREE,
+}
+
 function getToken(req: NextRequest) {
   return process.env.MIVVO_WEBHOOK_TOKEN || process.env.MIVVO_WEBHOOK_SECRET || process.env.CAKTO_WEBHOOK_SECRET || ''
 }
@@ -67,6 +71,27 @@ function isTestPayload(payload: any, event: string) {
   return !event || event.includes('test') || event.includes('ping') || payload?.test === true
 }
 
+function collectPlanSource(payload: any) {
+  const data = payload?.data || {}
+  return String([
+    data?.interval,
+    data?.product?.id,
+    data?.product?.name,
+    data?.offer?.id,
+    data?.offer?.name,
+    data?.offer?.checkout_link_id,
+    data?.checkout_link_id,
+    data?.checkout_url,
+    payload?.product_id,
+    payload?.product_name,
+    payload?.offer_id,
+    payload?.offer_name,
+    payload?.checkout_id,
+    payload?.checkout_link_id,
+    payload?.checkout_url,
+  ].filter(Boolean).join(' ')).toLowerCase()
+}
+
 function inferMivvoPlan(payload: any) {
   const data = payload?.data || {}
   const explicit = String(
@@ -79,26 +104,18 @@ function inferMivvoPlan(payload: any) {
   ).trim()
   if (explicit) return normalizePlan(explicit)
 
-  const source = String([
-    data?.interval,
-    data?.product?.id,
-    data?.product?.name,
-    data?.offer?.id,
-    data?.offer?.name,
-    data?.offer?.checkout_link_id,
-    payload?.product_id,
-    payload?.product_name,
-    payload?.offer_id,
-    payload?.offer_name,
-    payload?.checkout_id,
-    payload?.checkout_url,
-  ].filter(Boolean).join(' ')).toLowerCase()
+  const source = collectPlanSource(payload)
 
+  for (const [checkoutId, plan] of Object.entries(MIVVO_CHECKOUT_PLAN_MAP)) {
+    if (source.includes(checkoutId.toLowerCase())) return plan
+  }
+
+  if (/teste|trial|free|7\s*dias|7\s*days/.test(source)) return PLAN_FREE
   if (/anual|annual|yearly|ano|12\s*mes|365/.test(source)) return PLAN_FULL
   if (/trimestral|trimestre|quarter|3\s*mes|90/.test(source)) return PLAN_CADERNOS_QUESTOES
-  if (/mensal|monthly|month|mes|mês|30/.test(source)) return PLAN_CADERNOS_500
+  if (/mensal|monthly|month|mes|mês|30|basico|básico|basic/.test(source)) return PLAN_CADERNOS_500
 
-  return PLAN_CADERNOS_500
+  return PLAN_FREE
 }
 
 function getMivvoBuyer(payload: any) {
@@ -114,7 +131,7 @@ function getMivvoProductInfo(payload: any) {
   const generic = extractProductInfo(payload)
   const data = payload?.data || {}
   return {
-    productId: String(generic.productId || data?.product?.id || data?.offer?.id || data?.offer?.checkout_link_id || '').trim(),
+    productId: String(generic.productId || data?.product?.id || data?.offer?.id || data?.offer?.checkout_link_id || data?.checkout_link_id || '').trim(),
     productName: String(generic.productName || data?.product?.name || data?.offer?.name || '').trim(),
     purchaseId: String(
       data?.sale_id ||
