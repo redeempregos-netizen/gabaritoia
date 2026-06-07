@@ -29,6 +29,7 @@ type PlanOption = {
   credits: number
   validityDays: number
   active: boolean
+  checkoutUrl?: string
   description: string
 }
 
@@ -42,13 +43,6 @@ function nextCreditRenewal(value?: string | null) {
   const date = new Date(value)
   date.setDate(date.getDate() + 30)
   return date.toLocaleDateString('pt-BR')
-}
-
-const CHECKOUT_LINKS: Record<string, string> = {
-  FREE: 'https://pay.cakto.com.br/epr62sh_915964',
-  CADERNOS_500: 'https://pay.cakto.com.br/epr62sh_915964',
-  PRO: 'https://pay.cakto.com.br/smhnbod',
-  ENTERPRISE: 'https://pay.cakto.com.br/7c9386a',
 }
 
 export default function MinhaContaPage() {
@@ -179,6 +173,7 @@ export default function MinhaContaPage() {
         <div className="grid md:grid-cols-4 gap-3">
           {plans.map(plan => {
             const current = plan.id === user.plan
+            const checkoutUrl = plan.checkoutUrl || '#'
             return (
               <div key={plan.id} className={`rounded-2xl border p-4 ${current ? 'border-brand-500/50 bg-brand-500/10' : 'border-white/10 bg-zinc-900/60'}`}>
                 <div className="flex items-start justify-between gap-2">
@@ -191,7 +186,7 @@ export default function MinhaContaPage() {
                 <div className="mt-4 text-2xl font-black text-brand-300">R$ {plan.price}</div>
                 <div className="mt-2 text-sm text-zinc-300">{plan.credits.toLocaleString('pt-BR')} créditos</div>
                 <div className="text-xs text-zinc-500 mt-2 min-h-[34px]">{plan.description}</div>
-                <a href={CHECKOUT_LINKS[plan.id] || '#'} className={`mt-4 inline-flex w-full items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold ${current ? 'bg-zinc-800 text-zinc-400 cursor-default' : 'bg-brand-600 hover:bg-brand-500 text-white'}`}>
+                <a href={current ? '#' : checkoutUrl} className={`mt-4 inline-flex w-full items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold ${current ? 'bg-zinc-800 text-zinc-400 cursor-default' : 'bg-brand-600 hover:bg-brand-500 text-white'}`}>
                   {current ? 'Plano atual' : 'Escolher plano'}
                 </a>
               </div>
