@@ -20,6 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/gerar', label: 'Gerar Questão', emoji: '✦' },
     { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
     { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
+    { href: '/leitor-pdf', label: 'Leitor PDF', emoji: '📖' },
     { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
     { href: '/suporte', label: 'Suporte', emoji: '🆘' },
   ]
@@ -29,6 +30,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/conta', label: 'Minha Conta', emoji: '👤' },
     { href: '/gerar', label: 'Gerar Questão', emoji: '✦' },
     { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
+    { href: '/leitor-pdf', label: 'Leitor PDF', emoji: '📖' },
     { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
     { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
     { href: '/suporte', label: 'Suporte', emoji: '🆘' },
