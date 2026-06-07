@@ -50,11 +50,11 @@ export function planCredits(plan: string) {
 }
 
 export function inferCaktoPlan(payload: any) {
-  const explicit = String(payload?.plan || payload?.metadata?.plan || payload?.custom_fields?.plan || '').trim()
+  const explicit = String(payload?.plan || payload?.metadata?.plan || payload?.custom_fields?.plan || payload?.data?.plan || '').trim()
   if (explicit) return normalizePlan(explicit)
 
-  const productId = String(payload?.product_id || payload?.product?.id || payload?.product?.code || payload?.offer?.id || '').toLowerCase()
-  const productName = String(payload?.product_name || payload?.product?.name || payload?.offer?.name || payload?.item?.name || '').toLowerCase()
+  const productId = String(payload?.product_id || payload?.product?.id || payload?.product?.code || payload?.offer?.id || payload?.data?.product?.id || payload?.data?.product?.code || '').toLowerCase()
+  const productName = String(payload?.product_name || payload?.product?.name || payload?.offer?.name || payload?.item?.name || payload?.data?.product?.name || payload?.data?.offer?.name || '').toLowerCase()
   const source = `${productId} ${productName}`
 
   if (/anual|annual|12\s*mes|365|7c9386a/.test(source)) return PLAN_FULL
@@ -69,10 +69,21 @@ export function extractBuyerFromPayload(payload: any) {
     payload?.email ||
     payload?.customer_email ||
     payload?.buyer_email ||
+    payload?.client_email ||
+    payload?.user_email ||
     payload?.customer?.email ||
     payload?.buyer?.email ||
     payload?.client?.email ||
+    payload?.user?.email ||
+    payload?.data?.email ||
+    payload?.data?.customer_email ||
+    payload?.data?.buyer_email ||
     payload?.data?.customer?.email ||
+    payload?.data?.buyer?.email ||
+    payload?.data?.client?.email ||
+    payload?.data?.user?.email ||
+    payload?.data?.lead?.email ||
+    payload?.lead?.email ||
     ''
   ).trim().toLowerCase()
 
@@ -80,10 +91,21 @@ export function extractBuyerFromPayload(payload: any) {
     payload?.name ||
     payload?.customer_name ||
     payload?.buyer_name ||
+    payload?.client_name ||
+    payload?.user_name ||
     payload?.customer?.name ||
     payload?.buyer?.name ||
     payload?.client?.name ||
+    payload?.user?.name ||
+    payload?.data?.name ||
+    payload?.data?.customer_name ||
+    payload?.data?.buyer_name ||
     payload?.data?.customer?.name ||
+    payload?.data?.buyer?.name ||
+    payload?.data?.client?.name ||
+    payload?.data?.user?.name ||
+    payload?.data?.lead?.name ||
+    payload?.lead?.name ||
     ''
   ).trim()
 
@@ -96,17 +118,24 @@ export function extractPurchaseStatus(payload: any) {
     payload?.payment_status ||
     payload?.order_status ||
     payload?.subscription_status ||
+    payload?.sale_status ||
+    payload?.transaction_status ||
     payload?.event ||
     payload?.event_type ||
     payload?.type ||
     payload?.data?.status ||
+    payload?.data?.payment_status ||
+    payload?.data?.order_status ||
+    payload?.data?.sale_status ||
+    payload?.data?.transaction_status ||
     payload?.data?.event ||
+    payload?.data?.event_type ||
     ''
   ).trim().toLowerCase()
 }
 
 export function isApprovedPurchaseStatus(status: string) {
-  return ['paid', 'approved', 'aprovado', 'compra_aprovada', 'payment_approved', 'order_paid', 'completed', 'complete', 'success', 'succeeded', 'subscription_paid', 'subscription_renewed'].some(key => status.includes(key))
+  return ['paid', 'approved', 'aprovado', 'aprovada', 'compra_aprovada', 'venda_aprovada', 'payment_approved', 'order_paid', 'completed', 'complete', 'success', 'succeeded', 'subscription_paid', 'subscription_renewed'].some(key => status.includes(key))
 }
 
 export function isCanceledPurchaseStatus(status: string) {
@@ -128,14 +157,17 @@ export function isCanceledPurchaseStatus(status: string) {
     'overdue',
     'past_due',
     'unpaid',
+    'recusado',
+    'rejected',
+    'failed',
   ].some(key => status.includes(key))
 }
 
 export function extractProductInfo(payload: any) {
   return {
-    productId: String(payload?.product_id || payload?.product?.id || payload?.product?.code || payload?.offer?.id || payload?.data?.product?.id || '').trim(),
-    productName: String(payload?.product_name || payload?.product?.name || payload?.offer?.name || payload?.item?.name || payload?.data?.product?.name || '').trim(),
-    purchaseId: String(payload?.purchase_id || payload?.order_id || payload?.transaction_id || payload?.sale_id || payload?.subscription_id || payload?.id || payload?.data?.id || payload?.data?.order_id || '').trim(),
+    productId: String(payload?.product_id || payload?.product?.id || payload?.product?.code || payload?.offer?.id || payload?.data?.product?.id || payload?.data?.product?.code || payload?.data?.offer?.id || '').trim(),
+    productName: String(payload?.product_name || payload?.product?.name || payload?.offer?.name || payload?.item?.name || payload?.data?.product?.name || payload?.data?.offer?.name || '').trim(),
+    purchaseId: String(payload?.purchase_id || payload?.order_id || payload?.transaction_id || payload?.sale_id || payload?.subscription_id || payload?.id || payload?.data?.id || payload?.data?.order_id || payload?.data?.transaction_id || payload?.data?.sale_id || payload?.data?.subscription_id || '').trim(),
   }
 }
 
