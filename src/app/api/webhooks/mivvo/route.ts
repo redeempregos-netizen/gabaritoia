@@ -5,70 +5,93 @@ import {
   createPurchaseAccessToken,
   extractBuyerFromPayload,
   extractProductInfo,
-  extractPurchaseStatus,
-  isApprovedPurchaseStatus,
-  isCanceledPurchaseStatus,
 } from '@/lib/purchase-access'
 import { normalizePlan, PLAN_CADERNOS_500, PLAN_CADERNOS_QUESTOES, PLAN_FULL } from '@/lib/plans'
 
+const APPROVED_EVENTS = new Set([
+  'sale.paid',
+  'subscription.created',
+  'subscription.invoice_paid',
+  'trial.started',
+])
+
+const CANCELED_EVENTS = new Set([
+  'sale.canceled',
+  'sale.refunded',
+  'sale.chargedback',
+  'sale.failed',
+  'subscription.canceled',
+  'subscription.inactive',
+  'subscription.auto_canceled',
+  'trial.expired_unpaid',
+])
+
+const IGNORED_EVENTS = new Set([
+  'sale.pending',
+  'sale.abandoned',
+  'subscription.reminder',
+  'subscription.due',
+  'subscription.overdue_5',
+  'subscription.overdue_10',
+  'subscription.overdue_30',
+  'trial.expiring_soon',
+  'trial.expired',
+])
+
+function getToken(req: NextRequest) {
+  return process.env.MIVVO_WEBHOOK_TOKEN || process.env.MIVVO_WEBHOOK_SECRET || process.env.CAKTO_WEBHOOK_SECRET || ''
+}
+
 function isAuthorized(req: NextRequest) {
-  const secret = process.env.MIVVO_WEBHOOK_SECRET || process.env.CAKTO_WEBHOOK_SECRET
-  if (!secret) return true
+  const token = getToken(req)
+  if (!token) return true
 
   const auth = req.headers.get('authorization') || ''
-  const headerSecret =
+  const headerToken =
+    req.headers.get('x-mivvo-token') ||
     req.headers.get('x-webhook-secret') ||
     req.headers.get('x-mivvo-secret') ||
-    req.headers.get('x-mivvo-token') ||
     req.headers.get('x-api-key') ||
     req.headers.get('webhook-secret') ||
     ''
-  const querySecret = req.nextUrl.searchParams.get('secret') || ''
+  const queryToken = req.nextUrl.searchParams.get('secret') || req.nextUrl.searchParams.get('token') || ''
 
-  return auth === `Bearer ${secret}` || headerSecret === secret || querySecret === secret
+  return auth === `Bearer ${token}` || headerToken === token || queryToken === token
 }
 
-function isTestPayload(payload: any, status: string) {
-  const event = String(payload?.event || payload?.event_type || payload?.type || payload?.test || payload?.data?.event || payload?.data?.type || '').toLowerCase()
-  return !status || event.includes('test') || event.includes('ping') || payload?.test === true
+function getEvent(payload: any) {
+  return String(payload?.event || payload?.event_type || payload?.type || '').trim().toLowerCase()
+}
+
+function isTestPayload(payload: any, event: string) {
+  return !event || event.includes('test') || event.includes('ping') || payload?.test === true
 }
 
 function inferMivvoPlan(payload: any) {
+  const data = payload?.data || {}
   const explicit = String(
     payload?.plan ||
     payload?.metadata?.plan ||
     payload?.custom_fields?.plan ||
-    payload?.data?.plan ||
-    payload?.data?.metadata?.plan ||
+    data?.plan ||
+    data?.metadata?.plan ||
     ''
   ).trim()
   if (explicit) return normalizePlan(explicit)
 
   const source = String([
+    data?.interval,
+    data?.product?.id,
+    data?.product?.name,
+    data?.offer?.id,
+    data?.offer?.name,
+    data?.offer?.checkout_link_id,
     payload?.product_id,
     payload?.product_name,
     payload?.offer_id,
     payload?.offer_name,
     payload?.checkout_id,
     payload?.checkout_url,
-    payload?.subscription?.plan,
-    payload?.subscription?.interval,
-    payload?.product?.id,
-    payload?.product?.name,
-    payload?.offer?.id,
-    payload?.offer?.name,
-    payload?.data?.product_id,
-    payload?.data?.product_name,
-    payload?.data?.offer_id,
-    payload?.data?.offer_name,
-    payload?.data?.checkout_id,
-    payload?.data?.checkout_url,
-    payload?.data?.subscription?.plan,
-    payload?.data?.subscription?.interval,
-    payload?.data?.product?.id,
-    payload?.data?.product?.name,
-    payload?.data?.offer?.id,
-    payload?.data?.offer?.name,
   ].filter(Boolean).join(' ')).toLowerCase()
 
   if (/anual|annual|yearly|ano|12\s*mes|365/.test(source)) return PLAN_FULL
@@ -78,25 +101,26 @@ function inferMivvoPlan(payload: any) {
   return PLAN_CADERNOS_500
 }
 
+function getMivvoBuyer(payload: any) {
+  const generic = extractBuyerFromPayload(payload)
+  const data = payload?.data || {}
+  return {
+    email: String(generic.email || data?.customer?.email || data?.credentials?.email || '').trim().toLowerCase(),
+    name: String(generic.name || data?.customer?.name || '').trim(),
+  }
+}
+
 function getMivvoProductInfo(payload: any) {
   const generic = extractProductInfo(payload)
+  const data = payload?.data || {}
   return {
-    productId: String(generic.productId || payload?.checkout_id || payload?.offer_id || payload?.data?.checkout_id || payload?.data?.offer_id || '').trim(),
-    productName: String(generic.productName || payload?.offer_name || payload?.checkout_name || payload?.data?.offer_name || payload?.data?.checkout_name || '').trim(),
+    productId: String(generic.productId || data?.product?.id || data?.offer?.id || data?.offer?.checkout_link_id || '').trim(),
+    productName: String(generic.productName || data?.product?.name || data?.offer?.name || '').trim(),
     purchaseId: String(
+      data?.sale_id ||
+      data?.subscription_id ||
+      data?.trial_id ||
       generic.purchaseId ||
-      payload?.payment_id ||
-      payload?.charge_id ||
-      payload?.invoice_id ||
-      payload?.transaction?.id ||
-      payload?.payment?.id ||
-      payload?.order?.id ||
-      payload?.data?.payment_id ||
-      payload?.data?.charge_id ||
-      payload?.data?.invoice_id ||
-      payload?.data?.transaction?.id ||
-      payload?.data?.payment?.id ||
-      payload?.data?.order?.id ||
       ''
     ).trim(),
   }
@@ -169,23 +193,23 @@ export async function POST(req: NextRequest) {
     if (!isAuthorized(req)) return NextResponse.json({ error: 'Webhook não autorizado.' }, { status: 401 })
 
     const payload = await req.json().catch(() => ({}))
-    const status = extractPurchaseStatus(payload)
+    const event = getEvent(payload)
 
-    if (isTestPayload(payload, status)) {
+    if (isTestPayload(payload, event)) {
       return NextResponse.json({ ok: true, webhook: 'mivvo', test: true, message: 'Evento de teste recebido com sucesso.' })
     }
 
-    const { email, name } = extractBuyerFromPayload(payload)
+    const { email, name } = getMivvoBuyer(payload)
     const product = getMivvoProductInfo(payload)
 
-    if (isCanceledPurchaseStatus(status)) {
+    if (CANCELED_EVENTS.has(event)) {
       if (!email) return NextResponse.json({ error: 'E-mail do comprador não encontrado no cancelamento.' }, { status: 400 })
       const result = await cancelPurchaseAccess({ email, checkout: 'mivvo', purchaseId: product.purchaseId })
-      return NextResponse.json({ ok: true, checkout: 'mivvo', email, status, action: 'canceled', ...result })
+      return NextResponse.json({ ok: true, received: true, checkout: 'mivvo', email, event, action: 'canceled', ...result })
     }
 
-    if (!isApprovedPurchaseStatus(status)) {
-      return NextResponse.json({ ok: true, ignored: true, reason: 'status_not_approved', status })
+    if (IGNORED_EVENTS.has(event) || !APPROVED_EVENTS.has(event)) {
+      return NextResponse.json({ ok: true, received: true, ignored: true, reason: 'event_not_releasing_access', event })
     }
 
     if (!email) {
@@ -209,8 +233,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
+      received: true,
       checkout: 'mivvo',
       email,
+      event,
       plan: access.plan,
       expiresInHours: access.expiresInHours,
       activationUrl: url,
