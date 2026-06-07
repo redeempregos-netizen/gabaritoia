@@ -11,6 +11,7 @@ type PlanSetting = {
   credits: number
   validityDays: number
   active: boolean
+  checkoutUrl: string
   description: string
 }
 
@@ -71,7 +72,7 @@ export default function AdminPlanos() {
       <div className="card p-5">
         <h2 className="font-heading font-semibold text-sm text-brand-300">Planos comerciais</h2>
         <p className="text-xs text-zinc-500 mt-1">
-          Ajuste preço, créditos e validade exibidos/considerados nos fluxos manuais. Os códigos dos planos seguem fixos para compatibilidade com o sistema.
+          Ajuste preço, créditos, validade e link de checkout. Os códigos dos planos seguem fixos para compatibilidade com o sistema.
         </p>
       </div>
 
@@ -117,6 +118,12 @@ export default function AdminPlanos() {
                 <label className="label">Resumo</label>
                 <input className="input" value={plan.description} onChange={e => updatePlan(plan.id, 'description', e.target.value)} />
               </div>
+            </div>
+
+            <div className="mt-3">
+              <label className="label">Link do checkout</label>
+              <input className="input" value={plan.checkoutUrl || ''} onChange={e => updatePlan(plan.id, 'checkoutUrl', e.target.value)} placeholder="https://app.mivvo.io/checkout/monmubbmq4duiyo" />
+              <p className="text-[11px] text-zinc-500 mt-1">Esse link será usado no botão Escolher plano da página Minha Conta.</p>
             </div>
           </div>
         ))}
