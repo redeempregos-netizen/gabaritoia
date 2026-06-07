@@ -3,12 +3,19 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const DEFAULT_PLANS = [
-  { id: 'FREE', name: 'Teste', price: '19,90', credits: 300, validityDays: 7, active: true, description: 'Plano de entrada para testar o sistema.' },
-  { id: 'PACK', name: 'Plano Pack', price: '69,90', credits: 300, validityDays: 180, active: true, description: 'Inclui o Pack com 400 mil questões + acesso por 6 meses, com 300 créditos iniciais e 20 créditos de bônus por dia.' },
-  { id: 'CADERNOS_500', name: 'Mensal', price: '29,90', credits: 1000, validityDays: 30, active: true, description: 'Acesso mensal para estudar com IA e plano de questões.' },
-  { id: 'PRO', name: 'Trimestral', price: '47,00', credits: 3000, validityDays: 90, active: true, description: 'Acesso trimestral para estudar com mais créditos e recursos avançados.' },
-  { id: 'ENTERPRISE', name: 'Anual', price: '97,00', credits: 8000, validityDays: 365, active: true, description: 'Acesso anual com todos os recursos e mais créditos.' },
+  { id: 'FREE', name: 'Teste', price: '19,90', credits: 300, validityDays: 7, active: true, checkoutUrl: 'https://app.mivvo.io/checkout/monmubbmq4duiyo', description: 'Plano de entrada para testar o sistema.' },
+  { id: 'PACK', name: 'Plano Pack', price: '69,90', credits: 300, validityDays: 180, active: true, checkoutUrl: 'https://pay.kiwify.com.br/3SY0sIx', description: 'Inclui o Pack com 400 mil questões + acesso por 6 meses, com 300 créditos iniciais e 20 créditos de bônus por dia.' },
+  { id: 'CADERNOS_500', name: 'Mensal', price: '29,90', credits: 1000, validityDays: 30, active: true, checkoutUrl: 'https://pay.cakto.com.br/epr62sh_915964', description: 'Acesso mensal para estudar com IA e plano de questões.' },
+  { id: 'PRO', name: 'Trimestral', price: '47,00', credits: 3000, validityDays: 90, active: true, checkoutUrl: 'https://pay.cakto.com.br/smhnbod', description: 'Acesso trimestral para estudar com mais créditos e recursos avançados.' },
+  { id: 'ENTERPRISE', name: 'Anual', price: '97,00', credits: 8000, validityDays: 365, active: true, checkoutUrl: 'https://pay.cakto.com.br/7c9386a', description: 'Acesso anual com todos os recursos e mais créditos.' },
 ]
+
+function normalizeCheckoutUrl(value: unknown, fallback: string) {
+  const url = String(value || '').trim()
+  if (!url) return fallback
+  if (!/^https?:\/\//i.test(url)) return fallback
+  return url
+}
 
 function normalizePlans(value: unknown) {
   try {
@@ -23,6 +30,7 @@ function normalizePlans(value: unknown) {
         credits: defaultPlan.id === 'PACK' ? defaultPlan.credits : Math.max(0, Number(found.credits ?? defaultPlan.credits) || 0),
         validityDays: defaultPlan.id === 'PACK' ? 180 : Math.max(1, Number(found.validityDays ?? defaultPlan.validityDays) || defaultPlan.validityDays),
         active: found.active !== false,
+        checkoutUrl: normalizeCheckoutUrl(found.checkoutUrl, defaultPlan.checkoutUrl),
         description: defaultPlan.id === 'PACK' ? defaultPlan.description : String(found.description || defaultPlan.description),
       }
     })
