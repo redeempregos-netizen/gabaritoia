@@ -65,6 +65,7 @@ export default function LeitorPdfPage() {
 
   useEffect(() => {
     if (!localPdfBuffer || !pdfContainerRef.current) return
+    const pdfData = localPdfBuffer.slice(0)
     let cancelled = false
 
     async function renderPdf() {
@@ -77,7 +78,7 @@ export default function LeitorPdfPage() {
       try {
         const pdfjs = await import('pdfjs-dist')
         pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
-        const pdf = await pdfjs.getDocument({ data: localPdfBuffer.slice(0) }).promise
+        const pdf = await pdfjs.getDocument({ data: pdfData }).promise
         if (cancelled) return
         setTotalPages(pdf.numPages)
 
