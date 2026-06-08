@@ -31,9 +31,9 @@ type NewUserForm = {
 const PLAN_OPTIONS = [
   { value: 'FREE', label: 'Teste', credits: 300, validity: '7' },
   { value: 'PACK', label: 'Plano Pack', credits: 1000, validity: '180' },
-  { value: 'CADERNOS_500', label: 'Básico', credits: 1000, validity: '30' },
-  { value: 'PRO', label: 'Pro', credits: 3000, validity: '30' },
-  { value: 'ENTERPRISE', label: 'Premium', credits: 8000, validity: '30' },
+  { value: 'CADERNOS_500', label: 'Mensal', credits: 1000, validity: '30' },
+  { value: 'PRO', label: 'Trimestral', credits: 3000, validity: '90' },
+  { value: 'ENTERPRISE', label: 'Anual', credits: 8000, validity: '365' },
 ]
 
 const defaultNewUser: NewUserForm = {
@@ -194,7 +194,7 @@ export default function AdminUsuariosCreditos() {
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <h2 className="font-heading font-semibold text-sm text-brand-300">Adicionar usuário manualmente</h2>
-            <p className="text-xs text-zinc-500 mt-1">Crie contas pelo painel. O Plano Pack aparece apenas para administração.</p>
+            <p className="text-xs text-zinc-500 mt-1">Crie contas pelo painel. Os planos comerciais são Mensal, Trimestral e Anual.</p>
           </div>
           <Plus className="text-brand-400" size={18} />
         </div>
@@ -252,17 +252,17 @@ export default function AdminUsuariosCreditos() {
                 const isBusy = saving === user.id || deleting === user.id
                 return (
                   <tr key={user.id} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
-                    <td className="px-4 py-3 text-sm">{user.name || 'Sem nome'}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-100">{user.name}</td>
                     <td className="px-4 py-3 text-sm text-zinc-400">{user.email}</td>
-                    <td className="px-4 py-3"><select className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none" value={user.role} onChange={e => updateUser(user.id, { role: e.target.value })}><option value="USER">Usuário</option><option value="ADMIN">Admin</option></select></td>
-                    <td className="px-4 py-3"><select className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none min-w-[130px]" value={user.plan} onChange={e => updateUser(user.id, { plan: e.target.value, credits: getPlanCredits(e.target.value), planDurationDays: Number(getPlanValidity(e.target.value)) })}>{PLAN_OPTIONS.map(plan => <option key={plan.value} value={plan.value}>{plan.label}</option>)}</select><div className="text-[11px] text-zinc-500 mt-1">{getPlanLabel(user.plan)}</div></td>
-                    <td className="px-4 py-3 text-xs"><div className={expired ? 'text-red-300 font-semibold' : 'text-zinc-300'}>{formatDate(user.planExpiresAt)}</div>{left !== null && <div className={expired ? 'text-red-400 mt-1' : 'text-zinc-500 mt-1'}>{expired ? `Expirado há ${Math.abs(left)} dia(s)` : `${left} dia(s) restantes`}</div>}</td>
-                    <td className="px-4 py-3"><div className="flex flex-wrap gap-1.5"><button disabled={isBusy} onClick={() => updateUser(user.id, { planDurationDays: 30 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">30 dias</button><button disabled={isBusy} onClick={() => updateUser(user.id, { planDurationDays: 90 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">90 dias</button><button disabled={isBusy} onClick={() => updateUser(user.id, { planDurationDays: 180 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">6 meses</button><button disabled={isBusy} onClick={() => updateUser(user.id, { planDurationDays: 365 })} className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-50">1 ano</button><button disabled={isBusy} onClick={() => applyPlanToUser(user, user.plan)} className="rounded-lg border border-brand-500/20 bg-brand-500/10 px-2 py-1 text-[11px] text-brand-200 disabled:opacity-50">Aplicar créditos</button><button disabled={isBusy} onClick={() => updateUser(user.id, { clearPlanExpiration: true })} className="rounded-lg border border-green-500/20 bg-green-500/10 px-2 py-1 text-[11px] text-green-300 disabled:opacity-50">Vitalício</button></div></td>
-                    <td className="px-4 py-3"><div className="flex items-center gap-2"><input className="w-28 rounded-lg border border-white/10 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 outline-none" type="number" min={0} value={drafts[user.id] ?? String(user.credits ?? 0)} onChange={e => setDrafts(prev => ({ ...prev, [user.id]: e.target.value }))} /><button onClick={() => updateUser(user.id, { credits: Math.max(0, Number(drafts[user.id] || 0)) })} disabled={isBusy} className="rounded-lg bg-brand-600 hover:bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{saving === user.id ? '...' : 'Salvar'}</button></div></td>
-                    <td className="px-4 py-3 text-sm text-zinc-400">{user.creditsUsed ?? 0}</td>
-                    <td className="px-4 py-3 text-xs text-zinc-500">{user.creditsRenewedAt ? new Date(user.creditsRenewedAt).toLocaleDateString('pt-BR') : 'Pendente'}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-400">{user.streak || 0} dias</td>
-                    <td className="px-4 py-3"><button onClick={() => deleteUser(user)} disabled={isBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">{deleting === user.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}EXCLUIR</button></td>
+                    <td className="px-4 py-3 text-xs text-zinc-400">{user.role}</td>
+                    <td className="px-4 py-3 text-xs text-zinc-300">{getPlanLabel(user.plan)}</td>
+                    <td className="px-4 py-3 text-xs"><div className="text-zinc-300">{formatDate(user.planExpiresAt)}</div><div className={expired ? 'text-red-300' : 'text-zinc-500'}>{left === null ? 'Sem prazo' : expired ? 'Expirado' : `${left} dia(s)`}</div></td>
+                    <td className="px-4 py-3"><select disabled={isBusy} className="input min-w-[140px]" value={user.plan} onChange={e => applyPlanToUser(user, e.target.value)}>{PLAN_OPTIONS.map(plan => <option key={plan.value} value={plan.value}>{plan.label}</option>)}</select></td>
+                    <td className="px-4 py-3"><input className="input w-24" type="number" min={0} value={drafts[user.id] ?? String(user.credits ?? 0)} onChange={e => setDrafts(prev => ({ ...prev, [user.id]: e.target.value }))} /></td>
+                    <td className="px-4 py-3 text-xs text-zinc-400">{user.creditsUsed ?? 0}</td>
+                    <td className="px-4 py-3 text-xs text-zinc-400">{formatDate(user.creditsRenewedAt)}</td>
+                    <td className="px-4 py-3 text-xs text-zinc-400">{user.streak}</td>
+                    <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => updateUser(user.id, { credits: Math.max(0, Number(drafts[user.id]) || 0) })} disabled={isBusy} className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1">{saving === user.id ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}Salvar</button><button onClick={() => deleteUser(user)} disabled={isBusy} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1 border-red-500/30 text-red-300 hover:bg-red-500/10">{deleting === user.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}Excluir</button></div></td>
                   </tr>
                 )
               })}
