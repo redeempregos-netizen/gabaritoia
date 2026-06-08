@@ -22,9 +22,9 @@ type UserRow = {
 const PLANS = [
   { value: 'FREE', label: 'Teste — 7 dias' },
   { value: 'PACK', label: 'Plano Pack — 180 dias' },
-  { value: 'CADERNOS_500', label: 'Básico — 30 dias' },
-  { value: 'PRO', label: 'Pro — 30 dias' },
-  { value: 'ENTERPRISE', label: 'Premium — 30 dias' },
+  { value: 'CADERNOS_500', label: 'Mensal — 30 dias' },
+  { value: 'PRO', label: 'Trimestral — 90 dias' },
+  { value: 'ENTERPRISE', label: 'Anual — 365 dias' },
 ]
 
 function formatDate(value?: string | null) {
@@ -178,33 +178,24 @@ export default function AdminUsuariosPage() {
                       <td className="px-4 py-3 text-sm text-zinc-400">{user.email}</td>
                       <td className="px-4 py-3">
                         <select className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none" value={String(edit.role ?? user.role)} onChange={e => updateEdit(user.id, 'role', e.target.value)}>
-                          <option value="USER">Usuário</option>
-                          <option value="ADMIN">Admin</option>
+                          <option value="USER">USER</option>
+                          <option value="ADMIN">ADMIN</option>
                         </select>
                       </td>
                       <td className="px-4 py-3">
                         <select className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none" value={String(edit.plan ?? user.plan)} onChange={e => updateEdit(user.id, 'plan', e.target.value)}>
                           {PLANS.map(plan => <option key={plan.value} value={plan.value}>{plan.label}</option>)}
                         </select>
-                        {edit.plan && edit.plan !== user.plan && <div className="text-[10px] text-amber-400 mt-1">Ao salvar, reinicia a validade e redefine créditos do plano.</div>}
                       </td>
-                      <td className="px-4 py-3 text-xs">
-                        <div className={user.planExpired ? 'text-red-300 font-semibold' : 'text-green-300 font-semibold'}>{planStatus(user)}</div>
-                        <div className="text-zinc-500">Vence: {formatDate(user.planExpiresAt)}</div>
+                      <td className="px-4 py-3 text-xs text-zinc-400">
+                        <div>{formatDate(user.planExpiresAt)}</div>
+                        <div className={user.planExpired ? 'text-red-300' : 'text-zinc-500'}>{planStatus(user)}</div>
                       </td>
+                      <td className="px-4 py-3"><input className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none w-24" type="number" value={Number(edit.credits ?? user.credits)} onChange={e => updateEdit(user.id, 'credits', Number(e.target.value))} /></td>
                       <td className="px-4 py-3">
-                        <input type="number" min={0} className="w-24 bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-300 outline-none" value={Number(edit.credits ?? user.credits)} onChange={e => updateEdit(user.id, 'credits', Number(e.target.value))} />
-                      </td>
-                      <td className="px-4 py-3 min-w-[190px]">
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => saveUser(user)} disabled={isBusy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold disabled:opacity-50">
-                            {saving === user.id ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                            Salvar
-                          </button>
-                          <button onClick={() => deleteUser(user)} disabled={isBusy} className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-sm shadow-red-950/40 disabled:opacity-50">
-                            {deleting === user.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                            EXCLUIR
-                          </button>
+                        <div className="flex gap-2">
+                          <button onClick={() => saveUser(user)} disabled={isBusy} className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1">{saving === user.id ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}Salvar</button>
+                          <button onClick={() => deleteUser(user)} disabled={isBusy} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1 border-red-500/30 text-red-300 hover:bg-red-500/10">{deleting === user.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}Excluir</button>
                         </div>
                       </td>
                     </tr>
@@ -212,7 +203,6 @@ export default function AdminUsuariosPage() {
                 })}
               </tbody>
             </table>
-            {!users.length && <div className="p-8 text-center text-sm text-zinc-500">Nenhum usuário encontrado.</div>}
           </div>
         )}
       </div>
