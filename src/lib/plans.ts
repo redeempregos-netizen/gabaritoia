@@ -39,16 +39,16 @@ export const PLAN_DAILY_BONUS_AMOUNT: Record<string, number> = {
 }
 
 export const PLAN_FEATURES: Record<string, string[]> = {
-  FREE: ['Todos os recursos por tempo limitado', 'Leitor PDF', 'Cadernos PDF', 'Plano de questões completo', 'Gerador de questões', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados', 'Suporte', '300 créditos', '+20 créditos de bônus por dia'],
-  PACK: ['Gerador de questões', 'Leitor PDF', 'Meus Gerados', 'Suporte', '1.000 créditos iniciais', '+20 créditos de bônus por dia', 'Acesso por 6 meses'],
-  [PLAN_CADERNOS_500]: ['Dashboard', 'Minha Conta', 'Gerar questões', 'Leitor PDF', 'Plano de questões básico', 'Meus Gerados', 'Suporte', '1.000 créditos', 'Acesso mensal'],
-  [PLAN_CADERNOS_QUESTOES]: ['Dashboard', 'Minha Conta', 'Gerar questões', 'Leitor PDF', 'Plano de questões completo', 'Cadernos PDF', 'Edital Verticalizado', 'Meus Gerados', 'Suporte', '3.000 créditos', 'Acesso trimestral'],
-  [PLAN_FULL]: ['Todos os recursos', 'Leitor PDF', 'Cadernos PDF', 'Plano de questões completo', 'Gerador de questões', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados', 'Suporte', '8.000 créditos', 'Acesso anual'],
+  FREE: ['Todos os recursos por tempo limitado', 'Leitor PDF', 'Cadernos PDF', 'Plano de questoes completo', 'Gerador de questoes', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados', 'Suporte', '300 creditos', '+20 creditos de bonus por dia'],
+  PACK: ['Gerador de questoes', 'Leitor PDF', 'Plano de questoes', 'Cadernos PDF', 'Meus Gerados', 'Suporte', '1.000 creditos iniciais', '+20 creditos de bonus por dia', 'Acesso por 6 meses'],
+  [PLAN_CADERNOS_500]: ['Dashboard', 'Minha Conta', 'Gerar questoes', 'Leitor PDF', 'Plano de questoes basico', 'Meus Gerados', 'Suporte', '1.000 creditos', 'Acesso mensal'],
+  [PLAN_CADERNOS_QUESTOES]: ['Dashboard', 'Minha Conta', 'Gerar questoes', 'Leitor PDF', 'Plano de questoes completo', 'Cadernos PDF', 'Edital Verticalizado', 'Meus Gerados', 'Suporte', '3.000 creditos', 'Acesso trimestral'],
+  [PLAN_FULL]: ['Todos os recursos', 'Leitor PDF', 'Cadernos PDF', 'Plano de questoes completo', 'Gerador de questoes', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados', 'Suporte', '8.000 creditos', 'Acesso anual'],
 }
 
 export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
   FREE: ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/edital', '/edital-pro', '/mapas', '/gerados', '/historico', '/suporte', '/em-breve'],
-  PACK: ['/dashboard', '/conta', '/gerar', '/leitor-pdf', '/gerados', '/suporte', '/em-breve'],
+  PACK: ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/gerados', '/suporte', '/em-breve'],
   [PLAN_CADERNOS_500]: ['/dashboard', '/conta', '/gerar', '/leitor-pdf', '/plano-questoes', '/gerados', '/suporte', '/em-breve'],
   [PLAN_CADERNOS_QUESTOES]: ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/edital', '/gerados', '/suporte', '/em-breve'],
   [PLAN_FULL]: ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/edital', '/edital-pro', '/mapas', '/gerados', '/historico', '/suporte', '/em-breve'],
