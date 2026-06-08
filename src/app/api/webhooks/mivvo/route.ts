@@ -40,6 +40,9 @@ const IGNORED_EVENTS = new Set([
 
 const MIVVO_CHECKOUT_PLAN_MAP: Record<string, string> = {
   monmubbmq4duiyo: PLAN_FREE,
+  ywgkf7wmq4ia51d: PLAN_CADERNOS_500,
+  '00tvdppmq4i9iag': PLAN_CADERNOS_QUESTOES,
+  ap98vs3mq4i8xtj: PLAN_FULL,
 }
 
 function getToken(req: NextRequest) {
@@ -204,6 +207,6 @@ export async function POST(req: NextRequest) {
     })
   } catch (e) {
     console.error('[mivvo webhook]', e)
-    return NextResponse.json({ error: (e as Error).message || 'Erro no webhook da Mivvo.' }, { status: 500 })
+    return NextResponse.json({ error: (e as Error).message || 'Erro na integração de pagamento.' }, { status: 500 })
   }
 }
