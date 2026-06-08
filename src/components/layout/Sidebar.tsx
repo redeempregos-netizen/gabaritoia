@@ -15,19 +15,18 @@ type NavItem = {
   label: string
   icon: LucideIcon
   badge?: string
-  upgradeText?: string
 }
 
 const ADMIN_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/conta',      label: 'Minha Conta',         icon: UserCircle },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
-  { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Novo' },
+  { href: '/plano-questoes', label: 'Plano de Questões', icon: Target },
   { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
   { href: '/leitor-pdf', label: 'Leitor PDF',          icon: FileText },
   { href: '/mapas',      label: 'Mapas Mentais',       icon: Brain, badge: 'Beta' },
   { href: '/edital',     label: 'Edital Verticalizado', icon: FileText, badge: 'Beta' },
-  { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket },
+  { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket, badge: 'Beta' },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
   { href: '/historico',  label: 'Histórico',            icon: History },
   { href: '/suporte',    label: 'Suporte',              icon: HelpCircle },
@@ -37,12 +36,12 @@ const USER_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/conta',      label: 'Minha Conta',         icon: UserCircle },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
-  { href: '/plano-questoes', label: 'Plano de Questões', icon: Target, badge: 'Upgrade', upgradeText: 'Mensal+' },
-  { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen, badge: 'Upgrade', upgradeText: 'Trimestral+' },
+  { href: '/plano-questoes', label: 'Plano de Questões', icon: Target },
+  { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
   { href: '/leitor-pdf', label: 'Leitor PDF',          icon: FileText },
-  { href: '/edital',     label: 'Edital Verticalizado', icon: FileText, badge: 'Beta', upgradeText: 'Trimestral+' },
-  { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket, badge: 'Upgrade', upgradeText: 'Anual' },
-  { href: '/mapas',      label: 'Mapas Mentais',        icon: Brain, badge: 'Beta', upgradeText: 'Anual' },
+  { href: '/edital',     label: 'Edital Verticalizado', icon: FileText, badge: 'Beta' },
+  { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket, badge: 'Beta' },
+  { href: '/mapas',      label: 'Mapas Mentais',        icon: Brain, badge: 'Beta' },
   { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
   { href: '/suporte',    label: 'Suporte',              icon: HelpCircle },
 ]
@@ -141,7 +140,7 @@ export function Sidebar({ user }: SidebarProps) {
             <Link key={`${item.href}-${item.label}-${idx}`} href={locked ? '/conta' : item.href} className={cn('sidebar-item', active && 'sidebar-item-active', locked && 'opacity-70 hover:text-amber-300')}>
               <Icon size={15} />
               <span className="flex-1 text-xs">{item.label}</span>
-              {locked ? <Lock size={12} className="text-amber-400" /> : item.badge && <span className={cn('text-[9px] px-1.5 py-0.5 rounded-full font-semibold', item.badge === 'Beta' ? 'bg-amber-500/15 text-amber-300 border border-amber-500/20' : 'bg-zinc-700 text-zinc-300')}>{item.badge}</span>}
+              {locked ? <Lock size={12} className="text-amber-400" /> : item.badge && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/20">{item.badge}</span>}
             </Link>
           )
         })}
