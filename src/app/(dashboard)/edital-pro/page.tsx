@@ -110,7 +110,7 @@ export default function EditalProPage() {
       pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
       const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
       const chunks: string[] = []
-      for (let pageNumber = 1; pageNumber <= Math.min(pdf.numPages, 80); pageNumber++) {
+      for (let pageNumber = 1; pageNumber <= Math.min(pdf.numPages, 100); pageNumber++) {
         const page = await pdf.getPage(pageNumber)
         const content = await page.getTextContent()
         const pageText = content.items.map((item: any) => item.str || '').join(' ').replace(/\s+/g, ' ').trim()
@@ -126,16 +126,31 @@ export default function EditalProPage() {
   }
 
   function processFile(file: File) {
+    const lower = file.name.toLowerCase()
     setFileName(file.name)
     setAnalysis(null)
     setCargo('')
     setEditalText('')
-    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) void extractPdfText(file)
-    else {
+
+    if (file.type === 'application/pdf' || lower.endsWith('.pdf')) {
+      void extractPdfText(file)
+      return
+    }
+
+    if (lower.endsWith('.txt')) {
       const reader = new FileReader()
       reader.onload = e => setExtractedText(String(e.target?.result || ''))
       reader.readAsText(file, 'utf-8')
+      return
     }
+
+    if (lower.endsWith('.doc') || lower.endsWith('.docx')) {
+      setFileName('')
+      toast.error('DOC/DOCX ainda não é lido direto. Salve o arquivo como PDF pesquisável ou TXT e envie novamente.')
+      return
+    }
+
+    toast.error('Formato não suportado. Envie PDF pesquisável ou TXT.')
   }
 
   async function gerarPlano() {
@@ -203,7 +218,7 @@ export default function EditalProPage() {
       <div className="mb-6">
         <div className="inline-flex items-center gap-2 bg-brand-500/15 border border-brand-500/30 rounded-full px-3 py-1 text-xs font-semibold text-brand-300 mb-3">🚀 Novo recurso</div>
         <h1 className="font-heading text-2xl font-bold">Edital Pro — Plano de estudos inteligente</h1>
-        <p className="text-zinc-400 text-sm mt-1">Transforme qualquer edital em plano completo com cronograma e flashcards</p>
+        <p className="text-zinc-400 text-sm mt-1">Envie o arquivo do edital em PDF ou TXT para gerar cronograma e flashcards</p>
       </div>
 
       {!plan ? (
@@ -211,52 +226,60 @@ export default function EditalProPage() {
           <div>
             <div className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all mb-4 ${dragging ? 'border-brand-500 bg-brand-500/5' : 'border-white/10 hover:border-white/20'}`} onClick={() => document.getElementById('ep-file')?.click()} onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) processFile(f) }}>
               <Upload size={32} className="mx-auto mb-3 text-zinc-500" />
-              <div className="font-heading font-semibold mb-1">{fileName || 'Arraste o edital aqui'}</div>
-              <div className="text-sm text-zinc-500">{editalText ? `${Math.round(editalText.length / 100) / 10}kb extraídos` : 'PDF pesquisável ou TXT — clique para selecionar'}</div>
+              <div className="font-heading font-semibold mb-1">{fileName || 'Enviar arquivo do edital'}</div>
+              <div className="text-sm text-zinc-500">{editalText ? `${Math.round(editalText.length / 100) / 10}kb extraídos` : 'PDF pesquisável ou TXT — clique aqui ou arraste o arquivo'}</div>
+              <button type="button" className="btn-secondary mt-4 px-4 py-2 text-xs">Selecionar arquivo</button>
               {extractingPdf && <div className="mt-2 text-xs text-brand-300 flex items-center justify-center gap-1"><Loader2 size={12} className="animate-spin" /> Extraindo texto real do PDF...</div>}
               {analyzingEdital && !extractingPdf && <div className="mt-2 text-xs text-brand-300 flex items-center justify-center gap-1"><Loader2 size={12} className="animate-spin" /> Reconhecendo banca e cargos...</div>}
               {!analyzingEdital && !extractingPdf && editalText && <div className="mt-2 text-xs text-green-400">✓ Edital carregado</div>}
             </div>
-            <input type="file" id="ep-file" accept=".pdf,.txt,.doc,.docx" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f) }} />
+            <input type="file" id="ep-file" accept=".pdf,.txt,application/pdf,text/plain" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); e.currentTarget.value = '' }} />
 
             {queue && loading && (
               <div className="rounded-xl border border-brand-500/20 bg-brand-500/10 p-4 mb-4 text-sm text-brand-100">
                 <div className="flex items-center gap-2 font-semibold"><Loader2 size={16} className="animate-spin" /> Fila de IA</div>
-                <div className="text-xs mt-1 text-brand-200/80">
-                  {queue.status === 'queued' ? `Você está em ${queue.position}º na fila. Rodando agora: ${queue.running}/${queue.maxConcurrent}.` : 'Sua vez chegou. Gerando seu plano agora...'}
-                </div>
+                <div className="text-xs mt-1">Status: {queue.status} • Posição: {queue.position}</div>
               </div>
             )}
 
-            <div className="card p-5 space-y-4">
-              {analysis && <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3"><div className="text-xs font-bold text-brand-300">Dados reconhecidos no edital</div>{analysis.cargos.length > 0 && <div className="text-[10px] text-zinc-500">{analysis.cargos.length} cargo(s)</div>}</div>
-                <div className="grid sm:grid-cols-2 gap-2 text-xs text-zinc-400"><div><span className="text-zinc-500">Banca:</span> <span className="text-zinc-200">{analysis.banca || 'Não informado'}</span></div><div><span className="text-zinc-500">Órgão:</span> <span className="text-zinc-200">{analysis.orgao || 'Não informado'}</span></div></div>
-                {analysis.cargos.length > 0 && <div className="space-y-3"><label className="label">Selecione o cargo</label><select className="input" value={cargo} onChange={e => setCargo(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Escolha um cargo encontrado no edital</option>{analysis.cargos.map((c, i) => <option key={`${c.nome}-${i}`} value={c.nome}>{c.nome}</option>)}</select><div className="max-h-72 overflow-y-auto space-y-2 pr-1">{analysis.cargos.map((c, i) => <button key={`${c.nome}-card-${i}`} type="button" onClick={() => setCargo(c.nome)} className={`w-full text-left rounded-xl border p-3 transition-all ${cargo === c.nome ? 'border-brand-500 bg-brand-500/10' : 'border-white/10 bg-black/20 hover:border-white/25 hover:bg-white/[0.03]'}`}><div className="text-sm font-semibold text-zinc-100">{c.nome}</div><div className="mt-1 grid sm:grid-cols-3 gap-1 text-[11px] text-zinc-500"><div><span className="text-zinc-400">Vagas:</span> {c.vagas || 'Não informado'}</div><div><span className="text-zinc-400">Remuneração:</span> {c.remuneracao || 'Não informado'}</div><div><span className="text-zinc-400">Requisitos:</span> {c.requisitos || 'Não informado'}</div></div></button>)}</div>{selectedCargo && <div className="rounded-lg border border-brand-500/20 bg-brand-500/5 p-3 text-xs text-zinc-300">Cargo selecionado: <strong>{selectedCargo.nome}</strong></div>}</div>}
-              </div>}
-
-              {(!analysis || !analysis.cargos.length) && <div><label className="label">Cargo / vaga pretendida</label><input className="input" placeholder="Ex: Agente Administrativo..." value={cargo} onChange={e => setCargo(e.target.value)} /></div>}
-              <div><label className="label">Data da prova (opcional)</label><input type="date" className="input" value={examDate} onChange={e => setExamDate(e.target.value)} style={{ colorScheme: 'dark' }} /></div>
-              <div><label className="label">Horas por dia</label><div className="flex flex-wrap gap-2">{['1h', '2h', '3h', '4h', '5h', '6h+'].map(h => <button key={h} onClick={() => setHoursPerDay(h)} className={`chip ${hoursPerDay === h ? 'chip-active' : ''}`}>{h}</button>)}</div></div>
-              <div><label className="label">Nível atual</label><div className="flex gap-2">{['Iniciante', 'Intermediário', 'Avançado'].map(l => <button key={l} onClick={() => setLevel(l)} className={`chip ${level === l ? 'chip-active' : ''}`}>{l}</button>)}</div></div>
-            </div>
-
-            <button onClick={gerarPlano} disabled={loading || analyzingEdital || extractingPdf || !editalText || (Boolean(analysis?.cargos?.length) && !cargo)} className="w-full mt-4 bg-gradient-to-r from-brand-600 to-purple-600 text-white font-bold rounded-xl px-6 py-3.5 flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-40">
-              {loading ? <><Loader2 size={16} className="animate-spin" />{queue?.status === 'queued' ? `Na fila: ${queue.position}º` : 'Gerando plano...'}</> : extractingPdf ? <><Loader2 size={16} className="animate-spin" />Extraindo PDF...</> : analyzingEdital ? <><Loader2 size={16} className="animate-spin" />Analisando edital...</> : '🚀 Gerar plano completo com IA'}
-            </button>
+            {analysis && (
+              <div className="card p-4 mb-4 space-y-3">
+                <div className="text-xs text-zinc-500">Detectado</div>
+                <div className="text-sm text-zinc-300">Órgão: <b>{analysis.orgao}</b></div>
+                <div className="text-sm text-zinc-300">Banca: <b>{analysis.banca}</b></div>
+                {analysis.cargos.length > 0 && <select className="input" value={cargo} onChange={e => setCargo(e.target.value)}><option value="">Selecione o cargo</option>{analysis.cargos.map(c => <option key={c.nome} value={c.nome}>{c.nome}</option>)}</select>}
+                {selectedCargo && <div className="rounded-xl bg-zinc-800/70 p-3 text-xs text-zinc-300">Vagas: {selectedCargo.vagas} • Requisitos: {selectedCargo.requisitos} • Remuneração: {selectedCargo.remuneracao}</div>}
+              </div>
+            )}
           </div>
 
-          <div className="space-y-2">{[{ icon: '🔎', t: 'Reconhece banca e cargos', d: 'Após o upload, a IA identifica a banca, o órgão e os cargos disponíveis' }, { icon: '📍', t: 'Posição real na fila', d: 'Se houver muitos usuários, você vê sua posição antes da IA processar' }, { icon: '⚡', t: 'Flashcards por tópico', d: 'Flashcards com resposta, fonte e armadilha da banca' }, { icon: '📅', t: 'Cronograma até a prova', d: 'Semanas preenchidas dia a dia com meta de questões' }].map(f => <div key={f.t} className="card p-4 flex gap-3"><div className="text-2xl">{f.icon}</div><div><div className="text-sm font-semibold">{f.t}</div><div className="text-xs text-zinc-500 mt-0.5">{f.d}</div></div></div>)}</div>
+          <div className="space-y-4">
+            <input className="input" placeholder="Cargo desejado" value={cargo} onChange={e => setCargo(e.target.value)} />
+            <input className="input" type="date" value={examDate} onChange={e => setExamDate(e.target.value)} />
+            <select className="input" value={hoursPerDay} onChange={e => setHoursPerDay(e.target.value)}><option>1h</option><option>2h</option><option>3h</option><option>4h</option><option>5h+</option></select>
+            <select className="input" value={level} onChange={e => setLevel(e.target.value)}><option>Iniciante</option><option>Intermediário</option><option>Avançado</option></select>
+            <button onClick={gerarPlano} disabled={loading || extractingPdf || analyzingEdital} className="btn-primary w-full h-12 flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" size={18} /> : null} Gerar plano pelo edital</button>
+          </div>
         </div>
       ) : (
-        <div>
-          <div className="bg-amber-500/6 border border-amber-500/20 rounded-xl p-4 mb-6"><div className="text-xs font-bold text-amber-400 mb-1">🎯 Alerta da banca — {plan.banca?.nome}</div><div className="text-sm text-zinc-300"><strong>Estilo:</strong> {plan.banca?.estilo}</div><div className="text-sm text-zinc-300"><strong>Pegadinhas:</strong> {plan.banca?.pegadinhas}</div><div className="text-sm text-zinc-300"><strong>Foco:</strong> {plan.banca?.foco}</div></div>
-          <div className="card p-4 mb-6"><div className="flex justify-between items-center mb-2"><span className="text-sm font-medium">Progresso do plano</span><span className="text-xs text-zinc-500">{doneDays} de {totalDays} dias concluídos</span></div><div className="h-2 bg-zinc-800 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-brand-500 to-purple-500 rounded-full transition-all duration-700" style={{ width: `${pct}%` }} /></div></div>
-          <h2 className="font-heading font-bold mb-3">📅 Cronograma semanal</h2>
-          <div className="card overflow-hidden mb-6">{plan.semanas.map((sem, si) => <div key={si} className="border-b border-white/[0.05] last:border-0"><div className="flex items-center justify-between p-4 cursor-pointer hover:bg-white/[0.02]" onClick={() => setOpenWeeks(p => ({ ...p, [si]: !p[si] }))}><span className="font-medium text-sm">{sem.titulo}</span>{openWeeks[si] ? <ChevronUp size={14} className="text-zinc-500" /> : <ChevronDown size={14} className="text-zinc-500" />}</div>{openWeeks[si] && <div className="grid grid-cols-7 border-t border-white/[0.05]">{sem.dias.map((dia, di) => { const key = `${si}_${di}`; const done = daysCompleted[key]; return <div key={di} className={`p-2 text-center border-r border-white/[0.05] last:border-0 cursor-pointer transition-colors ${dia.descanso ? 'opacity-40' : done ? 'bg-green-500/8' : 'hover:bg-white/[0.02]'}`} onClick={() => !dia.descanso && toggleDay(si, di)}><div className="text-[10px] text-zinc-500 mb-1">{dia.dia}</div>{dia.descanso ? <div className="text-base">🛌</div> : <><div className="text-[10px] font-semibold text-brand-300 leading-tight mb-1 truncate">{dia.materia}</div><div className="text-[9px] text-zinc-500 leading-tight mb-1 truncate">{dia.subtema}</div><div className="text-[9px] text-zinc-600">{dia.horas}h · {dia.meta_questoes}q</div>{done && <div className="text-green-400 text-[10px] mt-0.5">✓</div>}</>}</div>})}</div>}</div>)}</div>
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2"><h2 className="font-heading font-bold">⚡ Flashcards de revisão</h2><div className="flex flex-wrap gap-2">{topicos.map(t => <button key={t} onClick={() => setFcFilter(t)} className={`chip text-xs ${fcFilter === t ? 'chip-active' : ''}`}>{t}</button>)}</div></div>
-          <div className="grid md:grid-cols-2 gap-4 mb-6">{filteredCards.map((fc, i) => <div key={i} className={`card p-4 cursor-pointer fc-card ${flippedCards[i] ? 'flipped' : ''}`} onClick={() => setFlippedCards(p => ({ ...p, [i]: !p[i] }))}><div className="fc-inner"><div className="fc-front"><div className="text-xs text-brand-300 mb-2">{fc.topico}</div><div className="text-sm font-semibold mb-3">{fc.pergunta}</div><div className="text-xs text-zinc-500">👆 Clique para ver a resposta</div></div><div className="fc-back"><div className="text-sm text-zinc-200 mb-2 leading-relaxed">{fc.resposta}</div>{fc.fonte && <div className="text-xs text-zinc-500">📚 {fc.fonte}</div>}{fc.armadilha && <div className="text-xs text-amber-400 mt-1">⚠ Armadilha: {fc.armadilha}</div>}</div></div></div>)}</div>
-          <div className="flex gap-3 flex-wrap"><button onClick={() => { setPlan(null); setEditalText(''); setFileName(''); setAnalysis(null); setCargo('') }} className="btn-secondary">↩ Novo plano</button><button onClick={gerarMaisFlash} disabled={loadingMoreFlash} className="btn-secondary flex items-center gap-2">{loadingMoreFlash ? <Loader2 size={14} className="animate-spin" /> : '⚡'} Mais flashcards</button></div>
+        <div className="space-y-6">
+          <div className="card p-5">
+            <div className="flex justify-between items-center mb-4"><h2 className="font-heading text-xl font-bold">Plano gerado</h2><div className="text-sm text-zinc-400">{pct}% concluído</div></div>
+            <div className="h-2 bg-zinc-800 rounded-full overflow-hidden"><div className="h-full bg-brand-500" style={{ width: `${pct}%` }} /></div>
+          </div>
+          {plan.semanas.map((semana, si) => (
+            <div key={si} className="card overflow-hidden">
+              <button className="w-full p-4 flex items-center justify-between" onClick={() => setOpenWeeks(p => ({ ...p, [si]: !p[si] }))}>
+                <div><div className="font-heading font-bold">Semana {semana.semana}</div><div className="text-sm text-zinc-500">{semana.titulo}</div></div>{openWeeks[si] ? <ChevronUp /> : <ChevronDown />}
+              </button>
+              {openWeeks[si] && <div className="p-4 pt-0 space-y-2">{semana.dias.map((dia, di) => <label key={di} className="flex items-center gap-3 rounded-xl border border-white/10 p-3"><input type="checkbox" checked={!!daysCompleted[`${si}_${di}`]} onChange={() => toggleDay(si, di)} /><div className="text-sm"><b>{dia.dia}</b> — {dia.materia} / {dia.subtema}<div className="text-xs text-zinc-500">{dia.tipo} • {dia.horas}h • {dia.meta_questoes} questões</div></div></label>)}</div>}
+            </div>
+          ))}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4"><h2 className="font-heading font-bold">Flashcards</h2><button onClick={gerarMaisFlash} disabled={loadingMoreFlash} className="btn-secondary text-xs">{loadingMoreFlash ? 'Gerando...' : 'Gerar mais'}</button></div>
+            <select className="input mb-3" value={fcFilter} onChange={e => setFcFilter(e.target.value)}>{topicos.map(t => <option key={t} value={t}>{t}</option>)}</select>
+            <div className="grid md:grid-cols-2 gap-3">{filteredCards.map((f, i) => <button key={i} onClick={() => setFlippedCards(p => ({ ...p, [i]: !p[i] }))} className="rounded-2xl border border-white/10 p-4 text-left min-h-[120px]"><div className="text-xs text-brand-300 mb-2">{f.topico}</div><div className="text-sm text-zinc-100">{flippedCards[i] ? f.resposta : f.pergunta}</div><div className="text-[11px] text-zinc-500 mt-3">Clique para virar</div></button>)}</div>
+          </div>
         </div>
       )}
     </div>
