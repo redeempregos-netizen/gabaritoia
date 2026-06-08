@@ -4,6 +4,9 @@ export const PLAN_CADERNOS_500 = 'CADERNOS_500'
 export const PLAN_CADERNOS_QUESTOES = 'PRO'
 export const PLAN_FULL = 'ENTERPRISE'
 
+const ALL_ROUTES = ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/edital', '/edital-pro', '/mapas', '/gerados', '/historico', '/suporte', '/em-breve']
+const ALL_FEATURES = ['Todos os recursos', 'Leitor PDF', 'Cadernos PDF', 'Plano de questoes completo', 'Gerador de questoes', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Historico', 'Meus Gerados', 'Suporte']
+
 export function normalizePlan(plan?: string | null) {
   const value = String(plan || '').trim().toUpperCase()
   if (!value || value === 'TESTE' || value === 'TRIAL') return PLAN_FREE
@@ -39,19 +42,19 @@ export const PLAN_DAILY_BONUS_AMOUNT: Record<string, number> = {
 }
 
 export const PLAN_FEATURES: Record<string, string[]> = {
-  FREE: ['Todos os recursos por tempo limitado', 'Leitor PDF', 'Cadernos PDF', 'Plano de questoes completo', 'Gerador de questoes', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados', 'Suporte', '300 creditos', '+20 creditos de bonus por dia'],
-  PACK: ['Gerador de questoes', 'Leitor PDF', 'Plano de questoes', 'Cadernos PDF', 'Meus Gerados', 'Suporte', '1.000 creditos iniciais', '+20 creditos de bonus por dia', 'Acesso por 6 meses'],
-  [PLAN_CADERNOS_500]: ['Dashboard', 'Minha Conta', 'Gerar questoes', 'Leitor PDF', 'Plano de questoes basico', 'Meus Gerados', 'Suporte', '1.000 creditos', 'Acesso mensal'],
-  [PLAN_CADERNOS_QUESTOES]: ['Dashboard', 'Minha Conta', 'Gerar questoes', 'Leitor PDF', 'Plano de questoes completo', 'Cadernos PDF', 'Edital Verticalizado', 'Meus Gerados', 'Suporte', '3.000 creditos', 'Acesso trimestral'],
-  [PLAN_FULL]: ['Todos os recursos', 'Leitor PDF', 'Cadernos PDF', 'Plano de questoes completo', 'Gerador de questoes', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Meus Gerados', 'Suporte', '8.000 creditos', 'Acesso anual'],
+  FREE: [...ALL_FEATURES, '300 creditos', '+20 creditos de bonus por dia', 'Tempo limitado'],
+  PACK: [...ALL_FEATURES, '1.000 creditos iniciais', '+20 creditos de bonus por dia', 'Acesso por 6 meses'],
+  [PLAN_CADERNOS_500]: [...ALL_FEATURES, '1.000 creditos', 'Acesso mensal'],
+  [PLAN_CADERNOS_QUESTOES]: [...ALL_FEATURES, '3.000 creditos', 'Acesso trimestral'],
+  [PLAN_FULL]: [...ALL_FEATURES, '8.000 creditos', 'Acesso anual'],
 }
 
 export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
-  FREE: ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/edital', '/edital-pro', '/mapas', '/gerados', '/historico', '/suporte', '/em-breve'],
-  PACK: ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/gerados', '/suporte', '/em-breve'],
-  [PLAN_CADERNOS_500]: ['/dashboard', '/conta', '/gerar', '/leitor-pdf', '/plano-questoes', '/gerados', '/suporte', '/em-breve'],
-  [PLAN_CADERNOS_QUESTOES]: ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/edital', '/gerados', '/suporte', '/em-breve'],
-  [PLAN_FULL]: ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/edital', '/edital-pro', '/mapas', '/gerados', '/historico', '/suporte', '/em-breve'],
+  FREE: ALL_ROUTES,
+  PACK: ALL_ROUTES,
+  [PLAN_CADERNOS_500]: ALL_ROUTES,
+  [PLAN_CADERNOS_QUESTOES]: ALL_ROUTES,
+  [PLAN_FULL]: ALL_ROUTES,
 }
 
 export function isFreePlan(plan?: string | null) {
