@@ -28,9 +28,9 @@ export const PLAN_LABELS: Record<string, string> = {
 export const PLAN_CREDIT_AMOUNT: Record<string, number> = {
   [PLAN_FREE]: 300,
   [PLAN_PACK]: 1000,
-  [PLAN_CADERNOS_500]: 1000,
-  [PLAN_CADERNOS_QUESTOES]: 3000,
-  [PLAN_FULL]: 8000,
+  [PLAN_CADERNOS_500]: 2000,
+  [PLAN_CADERNOS_QUESTOES]: 7000,
+  [PLAN_FULL]: 30000,
 }
 
 export const PLAN_DAILY_BONUS_AMOUNT: Record<string, number> = {
@@ -42,11 +42,11 @@ export const PLAN_DAILY_BONUS_AMOUNT: Record<string, number> = {
 }
 
 export const PLAN_FEATURES: Record<string, string[]> = {
-  FREE: [...ALL_FEATURES, '300 creditos', '+20 creditos de bonus por dia', 'Tempo limitado'],
-  PACK: [...ALL_FEATURES, '1.000 creditos iniciais', '+20 creditos de bonus por dia', 'Acesso por 6 meses'],
-  [PLAN_CADERNOS_500]: [...ALL_FEATURES, '1.000 creditos', 'Acesso mensal'],
-  [PLAN_CADERNOS_QUESTOES]: [...ALL_FEATURES, '3.000 creditos', 'Acesso trimestral'],
-  [PLAN_FULL]: [...ALL_FEATURES, '8.000 creditos', 'Acesso anual'],
+  FREE: [...ALL_FEATURES, '300 creditos', '+20 bonus por dia', 'Tempo limitado'],
+  PACK: [...ALL_FEATURES, '1.000 creditos', '+20 bonus por dia', 'Acesso por 6 meses'],
+  [PLAN_CADERNOS_500]: [...ALL_FEATURES, '2.000 creditos', 'Acesso mensal'],
+  [PLAN_CADERNOS_QUESTOES]: [...ALL_FEATURES, '7.000 creditos', 'Acesso trimestral'],
+  [PLAN_FULL]: [...ALL_FEATURES, '30.000 creditos', 'Acesso anual'],
 }
 
 export const PLAN_ALLOWED_ROUTES: Record<string, string[]> = {
