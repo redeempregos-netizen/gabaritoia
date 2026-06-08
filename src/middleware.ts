@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
 import { canAccessRoute, getDefaultRouteForPlan, isLimitedPlan } from '@/lib/plans'
 
-const PUBLIC_ROUTES = ['/login', '/register', '/', '/demo']
+const PUBLIC_ROUTES = ['/login', '/register', '/', '/demo', '/compra-aprovada', '/ativar-acesso']
 const ADMIN_ROUTES = ['/admin']
 
 export async function middleware(req: NextRequest) {
@@ -11,7 +11,7 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get('gaia-session')?.value
 
   if (isPublic) {
-    if (token && pathname !== '/demo' && !pathname.startsWith('/demo/')) {
+    if (token && pathname !== '/demo' && !pathname.startsWith('/demo/') && pathname !== '/compra-aprovada' && !pathname.startsWith('/compra-aprovada/') && pathname !== '/ativar-acesso' && !pathname.startsWith('/ativar-acesso/')) {
       const session = await verifySession(token)
       if (session) return NextResponse.redirect(new URL(getDefaultRouteForPlan(session.plan), req.url))
     }
