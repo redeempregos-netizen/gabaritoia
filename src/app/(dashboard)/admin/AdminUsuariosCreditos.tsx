@@ -31,9 +31,9 @@ type NewUserForm = {
 const PLAN_OPTIONS = [
   { value: 'FREE', label: 'Teste', credits: 300, validity: '7' },
   { value: 'PACK', label: 'Plano Pack', credits: 1000, validity: '180' },
-  { value: 'CADERNOS_500', label: 'Mensal', credits: 1000, validity: '30' },
-  { value: 'PRO', label: 'Trimestral', credits: 3000, validity: '90' },
-  { value: 'ENTERPRISE', label: 'Anual', credits: 8000, validity: '365' },
+  { value: 'CADERNOS_500', label: 'Mensal', credits: 2000, validity: '30' },
+  { value: 'PRO', label: 'Trimestral', credits: 7000, validity: '90' },
+  { value: 'ENTERPRISE', label: 'Anual', credits: 30000, validity: '365' },
 ]
 
 const defaultNewUser: NewUserForm = {
