@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
@@ -123,9 +124,9 @@ export default function LoginPage() {
                 <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
                 Lembrar e-mail
               </label>
-              <button type="button" onClick={abrirAlteracaoSenha} className="text-brand-300 hover:text-brand-200 font-medium">
-                Alterar senha
-              </button>
+              <Link href="/esqueci-senha" className="text-brand-300 hover:text-brand-200 font-medium">
+                Esqueci minha senha
+              </Link>
             </div>
 
             <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 mt-2 h-11">
@@ -133,6 +134,12 @@ export default function LoginPage() {
               Entrar
             </button>
           </form>
+
+          <div className="mt-4 text-center">
+            <button type="button" onClick={abrirAlteracaoSenha} className="text-xs text-zinc-500 hover:text-brand-300">
+              Sei minha senha e quero alterar
+            </button>
+          </div>
 
           <div className="mt-6 rounded-xl border border-brand-500/20 bg-brand-500/10 p-3 text-xs text-brand-100 leading-relaxed">
             Os créditos e recursos disponíveis dependem do plano contratado.
