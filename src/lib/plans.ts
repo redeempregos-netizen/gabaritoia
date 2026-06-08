@@ -78,8 +78,7 @@ export function isFullPlan(plan?: string | null) {
 }
 
 export function isLimitedPlan(plan?: string | null) {
-  const normalized = normalizePlan(plan)
-  return normalized === PLAN_FREE || normalized === PLAN_PACK || normalized === PLAN_CADERNOS_500 || normalized === PLAN_CADERNOS_QUESTOES
+  return false
 }
 
 export function getPlanLabel(plan?: string | null) {
