@@ -8,10 +8,10 @@ const PROGRESS_STEPS = [
   'Preparando arquivos',
   'Organizando prova e gabarito',
   'Enviando para a IA',
-  'Analisando padrão da banca',
-  'Identificando assuntos cobrados',
+  'Lendo questões reais da prova',
+  'Cruzando com o gabarito oficial',
+  'Comentando as questões reais',
   'Montando plano de estudos',
-  'Gerando questões comentadas',
   'Finalizando resultado',
 ]
 
@@ -114,12 +114,12 @@ export default function ProvaRealPage() {
         body: JSON.stringify({ concurso, banca, cargo, dias, provaText, gabaritoText }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'Erro ao gerar plano.')
+      if (!res.ok) throw new Error(data.error || 'Erro ao gerar questões comentadas.')
       setProgress(100)
-      setProgressStep('Plano gerado com sucesso')
+      setProgressStep('Questões comentadas geradas com sucesso')
       setResult(data.result || '')
       setCreditsRemaining(typeof data.creditsRemaining === 'number' ? data.creditsRemaining : null)
-      toast.success('Plano por prova real gerado com sucesso.')
+      toast.success('Questões reais comentadas geradas com sucesso.')
     } catch (e) {
       setProgress(0)
       setProgressStep(PROGRESS_STEPS[0])
@@ -141,9 +141,9 @@ export default function ProvaRealPage() {
         <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-xs text-brand-200 mb-3">
           <Sparkles size={13} /> Novo recurso
         </div>
-        <h1 className="font-heading text-2xl md:text-3xl font-bold">Plano por Prova Real</h1>
+        <h1 className="font-heading text-2xl md:text-3xl font-bold">Questões Comentadas por Prova Real</h1>
         <p className="text-zinc-400 text-sm mt-2 max-w-3xl">
-          Envie uma prova real e o gabarito oficial. A IA identifica o padrão da banca, os assuntos mais cobrados e cria um plano de estudos com questões comentadas.
+          Envie uma prova real e o gabarito oficial. A IA transforma as questões reais enviadas em questões comentadas, explica o gabarito e depois monta um plano de estudos baseado no que apareceu na prova.
         </p>
       </div>
 
@@ -165,7 +165,7 @@ export default function ProvaRealPage() {
               </div>
             </div>
             <div>
-              <label className="label">Prazo do plano</label>
+              <label className="label">Prazo do plano complementar</label>
               <select className="input" value={dias} onChange={e => setDias(e.target.value as '7' | '15' | '30')}>
                 <option value="7">7 dias</option>
                 <option value="15">15 dias</option>
@@ -178,14 +178,14 @@ export default function ProvaRealPage() {
             <div className="rounded-2xl border-2 border-dashed border-white/10 bg-zinc-900/50 p-5 text-center hover:border-brand-500/40 transition-colors cursor-pointer" onClick={() => document.getElementById('prova-file')?.click()}>
               <Upload size={28} className="mx-auto mb-3 text-brand-300" />
               <div className="font-heading font-bold text-white">Enviar prova real</div>
-              <p className="text-xs text-zinc-500 mt-1">PDF ou TXT da prova. {provaName ? `Arquivo: ${provaName}` : ''}</p>
+              <p className="text-xs text-zinc-500 mt-1">PDF ou TXT com as questões reais da prova. {provaName ? `Arquivo: ${provaName}` : ''}</p>
               <button type="button" className="btn-primary mt-4 px-5 py-2 text-xs" disabled={loadingFile === 'prova'}>{loadingFile === 'prova' ? 'Lendo...' : 'Selecionar prova'}</button>
             </div>
             <input id="prova-file" type="file" accept="application/pdf,.pdf,.txt,text/plain" className="hidden" onChange={e => void loadFile(e.target.files?.[0], 'prova')} />
 
             <div>
-              <label className="label">Ou cole o texto da prova</label>
-              <textarea className="input min-h-[130px] resize-y" value={provaText} onChange={e => setProvaText(e.target.value)} placeholder="Cole aqui o texto extraído da prova, se preferir..." />
+              <label className="label">Ou cole o texto da prova real</label>
+              <textarea className="input min-h-[130px] resize-y" value={provaText} onChange={e => setProvaText(e.target.value)} placeholder="Cole aqui as questões reais da prova, se preferir..." />
               <div className="text-[11px] text-zinc-500 mt-1">Texto atual: {provaText.length.toLocaleString('pt-BR')} caracteres</div>
             </div>
           </div>
@@ -194,24 +194,24 @@ export default function ProvaRealPage() {
             <div className="rounded-2xl border-2 border-dashed border-white/10 bg-zinc-900/50 p-5 text-center hover:border-green-500/40 transition-colors cursor-pointer" onClick={() => document.getElementById('gabarito-file')?.click()}>
               <FileText size={28} className="mx-auto mb-3 text-green-300" />
               <div className="font-heading font-bold text-white">Enviar gabarito oficial</div>
-              <p className="text-xs text-zinc-500 mt-1">PDF ou TXT do gabarito. {gabaritoName ? `Arquivo: ${gabaritoName}` : ''}</p>
+              <p className="text-xs text-zinc-500 mt-1">PDF ou TXT do gabarito real/oficial. {gabaritoName ? `Arquivo: ${gabaritoName}` : ''}</p>
               <button type="button" className="btn-secondary mt-4 px-5 py-2 text-xs" disabled={loadingFile === 'gabarito'}>{loadingFile === 'gabarito' ? 'Lendo...' : 'Selecionar gabarito'}</button>
             </div>
             <input id="gabarito-file" type="file" accept="application/pdf,.pdf,.txt,text/plain" className="hidden" onChange={e => void loadFile(e.target.files?.[0], 'gabarito')} />
 
             <div>
-              <label className="label">Ou cole o gabarito</label>
+              <label className="label">Ou cole o gabarito oficial</label>
               <textarea className="input min-h-[110px] resize-y" value={gabaritoText} onChange={e => setGabaritoText(e.target.value)} placeholder="Ex: 1-B, 2-C, 3-E..." />
             </div>
           </div>
 
           <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs text-amber-100 flex items-start gap-2">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            <div>Esta análise usa 80 créditos. A IA ajuda a organizar o estudo, mas não substitui conferência humana do edital, da prova e do gabarito oficial.</div>
+            <div>Esta análise usa 80 créditos. A IA comenta as questões reais com base no gabarito enviado, mas a conferência final deve considerar o edital, a prova e o gabarito oficial.</div>
           </div>
 
           <button onClick={generatePlan} disabled={generating || loadingFile !== ''} className="btn-primary w-full h-12 text-sm">
-            {generating ? <><Loader2 size={16} className="animate-spin" /> Gerando plano... {progress}%</> : <>Gerar plano por prova real</>}
+            {generating ? <><Loader2 size={16} className="animate-spin" /> Comentando questões... {progress}%</> : <>Gerar questões reais comentadas</>}
           </button>
         </div>
 
@@ -219,7 +219,7 @@ export default function ProvaRealPage() {
           <div className="flex items-center justify-between gap-3 mb-4">
             <div>
               <h2 className="font-heading text-xl font-bold">Resultado</h2>
-              <p className="text-xs text-zinc-500 mt-1">Diagnóstico, plano e questões comentadas.</p>
+              <p className="text-xs text-zinc-500 mt-1">Questões reais comentadas, diagnóstico da prova e plano complementar.</p>
             </div>
             {result && <button onClick={copyResult} className="btn-secondary px-3 py-2 text-xs inline-flex items-center gap-2"><Clipboard size={14} /> Copiar</button>}
           </div>
@@ -259,8 +259,8 @@ export default function ProvaRealPage() {
             <div className="h-[520px] rounded-2xl border border-dashed border-white/10 bg-zinc-950/50 flex items-center justify-center text-center p-6">
               <div>
                 <Sparkles className="mx-auto mb-3 text-brand-300" size={34} />
-                <div className="font-heading font-bold text-white">Envie a prova e o gabarito</div>
-                <p className="text-sm text-zinc-500 mt-2 max-w-md">O plano será exibido aqui com diagnóstico da prova, temas mais cobrados, cronograma e questões comentadas para treino.</p>
+                <div className="font-heading font-bold text-white">Envie a prova real e o gabarito</div>
+                <p className="text-sm text-zinc-500 mt-2 max-w-md">As questões reais comentadas serão exibidas aqui com gabarito explicado, diagnóstico da prova e plano complementar de estudo.</p>
               </div>
             </div>
           ) : null}
