@@ -4,8 +4,8 @@ export const PLAN_CADERNOS_500 = 'CADERNOS_500'
 export const PLAN_CADERNOS_QUESTOES = 'PRO'
 export const PLAN_FULL = 'ENTERPRISE'
 
-const ALL_ROUTES = ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/edital', '/edital-pro', '/mapas', '/gerados', '/historico', '/suporte', '/em-breve']
-const ALL_FEATURES = ['Todos os recursos', 'Leitor PDF', 'Cadernos PDF', 'Plano de questoes completo', 'Gerador de questoes', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Historico', 'Meus Gerados', 'Suporte']
+const ALL_ROUTES = ['/dashboard', '/conta', '/cadernos', '/gerar', '/leitor-pdf', '/plano-questoes', '/prova-real', '/edital', '/edital-pro', '/mapas', '/gerados', '/historico', '/suporte', '/em-breve']
+const ALL_FEATURES = ['Todos os recursos', 'Leitor PDF', 'Cadernos PDF', 'Plano de questoes completo', 'Plano por Prova Real', 'Gerador de questoes', 'Edital Verticalizado', 'Edital Pro', 'Mapas Mentais', 'Historico', 'Meus Gerados', 'Suporte']
 
 export function normalizePlan(plan?: string | null) {
   const value = String(plan || '').trim().toUpperCase()
