@@ -1,8 +1,19 @@
 'use client'
 
-import { useState } from 'react'
-import { AlertTriangle, Clipboard, FileText, Loader2, Sparkles, Upload } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AlertTriangle, CheckCircle2, Clipboard, FileText, Loader2, Sparkles, Upload } from 'lucide-react'
 import { toast } from 'sonner'
+
+const PROGRESS_STEPS = [
+  'Preparando arquivos',
+  'Organizando prova e gabarito',
+  'Enviando para a IA',
+  'Analisando padrão da banca',
+  'Identificando assuntos cobrados',
+  'Montando plano de estudos',
+  'Gerando questões comentadas',
+  'Finalizando resultado',
+]
 
 async function extractPdfText(file: File) {
   const pdfjs = await import('pdfjs-dist')
@@ -40,8 +51,30 @@ export default function ProvaRealPage() {
   const [gabaritoName, setGabaritoName] = useState('')
   const [loadingFile, setLoadingFile] = useState<'prova' | 'gabarito' | ''>('')
   const [generating, setGenerating] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [progressStep, setProgressStep] = useState(PROGRESS_STEPS[0])
   const [result, setResult] = useState('')
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!generating) return
+
+    setProgress(8)
+    setProgressStep(PROGRESS_STEPS[0])
+
+    const timer = window.setInterval(() => {
+      setProgress(current => {
+        if (current >= 95) return current
+        const next = current + (current < 35 ? 5 : current < 70 ? 3 : 1)
+        const safeNext = Math.min(next, 95)
+        const stepIndex = Math.min(PROGRESS_STEPS.length - 1, Math.floor((safeNext / 100) * PROGRESS_STEPS.length))
+        setProgressStep(PROGRESS_STEPS[stepIndex])
+        return safeNext
+      })
+    }, 1200)
+
+    return () => window.clearInterval(timer)
+  }, [generating])
 
   async function loadFile(file: File | undefined, type: 'prova' | 'gabarito') {
     if (!file) return
@@ -71,6 +104,8 @@ export default function ProvaRealPage() {
     if (gabaritoText.trim().length < 10) return toast.error('Envie ou cole o gabarito oficial.')
 
     setGenerating(true)
+    setProgress(8)
+    setProgressStep(PROGRESS_STEPS[0])
     setResult('')
     try {
       const res = await fetch('/api/ai/plano-prova', {
@@ -80,10 +115,14 @@ export default function ProvaRealPage() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Erro ao gerar plano.')
+      setProgress(100)
+      setProgressStep('Plano gerado com sucesso')
       setResult(data.result || '')
       setCreditsRemaining(typeof data.creditsRemaining === 'number' ? data.creditsRemaining : null)
       toast.success('Plano por prova real gerado com sucesso.')
     } catch (e) {
+      setProgress(0)
+      setProgressStep(PROGRESS_STEPS[0])
       toast.error((e as Error).message || 'Erro ao gerar.')
     } finally {
       setGenerating(false)
@@ -172,7 +211,7 @@ export default function ProvaRealPage() {
           </div>
 
           <button onClick={generatePlan} disabled={generating || loadingFile !== ''} className="btn-primary w-full h-12 text-sm">
-            {generating ? <><Loader2 size={16} className="animate-spin" /> Gerando plano...</> : <>Gerar plano por prova real</>}
+            {generating ? <><Loader2 size={16} className="animate-spin" /> Gerando plano... {progress}%</> : <>Gerar plano por prova real</>}
           </button>
         </div>
 
@@ -187,9 +226,36 @@ export default function ProvaRealPage() {
 
           {creditsRemaining !== null && <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">Créditos restantes: {creditsRemaining}</div>}
 
+          {(generating || progress > 0) && !result && (
+            <div className="mb-4 rounded-2xl border border-brand-500/20 bg-brand-500/10 p-4">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-brand-100">
+                  {progress >= 100 ? <CheckCircle2 size={16} className="text-green-300" /> : <Loader2 size={16} className="animate-spin text-brand-300" />}
+                  {progressStep}
+                </div>
+                <div className="font-heading text-lg font-bold text-white">{progress}%</div>
+              </div>
+              <div className="h-3 rounded-full bg-zinc-800 overflow-hidden border border-white/10">
+                <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-green-400 transition-all duration-700" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-zinc-300">
+                {PROGRESS_STEPS.map((step, index) => {
+                  const done = progress >= ((index + 1) / PROGRESS_STEPS.length) * 100
+                  const current = step === progressStep
+                  return (
+                    <div key={step} className={done || current ? 'text-zinc-100' : 'text-zinc-500'}>
+                      {done ? '✅' : current ? '⏳' : '•'} {step}
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-zinc-500 mt-3">A porcentagem é uma estimativa enquanto a IA processa a prova. Em provas grandes, pode levar um pouco mais.</p>
+            </div>
+          )}
+
           {result ? (
             <pre className="whitespace-pre-wrap text-sm leading-7 text-zinc-100 bg-zinc-950/70 border border-white/10 rounded-2xl p-4 overflow-auto max-h-[75vh]">{result}</pre>
-          ) : (
+          ) : !generating ? (
             <div className="h-[520px] rounded-2xl border border-dashed border-white/10 bg-zinc-950/50 flex items-center justify-center text-center p-6">
               <div>
                 <Sparkles className="mx-auto mb-3 text-brand-300" size={34} />
@@ -197,7 +263,7 @@ export default function ProvaRealPage() {
                 <p className="text-sm text-zinc-500 mt-2 max-w-md">O plano será exibido aqui com diagnóstico da prova, temas mais cobrados, cronograma e questões comentadas para treino.</p>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
