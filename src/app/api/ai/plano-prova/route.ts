@@ -29,11 +29,11 @@ async function callAIWithFallback(prompt: string, systemPrompt: string) {
 
   for (const provider of order) {
     try {
-      const result = await callAI({ prompt, systemPrompt, provider, maxTokens: 6000, useCache: false, action: 'plano_por_prova_real' })
+      const result = await callAI({ prompt, systemPrompt, provider, maxTokens: 7000, useCache: false, action: 'questoes_comentadas_prova_real' })
       return { result, provider }
     } catch (e) {
       lastError = (e as Error).message || String(e)
-      console.error(`[plano prova fallback] provider=${provider} error=${lastError}`)
+      console.error(`[prova real fallback] provider=${provider} error=${lastError}`)
     }
   }
 
@@ -78,9 +78,12 @@ export async function POST(req: NextRequest) {
     const prova = cut(params.provaText, 45000)
     const gabarito = cut(params.gabaritoText, 12000)
 
-    const systemPrompt = `Você é um especialista sênior em concursos públicos brasileiros, análise de provas, gabaritos oficiais e planejamento de estudos por questões. Responda em português do Brasil, com linguagem clara e prática. Não prometa aprovação garantida.`
+    const systemPrompt = `Você é um professor especialista em concursos públicos brasileiros. Sua função principal é transformar QUESTÕES REAIS enviadas pelo usuário em QUESTÕES COMENTADAS, usando o GABARITO OFICIAL fornecido. Explique com clareza por que a alternativa correta está certa e, quando possível, por que as demais estão erradas. Depois, use a análise das questões reais para montar um plano de estudos por questões. Responda em português do Brasil. Não prometa aprovação garantida.`
 
-    const prompt = `Analise a PROVA REAL e o GABARITO OFICIAL abaixo e gere um plano de estudos com questões comentadas.
+    const prompt = `Abaixo estão uma PROVA REAL enviada pelo usuário e o GABARITO OFICIAL.
+
+OBJETIVO PRINCIPAL:
+Transformar as questões reais da prova enviada em QUESTÕES COMENTADAS.
 
 DADOS:
 Concurso/prova: ${params.concurso}
@@ -88,25 +91,43 @@ Banca: ${params.banca}
 Cargo: ${params.cargo || 'Não informado'}
 Prazo do plano: ${params.dias} dias
 
-TAREFA OBRIGATÓRIA:
-1. Identifique as disciplinas e assuntos mais cobrados.
-2. Estime o peso/recorrência por disciplina com base na prova.
-3. Aponte o padrão da banca: estilo de enunciado, nível, pegadinhas e temas recorrentes.
-4. Compare a prova com o gabarito oficial quando possível.
-5. Monte um plano de estudos por questões para ${params.dias} dias.
-6. Informe quantidade de questões por dia, revisões e simulados.
-7. Gere 10 questões comentadas inéditas inspiradas na prova, com alternativas A-E, gabarito e comentário.
-8. Separe o resultado em blocos fáceis de copiar.
+REGRAS IMPORTANTES:
+1. Use as QUESTÕES REAIS que aparecem no texto da prova enviada.
+2. Não substitua as questões reais por questões inéditas como resultado principal.
+3. Cruze cada questão com o gabarito oficial informado.
+4. Para cada questão real que conseguir identificar, apresente:
+   - número da questão;
+   - disciplina ou assunto provável;
+   - enunciado resumido ou integral quando possível;
+   - alternativas, quando estiverem disponíveis no texto;
+   - gabarito oficial;
+   - comentário explicativo da resposta correta;
+   - explicação das alternativas erradas, quando possível;
+   - ponto que o aluno deveria revisar.
+5. Se o texto extraído do PDF estiver bagunçado, organize o melhor possível e avise que a extração pode exigir conferência humana.
+6. Depois das questões comentadas reais, faça um diagnóstico dos assuntos mais cobrados.
+7. Depois monte um plano de estudos por questões para ${params.dias} dias baseado na prova real.
+8. Só no final, se fizer sentido, gere 5 questões inéditas extras inspiradas no padrão da prova. Essas questões extras devem ficar em seção separada.
 
 FORMATO DA RESPOSTA:
-# Plano por Prova Real
+# Questões reais comentadas da prova
+## Aviso sobre conferência
+## Questões comentadas
+### Questão 1
+- Disciplina/assunto:
+- Gabarito oficial:
+- Comentário:
+- O que revisar:
+
+### Questão 2
+...
+
 ## Diagnóstico da prova
 ## Assuntos mais cobrados
 ## Perfil da banca
-## Plano de estudos de ${params.dias} dias
+## Plano de estudos de ${params.dias} dias baseado na prova real
 ## Lista diária de tarefas
-## 10 questões comentadas para treino
-## Como revisar os erros
+## Questões inéditas extras inspiradas na prova, se necessário
 
 PROVA REAL EXTRAÍDA:
 ${prova}
@@ -115,10 +136,10 @@ GABARITO OFICIAL:
 ${gabarito}`
 
     const ai = await callAIWithFallback(prompt, systemPrompt)
-    const deduction = await deductCredits(session.userId, COST, 'plano_por_prova_real', `${params.banca} — ${params.concurso}`)
+    const deduction = await deductCredits(session.userId, COST, 'questoes_comentadas_prova_real', `${params.banca} — ${params.concurso}`)
     await savePlan({
       userId: session.userId,
-      title: `Plano por Prova Real — ${params.concurso}`,
+      title: `Questões comentadas por Prova Real — ${params.concurso}`,
       result: ai.result,
       banca: params.banca,
       cargo: params.cargo,
@@ -128,7 +149,7 @@ ${gabarito}`
     return NextResponse.json({ ok: true, result: ai.result, provider: ai.provider, creditsUsed: COST, creditsRemaining: deduction.remaining })
   } catch (e) {
     if (e instanceof z.ZodError) return NextResponse.json({ error: e.errors[0]?.message || 'Dados inválidos.' }, { status: 400 })
-    console.error('[plano prova real]', e)
-    return NextResponse.json({ error: (e as Error).message || 'Erro ao gerar plano por prova.' }, { status: 500 })
+    console.error('[prova real comentada]', e)
+    return NextResponse.json({ error: (e as Error).message || 'Erro ao comentar prova real.' }, { status: 500 })
   }
 }
