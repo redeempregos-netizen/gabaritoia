@@ -6,6 +6,7 @@ import { deductCredits, hasCredits } from '@/lib/credits'
 import { prisma } from '@/lib/prisma'
 
 const COST = 80
+const PROVIDERS = ['openai', 'gemini', 'openrouter', 'grok', 'claude'] as const
 
 const schema = z.object({
   concurso: z.string().min(2).max(180),
@@ -18,6 +19,25 @@ const schema = z.object({
 
 function cut(value: string, max: number) {
   return String(value || '').replace(/\s+\n/g, '\n').trim().slice(0, max)
+}
+
+async function callAIWithFallback(prompt: string, systemPrompt: string) {
+  let lastError = ''
+  const enabled = await prisma.apiKey.findMany({ where: { isEnabled: true }, select: { provider: true } }).catch(() => [])
+  const enabledProviders = enabled.map(k => k.provider).filter((p): p is typeof PROVIDERS[number] => PROVIDERS.includes(p as any))
+  const order = [...enabledProviders, ...PROVIDERS.filter(p => !enabledProviders.includes(p))]
+
+  for (const provider of order) {
+    try {
+      const result = await callAI({ prompt, systemPrompt, provider, maxTokens: 6000, useCache: false, action: 'plano_por_prova_real' })
+      return { result, provider }
+    } catch (e) {
+      lastError = (e as Error).message || String(e)
+      console.error(`[plano prova fallback] provider=${provider} error=${lastError}`)
+    }
+  }
+
+  throw new Error(`Nenhuma IA configurada funcionou. Último erro: ${lastError || 'erro desconhecido'}`)
 }
 
 async function savePlan(input: { userId: string; title: string; result: string; banca: string; cargo?: string; concurso: string }) {
@@ -94,26 +114,18 @@ ${prova}
 GABARITO OFICIAL:
 ${gabarito}`
 
-    const result = await callAI({
-      prompt,
-      systemPrompt,
-      provider: 'claude',
-      maxTokens: 6000,
-      useCache: false,
-      action: 'plano_por_prova_real',
-    })
-
+    const ai = await callAIWithFallback(prompt, systemPrompt)
     const deduction = await deductCredits(session.userId, COST, 'plano_por_prova_real', `${params.banca} — ${params.concurso}`)
     await savePlan({
       userId: session.userId,
       title: `Plano por Prova Real — ${params.concurso}`,
-      result,
+      result: ai.result,
       banca: params.banca,
       cargo: params.cargo,
       concurso: params.concurso,
     })
 
-    return NextResponse.json({ ok: true, result, creditsUsed: COST, creditsRemaining: deduction.remaining })
+    return NextResponse.json({ ok: true, result: ai.result, provider: ai.provider, creditsUsed: COST, creditsRemaining: deduction.remaining })
   } catch (e) {
     if (e instanceof z.ZodError) return NextResponse.json({ error: e.errors[0]?.message || 'Dados inválidos.' }, { status: 400 })
     console.error('[plano prova real]', e)
