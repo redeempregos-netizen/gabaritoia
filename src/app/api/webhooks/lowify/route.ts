@@ -12,7 +12,7 @@ const CANCELED_EVENTS = new Set(['sale.refund', 'sale.refunded', 'sale.canceled'
 const DEFAULT_LOWIFY_TEST_PRODUCT_IDS = ['Msk8PB']
 
 function getSecret(req: NextRequest) {
-  return process.env.LOWIFY_WEBHOOK_TOKEN || process.env.LOWIFY_WEBHOOK_SECRET || process.env.MIVVO_WEBHOOK_TOKEN || process.env.CAKTO_WEBHOOK_SECRET || ''
+  return process.env.LOWIFY_WEBHOOK_TOKEN || process.env.LOWIFY_WEBHOOK_SECRET || ''
 }
 
 function isAuthorized(req: NextRequest) {
