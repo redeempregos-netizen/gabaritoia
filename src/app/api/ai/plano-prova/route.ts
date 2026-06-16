@@ -21,6 +21,24 @@ function cut(value: string, max: number) {
   return String(value || '').replace(/\s+\n/g, '\n').trim().slice(0, max)
 }
 
+function isReadableExamText(text: string) {
+  const cleaned = String(text || '').replace(/\s+/g, ' ').trim()
+  if (cleaned.length < 500) return false
+
+  const letters = (cleaned.match(/[A-Za-zÀ-ÿ]/g) || []).length
+  const words = (cleaned.match(/[A-Za-zÀ-ÿ]{3,}/g) || []).length
+  const questionMarkers = (cleaned.match(/quest[aã]o|\b\d{1,3}\s*[.)-]|alternativa|assinale|correta|incorreta|gabarito/gi) || []).length
+  const badChars = (cleaned.match(/[�□■●◆◇�]|[\uE000-\uF8FF]/g) || []).length
+  const letterRatio = letters / cleaned.length
+
+  if (badChars > 30) return false
+  if (letterRatio < 0.32) return false
+  if (words < 80) return false
+  if (questionMarkers < 3 && cleaned.length < 5000) return false
+
+  return true
+}
+
 async function callAIWithFallback(prompt: string, systemPrompt: string) {
   let lastError = ''
   const enabled = await prisma.apiKey.findMany({ where: { isEnabled: true }, select: { provider: true } }).catch(() => [])
@@ -72,11 +90,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const params = schema.parse(await req.json())
-    const sufficient = await hasCredits(session.userId, COST)
-    if (!sufficient) return NextResponse.json({ error: `Créditos insuficientes. Esta análise usa ${COST} créditos.`, code: 'insufficient_credits' }, { status: 402 })
-
     const prova = cut(params.provaText, 45000)
     const gabarito = cut(params.gabaritoText, 12000)
+
+    if (!isReadableExamText(prova)) {
+      return NextResponse.json({ error: 'O texto da prova está ilegível ou foi extraído do PDF com caracteres quebrados. Envie um PDF pesquisável, um TXT, ou cole o texto da prova diretamente. Nenhum crédito foi cobrado.' }, { status: 400 })
+    }
+
+    const sufficient = await hasCredits(session.userId, COST)
+    if (!sufficient) return NextResponse.json({ error: `Créditos insuficientes. Esta análise usa ${COST} créditos.`, code: 'insufficient_credits' }, { status: 402 })
 
     const systemPrompt = `Você é um professor especialista em concursos públicos brasileiros. Sua função principal é transformar QUESTÕES REAIS enviadas pelo usuário em QUESTÕES COMENTADAS, usando o GABARITO OFICIAL fornecido. Explique com clareza por que a alternativa correta está certa e, quando possível, por que as demais estão erradas. Depois, use a análise das questões reais para montar um plano de estudos por questões. Responda em português do Brasil. Não prometa aprovação garantida.`
 
