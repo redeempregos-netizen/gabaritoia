@@ -24,19 +24,69 @@ function cut(value: string, max: number) {
 function isReadableExamText(text: string) {
   const cleaned = String(text || '').replace(/\s+/g, ' ').trim()
   if (cleaned.length < 500) return false
-
   const letters = (cleaned.match(/[A-Za-zÀ-ÿ]/g) || []).length
   const words = (cleaned.match(/[A-Za-zÀ-ÿ]{3,}/g) || []).length
   const questionMarkers = (cleaned.match(/quest[aã]o|\b\d{1,3}\s*[.)-]|alternativa|assinale|correta|incorreta|gabarito/gi) || []).length
   const badChars = (cleaned.match(/[�□■●◆◇�]|[\uE000-\uF8FF]/g) || []).length
   const letterRatio = letters / cleaned.length
-
   if (badChars > 30) return false
   if (letterRatio < 0.32) return false
   if (words < 80) return false
   if (questionMarkers < 3 && cleaned.length < 5000) return false
-
   return true
+}
+
+function extractJson(text: string) {
+  const raw = String(text || '').trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim()
+  const start = raw.indexOf('{')
+  const end = raw.lastIndexOf('}')
+  if (start === -1 || end === -1 || end <= start) throw new Error('A IA não devolveu um JSON válido.')
+  return JSON.parse(raw.slice(start, end + 1))
+}
+
+function normalizePlanData(data: any) {
+  const questions = Array.isArray(data?.questions) ? data.questions : []
+  const validQuestions = questions
+    .map((q: any, index: number) => {
+      const alternatives = q?.alternatives || {}
+      const normalizedAlternatives = {
+        A: String(alternatives.A || alternatives.a || '').trim(),
+        B: String(alternatives.B || alternatives.b || '').trim(),
+        C: String(alternatives.C || alternatives.c || '').trim(),
+        D: String(alternatives.D || alternatives.d || '').trim(),
+        E: String(alternatives.E || alternatives.e || '').trim(),
+      }
+      return {
+        number: Number(q?.number || index + 1),
+        discipline: String(q?.discipline || 'Não identificado').trim(),
+        statement: String(q?.statement || '').trim(),
+        alternatives: normalizedAlternatives,
+        answer: String(q?.answer || '').trim().toUpperCase().slice(0, 1),
+        explanation: String(q?.explanation || '').trim(),
+        wrongAlternatives: String(q?.wrongAlternatives || '').trim(),
+        reviewTopic: String(q?.reviewTopic || '').trim(),
+      }
+    })
+    .filter((q: any) => q.statement && ['A', 'B', 'C', 'D', 'E'].includes(q.answer))
+
+  if (!validQuestions.length) throw new Error('Não consegui estruturar questões clicáveis. Envie um PDF pesquisável ou cole o texto da prova.')
+
+  return {
+    title: String(data?.title || 'Simulado por Prova Real').trim(),
+    instructions: String(data?.instructions || 'Responda as questões primeiro. Depois clique em Corrigir para ver o gabarito comentado.').trim(),
+    questions: validQuestions,
+    diagnosis: {
+      topics: Array.isArray(data?.diagnosis?.topics) ? data.diagnosis.topics.map(String) : [],
+      profile: String(data?.diagnosis?.profile || '').trim(),
+      attention: String(data?.diagnosis?.attention || '').trim(),
+    },
+    revisionPlan: Array.isArray(data?.revisionPlan) ? data.revisionPlan.map((item: any, index: number) => ({
+      day: String(item?.day || `Dia ${index + 1}`).trim(),
+      task: String(item?.task || '').trim(),
+      questionsToRedo: String(item?.questionsToRedo || '').trim(),
+      topics: String(item?.topics || '').trim(),
+    })) : [],
+  }
 }
 
 async function callAIWithFallback(prompt: string, systemPrompt: string) {
@@ -47,14 +97,13 @@ async function callAIWithFallback(prompt: string, systemPrompt: string) {
 
   for (const provider of order) {
     try {
-      const result = await callAI({ prompt, systemPrompt, provider, maxTokens: 7000, useCache: false, action: 'treino_por_prova_real' })
+      const result = await callAI({ prompt, systemPrompt, provider, maxTokens: 8000, useCache: false, action: 'simulado_interativo_prova_real' })
       return { result, provider }
     } catch (e) {
       lastError = (e as Error).message || String(e)
       console.error(`[prova real fallback] provider=${provider} error=${lastError}`)
     }
   }
-
   throw new Error(`Nenhuma IA configurada funcionou. Último erro: ${lastError || 'erro desconhecido'}`)
 }
 
@@ -100,115 +149,50 @@ export async function POST(req: NextRequest) {
     const sufficient = await hasCredits(session.userId, COST)
     if (!sufficient) return NextResponse.json({ error: `Créditos insuficientes. Esta análise usa ${COST} créditos.`, code: 'insufficient_credits' }, { status: 402 })
 
-    const systemPrompt = `Você é um professor especialista em concursos públicos brasileiros. Sua função principal é transformar uma PROVA REAL enviada pelo usuário em um MATERIAL EDITÁVEL DE TREINO para o aluno responder primeiro, sem ver o gabarito no começo. Depois do bloco de treino, forneça o gabarito comentado e um plano de revisão dos erros. Responda em português do Brasil. Não prometa aprovação garantida. Não use Markdown com #, ##, ###, asteriscos, tabelas Markdown ou listas com hífen. Use texto limpo, campos editáveis e separadores simples.`
+    const systemPrompt = `Você transforma uma prova real de concurso em um simulado interativo. Responda SOMENTE com JSON válido. Não use markdown, não use crases, não use texto fora do JSON.`
+    const prompt = `Crie um simulado interativo usando as questões reais abaixo e o gabarito oficial. O aluno deve responder clicando nas alternativas na interface, então coloque o gabarito somente no campo answer de cada questão.
 
-    const prompt = `Abaixo estão uma PROVA REAL enviada pelo usuário e o GABARITO OFICIAL.
+Retorne SOMENTE este JSON:
+{
+  "title": "Simulado por Prova Real - ${params.concurso}",
+  "instructions": "Texto curto dizendo para responder primeiro e só depois corrigir.",
+  "questions": [
+    {
+      "number": 1,
+      "discipline": "Disciplina ou assunto provável",
+      "statement": "Enunciado limpo da questão real",
+      "alternatives": { "A": "...", "B": "...", "C": "...", "D": "...", "E": "..." },
+      "answer": "A",
+      "explanation": "Comentário claro do gabarito",
+      "wrongAlternatives": "Explique as erradas quando possível",
+      "reviewTopic": "Assunto para revisar"
+    }
+  ],
+  "diagnosis": {
+    "topics": ["assunto 1", "assunto 2"],
+    "profile": "perfil da banca nesta prova",
+    "attention": "pontos de atenção"
+  },
+  "revisionPlan": [
+    { "day": "Dia 1", "task": "tarefa", "questionsToRedo": "questões", "topics": "assuntos" }
+  ]
+}
 
-OBJETIVO PRINCIPAL:
-Criar um MATERIAL EDITÁVEL DE TREINO por prova real para o aluno responder as questões primeiro.
+Regras:
+1. Use apenas questões reais que conseguir identificar na prova.
+2. Preserve enunciado e alternativas o máximo possível.
+3. Se uma alternativa não aparecer no texto, deixe o campo vazio.
+4. answer deve ser somente A, B, C, D ou E.
+5. Não invente gabarito. Use o gabarito oficial.
+6. Se houver poucas questões legíveis, retorne somente as legíveis.
+7. Não revele o comentário dentro do enunciado.
+8. Gere no máximo 20 questões para não ficar pesado.
 
 DADOS:
 Concurso/prova: ${params.concurso}
 Banca: ${params.banca}
 Cargo: ${params.cargo || 'Não informado'}
-Prazo do plano: ${params.dias} dias
-
-REGRAS OBRIGATÓRIAS:
-1. Use as QUESTÕES REAIS que aparecem no texto da prova enviada.
-2. NÃO mostre o gabarito nem o comentário antes do aluno responder.
-3. Primeiro organize um bloco chamado CADERNO DE TREINO com as questões reais para o aluno resolver.
-4. No CADERNO DE TREINO, cada questão deve aparecer com enunciado e alternativas, mas SEM gabarito e SEM comentário.
-5. Inclua campos editáveis como: Minha resposta: (   ), Acertei: (   ), Revisar: ____________.
-6. Inclua uma FOLHA DE RESPOSTAS DO ALUNO em formato editável, linha por linha, sem tabela Markdown.
-7. Só depois crie uma seção separada chamada CORREÇÃO E GABARITO COMENTADO.
-8. Na correção, cruze cada questão com o gabarito oficial informado.
-9. Para cada questão corrigida, apresente: número da questão, disciplina, gabarito oficial, comentário, alternativas erradas quando possível e o que revisar.
-10. Depois da correção, monte um plano de revisão por questões para ${params.dias} dias.
-11. Não invente questões como conteúdo principal. Se o texto permitir poucas questões reais, avise claramente e só gere questões extras no final, em seção separada.
-12. Se o texto extraído do PDF estiver bagunçado, não tente fingir certeza. Avise que algumas questões podem exigir conferência humana.
-13. FORMATAÇÃO: não use #, ##, ###, markdown, negrito, asteriscos ou tabelas markdown. O resultado deve ser fácil de copiar, colar e editar.
-
-FORMATO OBRIGATÓRIO DA RESPOSTA:
-
-PLANO DE TREINO POR PROVA REAL
-
-Concurso/prova: ${params.concurso}
-Banca: ${params.banca}
-Cargo: ${params.cargo || 'Não informado'}
 Prazo de revisão: ${params.dias} dias
-
-COMO USAR ESTE TREINO
-1. Responda primeiro todas as questões do CADERNO DE TREINO.
-2. Preencha sua resposta em cada questão.
-3. Só depois confira a seção CORREÇÃO E GABARITO COMENTADO.
-4. Marque os assuntos que errou para revisar no plano final.
-
-==================================================
-CADERNO DE TREINO - QUESTÕES REAIS PARA RESPONDER
-==================================================
-
-QUESTÃO 1
-Disciplina/assunto provável:
-Enunciado:
-
-Alternativas:
-A)
-B)
-C)
-D)
-E)
-
-Minha resposta: (   )
-Acertei: (   )
-Revisar: ______________________________________
-
-QUESTÃO 2
-...
-
-==================================================
-FOLHA DE RESPOSTAS DO ALUNO
-==================================================
-
-Questão 1 | Minha resposta: (   ) | Acertei: (   ) | Assunto para revisar: ______________________
-Questão 2 | Minha resposta: (   ) | Acertei: (   ) | Assunto para revisar: ______________________
-Questão 3 | Minha resposta: (   ) | Acertei: (   ) | Assunto para revisar: ______________________
-
-==================================================
-CORREÇÃO E GABARITO COMENTADO
-==================================================
-
-QUESTÃO 1
-Gabarito oficial:
-Comentário:
-Por que as outras alternativas estão erradas, se possível:
-O que revisar:
-
-QUESTÃO 2
-...
-
-==================================================
-DIAGNÓSTICO DA PROVA
-==================================================
-
-Assuntos mais cobrados:
-Perfil da banca:
-Pontos de atenção:
-
-==================================================
-PLANO DE REVISÃO DE ${params.dias} DIAS
-==================================================
-
-DIA 1
-Tarefa:
-Questões para refazer:
-Assuntos para revisar:
-
-DIA 2
-...
-
-==================================================
-QUESTÕES EXTRAS INSPIRADAS NA PROVA, SOMENTE SE NECESSÁRIO
-==================================================
 
 PROVA REAL EXTRAÍDA:
 ${prova}
@@ -217,20 +201,21 @@ GABARITO OFICIAL:
 ${gabarito}`
 
     const ai = await callAIWithFallback(prompt, systemPrompt)
-    const deduction = await deductCredits(session.userId, COST, 'treino_por_prova_real', `${params.banca} — ${params.concurso}`)
+    const plan = normalizePlanData(extractJson(ai.result))
+    const deduction = await deductCredits(session.userId, COST, 'simulado_interativo_prova_real', `${params.banca} — ${params.concurso}`)
     await savePlan({
       userId: session.userId,
-      title: `Plano de treino por Prova Real — ${params.concurso}`,
-      result: ai.result,
+      title: `Simulado interativo por Prova Real — ${params.concurso}`,
+      result: JSON.stringify(plan, null, 2),
       banca: params.banca,
       cargo: params.cargo,
       concurso: params.concurso,
     })
 
-    return NextResponse.json({ ok: true, result: ai.result, provider: ai.provider, creditsUsed: COST, creditsRemaining: deduction.remaining })
+    return NextResponse.json({ ok: true, plan, provider: ai.provider, creditsUsed: COST, creditsRemaining: deduction.remaining })
   } catch (e) {
     if (e instanceof z.ZodError) return NextResponse.json({ error: e.errors[0]?.message || 'Dados inválidos.' }, { status: 400 })
-    console.error('[treino prova real]', e)
-    return NextResponse.json({ error: (e as Error).message || 'Erro ao gerar treino por prova real.' }, { status: 500 })
+    console.error('[simulado prova real]', e)
+    return NextResponse.json({ error: (e as Error).message || 'Erro ao gerar simulado interativo.' }, { status: 500 })
   }
 }
