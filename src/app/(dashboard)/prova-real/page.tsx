@@ -15,6 +15,28 @@ const PROGRESS_STEPS = [
   'Finalizando resultado',
 ]
 
+function isReadableExamText(text: string) {
+  const cleaned = String(text || '').replace(/\s+/g, ' ').trim()
+  if (cleaned.length < 500) return false
+
+  const letters = (cleaned.match(/[A-Za-zÀ-ÿ]/g) || []).length
+  const words = (cleaned.match(/[A-Za-zÀ-ÿ]{3,}/g) || []).length
+  const questionMarkers = (cleaned.match(/quest[aã]o|\b\d{1,3}\s*[.)-]|alternativa|assinale|correta|incorreta|gabarito/gi) || []).length
+  const badChars = (cleaned.match(/[�□■●◆◇�]|[\uE000-\uF8FF]/g) || []).length
+  const letterRatio = letters / cleaned.length
+
+  if (badChars > 30) return false
+  if (letterRatio < 0.32) return false
+  if (words < 80) return false
+  if (questionMarkers < 3 && cleaned.length < 5000) return false
+
+  return true
+}
+
+function unreadablePdfMessage(fileName?: string) {
+  return `Não consegui ler a prova com qualidade suficiente${fileName ? ` (${fileName})` : ''}. O texto extraído veio quebrado/ilegível, então a IA não vai conseguir comentar as questões corretamente. Envie um PDF pesquisável, um TXT, ou copie e cole o texto da prova diretamente.`
+}
+
 async function extractPdfText(file: File) {
   const pdfjs = await import('pdfjs-dist')
   pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
@@ -26,11 +48,20 @@ async function extractPdfText(file: File) {
   for (let pageNumber = 1; pageNumber <= total; pageNumber++) {
     const page = await pdf.getPage(pageNumber)
     const textContent = await page.getTextContent()
-    const text = textContent.items.map((item: any) => item.str || '').join(' ')
+    const pageParts: string[] = []
+
+    for (const item of textContent.items as any[]) {
+      const value = String(item?.str || '').trim()
+      if (!value) continue
+      pageParts.push(value)
+      if (item?.hasEOL) pageParts.push('\n')
+    }
+
+    const text = pageParts.join(' ').replace(/[ \t]{2,}/g, ' ').replace(/\n\s+/g, '\n').trim()
     parts.push(`\n\n[Página ${pageNumber}]\n${text}`)
   }
 
-  return parts.join('\n').replace(/\s+/g, ' ').trim()
+  return parts.join('\n').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 async function extractFileText(file: File) {
@@ -82,6 +113,11 @@ export default function ProvaRealPage() {
     try {
       const text = await extractFileText(file)
       if (!text || text.length < 20) throw new Error('Não consegui extrair texto suficiente deste arquivo.')
+      if (type === 'prova' && !isReadableExamText(text)) {
+        setProvaText('')
+        setProvaName('')
+        throw new Error(unreadablePdfMessage(file.name))
+      }
       if (type === 'prova') {
         setProvaText(text)
         setProvaName(file.name)
@@ -101,6 +137,7 @@ export default function ProvaRealPage() {
     if (!concurso.trim()) return toast.error('Informe o nome do concurso ou prova.')
     if (!banca.trim()) return toast.error('Informe a banca.')
     if (provaText.trim().length < 500) return toast.error('Envie ou cole o texto da prova.')
+    if (!isReadableExamText(provaText)) return toast.error(unreadablePdfMessage(provaName))
     if (gabaritoText.trim().length < 10) return toast.error('Envie ou cole o gabarito oficial.')
 
     setGenerating(true)
@@ -178,10 +215,14 @@ export default function ProvaRealPage() {
             <div className="rounded-2xl border-2 border-dashed border-white/10 bg-zinc-900/50 p-5 text-center hover:border-brand-500/40 transition-colors cursor-pointer" onClick={() => document.getElementById('prova-file')?.click()}>
               <Upload size={28} className="mx-auto mb-3 text-brand-300" />
               <div className="font-heading font-bold text-white">Enviar prova real</div>
-              <p className="text-xs text-zinc-500 mt-1">PDF ou TXT com as questões reais da prova. {provaName ? `Arquivo: ${provaName}` : ''}</p>
+              <p className="text-xs text-zinc-500 mt-1">PDF pesquisável ou TXT com as questões reais da prova. {provaName ? `Arquivo: ${provaName}` : ''}</p>
               <button type="button" className="btn-primary mt-4 px-5 py-2 text-xs" disabled={loadingFile === 'prova'}>{loadingFile === 'prova' ? 'Lendo...' : 'Selecionar prova'}</button>
             </div>
             <input id="prova-file" type="file" accept="application/pdf,.pdf,.txt,text/plain" className="hidden" onChange={e => void loadFile(e.target.files?.[0], 'prova')} />
+
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-100">
+              Se o PDF vier com caracteres quebrados ou ilegíveis, o sistema vai bloquear antes de gastar créditos. Nesse caso, envie um PDF pesquisável, TXT ou cole o texto da prova abaixo.
+            </div>
 
             <div>
               <label className="label">Ou cole o texto da prova real</label>
