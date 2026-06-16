@@ -9,6 +9,7 @@ import { normalizePlan, PLAN_CADERNOS_500, PLAN_CADERNOS_QUESTOES, PLAN_FREE, PL
 const APPROVED_EVENTS = new Set(['sale.paid'])
 const PENDING_EVENTS = new Set(['sale.pending'])
 const CANCELED_EVENTS = new Set(['sale.refund', 'sale.refunded', 'sale.canceled', 'sale.cancelled', 'sale.chargeback'])
+const DEFAULT_LOWIFY_TEST_PRODUCT_IDS = ['Msk8PB']
 
 function getSecret(req: NextRequest) {
   return process.env.LOWIFY_WEBHOOK_TOKEN || process.env.LOWIFY_WEBHOOK_SECRET || process.env.MIVVO_WEBHOOK_TOKEN || process.env.CAKTO_WEBHOOK_SECRET || ''
@@ -35,6 +36,19 @@ function normalizeEvent(payload: any) {
   return String(payload?.event || payload?.event_type || payload?.type || '').trim().toLowerCase()
 }
 
+function normalizeId(value: string) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function parseIds(value?: string) {
+  return String(value || '').split(',').map(s => s.trim()).filter(Boolean)
+}
+
+function matchesId(ids: string[], productId: string) {
+  const normalizedProductId = normalizeId(productId)
+  return ids.some(id => normalizeId(id) === normalizedProductId)
+}
+
 function getBuyer(payload: any) {
   return {
     email: String(payload?.customer?.email || payload?.email || payload?.customer_email || '').trim().toLowerCase(),
@@ -59,15 +73,15 @@ function inferLowifyPlan(payload: any) {
   const source = `${product.productId} ${product.productName} ${payload?.tracking?.campaign_id || ''} ${payload?.tracking?.utm_source || ''}`.toLowerCase()
 
   // IDs podem ser configurados por ENV, separados por vírgula.
-  const testIds = String(process.env.LOWIFY_TEST_PRODUCT_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
-  const mensalIds = String(process.env.LOWIFY_MENSAL_PRODUCT_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
-  const trimestralIds = String(process.env.LOWIFY_TRIMESTRAL_PRODUCT_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
-  const anualIds = String(process.env.LOWIFY_ANUAL_PRODUCT_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
+  const testIds = [...DEFAULT_LOWIFY_TEST_PRODUCT_IDS, ...parseIds(process.env.LOWIFY_TEST_PRODUCT_IDS)]
+  const mensalIds = parseIds(process.env.LOWIFY_MENSAL_PRODUCT_IDS)
+  const trimestralIds = parseIds(process.env.LOWIFY_TRIMESTRAL_PRODUCT_IDS)
+  const anualIds = parseIds(process.env.LOWIFY_ANUAL_PRODUCT_IDS)
 
-  if (testIds.includes(product.productId)) return PLAN_FREE
-  if (mensalIds.includes(product.productId)) return PLAN_CADERNOS_500
-  if (trimestralIds.includes(product.productId)) return PLAN_CADERNOS_QUESTOES
-  if (anualIds.includes(product.productId)) return PLAN_FULL
+  if (matchesId(testIds, product.productId)) return PLAN_FREE
+  if (matchesId(mensalIds, product.productId)) return PLAN_CADERNOS_500
+  if (matchesId(trimestralIds, product.productId)) return PLAN_CADERNOS_QUESTOES
+  if (matchesId(anualIds, product.productId)) return PLAN_FULL
 
   if (/teste|trial|7\s*dias|7\s*days|free/.test(source)) return PLAN_FREE
   if (/anual|annual|yearly|ano|12\s*mes|365/.test(source)) return PLAN_FULL
