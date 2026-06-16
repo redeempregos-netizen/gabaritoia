@@ -100,12 +100,12 @@ export async function POST(req: NextRequest) {
     const sufficient = await hasCredits(session.userId, COST)
     if (!sufficient) return NextResponse.json({ error: `Créditos insuficientes. Esta análise usa ${COST} créditos.`, code: 'insufficient_credits' }, { status: 402 })
 
-    const systemPrompt = `Você é um professor especialista em concursos públicos brasileiros. Sua função principal é transformar uma PROVA REAL enviada pelo usuário em um PLANO DE TREINO para o aluno responder primeiro, sem ver o gabarito no começo. Depois do bloco de treino, forneça o gabarito comentado e um plano de revisão dos erros. Responda em português do Brasil. Não prometa aprovação garantida.`
+    const systemPrompt = `Você é um professor especialista em concursos públicos brasileiros. Sua função principal é transformar uma PROVA REAL enviada pelo usuário em um MATERIAL EDITÁVEL DE TREINO para o aluno responder primeiro, sem ver o gabarito no começo. Depois do bloco de treino, forneça o gabarito comentado e um plano de revisão dos erros. Responda em português do Brasil. Não prometa aprovação garantida. Não use Markdown com #, ##, ###, asteriscos, tabelas Markdown ou listas com hífen. Use texto limpo, campos editáveis e separadores simples.`
 
     const prompt = `Abaixo estão uma PROVA REAL enviada pelo usuário e o GABARITO OFICIAL.
 
 OBJETIVO PRINCIPAL:
-Criar um PLANO DE TREINO por prova real para o aluno responder as questões primeiro.
+Criar um MATERIAL EDITÁVEL DE TREINO por prova real para o aluno responder as questões primeiro.
 
 DADOS:
 Concurso/prova: ${params.concurso}
@@ -116,57 +116,99 @@ Prazo do plano: ${params.dias} dias
 REGRAS OBRIGATÓRIAS:
 1. Use as QUESTÕES REAIS que aparecem no texto da prova enviada.
 2. NÃO mostre o gabarito nem o comentário antes do aluno responder.
-3. Primeiro organize um bloco chamado "Caderno de treino" com as questões reais para o aluno resolver.
-4. No "Caderno de treino", cada questão deve aparecer com enunciado e alternativas, mas SEM gabarito e SEM comentário.
-5. Inclua uma "Folha de respostas do aluno" para ele marcar A, B, C, D ou E.
-6. Só depois crie uma seção separada chamada "Correção e gabarito comentado".
-7. Na correção, cruze cada questão com o gabarito oficial informado.
-8. Para cada questão corrigida, apresente:
-   - número da questão;
-   - disciplina ou assunto provável;
-   - gabarito oficial;
-   - comentário explicando por que a resposta está correta;
-   - explicação das alternativas erradas, quando possível;
-   - o que o aluno deve revisar.
-9. Depois da correção, monte um plano de revisão por questões para ${params.dias} dias.
-10. Não invente questões como conteúdo principal. Se o texto permitir poucas questões reais, avise claramente e só gere questões extras no final, em seção separada.
-11. Se o texto extraído do PDF estiver bagunçado, não tente fingir certeza. Avise que algumas questões podem exigir conferência humana.
+3. Primeiro organize um bloco chamado CADERNO DE TREINO com as questões reais para o aluno resolver.
+4. No CADERNO DE TREINO, cada questão deve aparecer com enunciado e alternativas, mas SEM gabarito e SEM comentário.
+5. Inclua campos editáveis como: Minha resposta: (   ), Acertei: (   ), Revisar: ____________.
+6. Inclua uma FOLHA DE RESPOSTAS DO ALUNO em formato editável, linha por linha, sem tabela Markdown.
+7. Só depois crie uma seção separada chamada CORREÇÃO E GABARITO COMENTADO.
+8. Na correção, cruze cada questão com o gabarito oficial informado.
+9. Para cada questão corrigida, apresente: número da questão, disciplina, gabarito oficial, comentário, alternativas erradas quando possível e o que revisar.
+10. Depois da correção, monte um plano de revisão por questões para ${params.dias} dias.
+11. Não invente questões como conteúdo principal. Se o texto permitir poucas questões reais, avise claramente e só gere questões extras no final, em seção separada.
+12. Se o texto extraído do PDF estiver bagunçado, não tente fingir certeza. Avise que algumas questões podem exigir conferência humana.
+13. FORMATAÇÃO: não use #, ##, ###, markdown, negrito, asteriscos ou tabelas markdown. O resultado deve ser fácil de copiar, colar e editar.
 
-FORMATO DA RESPOSTA:
-# Plano de treino por prova real
+FORMATO OBRIGATÓRIO DA RESPOSTA:
 
-## Como usar este treino
-Explique que o aluno deve responder primeiro o caderno de treino sem olhar o gabarito comentado.
+PLANO DE TREINO POR PROVA REAL
 
-## Caderno de treino: questões reais para responder
-### Questão 1
-- Disciplina/assunto provável:
-- Enunciado:
-- Alternativas:
-  A)
-  B)
-  C)
-  D)
-  E)
-- Sua resposta: ____
+Concurso/prova: ${params.concurso}
+Banca: ${params.banca}
+Cargo: ${params.cargo || 'Não informado'}
+Prazo de revisão: ${params.dias} dias
 
-### Questão 2
+COMO USAR ESTE TREINO
+1. Responda primeiro todas as questões do CADERNO DE TREINO.
+2. Preencha sua resposta em cada questão.
+3. Só depois confira a seção CORREÇÃO E GABARITO COMENTADO.
+4. Marque os assuntos que errou para revisar no plano final.
+
+==================================================
+CADERNO DE TREINO - QUESTÕES REAIS PARA RESPONDER
+==================================================
+
+QUESTÃO 1
+Disciplina/assunto provável:
+Enunciado:
+
+Alternativas:
+A)
+B)
+C)
+D)
+E)
+
+Minha resposta: (   )
+Acertei: (   )
+Revisar: ______________________________________
+
+QUESTÃO 2
 ...
 
-## Folha de respostas do aluno
-Monte uma tabela com Questão | Minha resposta | Acertei? | Assunto para revisar.
+==================================================
+FOLHA DE RESPOSTAS DO ALUNO
+==================================================
 
-## Correção e gabarito comentado
-### Questão 1
-- Gabarito oficial:
-- Comentário:
-- Por que as outras alternativas estão erradas, se possível:
-- O que revisar:
+Questão 1 | Minha resposta: (   ) | Acertei: (   ) | Assunto para revisar: ______________________
+Questão 2 | Minha resposta: (   ) | Acertei: (   ) | Assunto para revisar: ______________________
+Questão 3 | Minha resposta: (   ) | Acertei: (   ) | Assunto para revisar: ______________________
 
-## Diagnóstico da prova
-## Assuntos mais cobrados
-## Plano de revisão de ${params.dias} dias
-## Questões extras inspiradas na prova, somente se necessário
+==================================================
+CORREÇÃO E GABARITO COMENTADO
+==================================================
+
+QUESTÃO 1
+Gabarito oficial:
+Comentário:
+Por que as outras alternativas estão erradas, se possível:
+O que revisar:
+
+QUESTÃO 2
+...
+
+==================================================
+DIAGNÓSTICO DA PROVA
+==================================================
+
+Assuntos mais cobrados:
+Perfil da banca:
+Pontos de atenção:
+
+==================================================
+PLANO DE REVISÃO DE ${params.dias} DIAS
+==================================================
+
+DIA 1
+Tarefa:
+Questões para refazer:
+Assuntos para revisar:
+
+DIA 2
+...
+
+==================================================
+QUESTÕES EXTRAS INSPIRADAS NA PROVA, SOMENTE SE NECESSÁRIO
+==================================================
 
 PROVA REAL EXTRAÍDA:
 ${prova}
