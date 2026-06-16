@@ -38,6 +38,7 @@ export function hashActivationToken(token: string) {
 
 export function planValidityDays(plan: string) {
   const normalized = normalizePlan(plan)
+  if (normalized === PLAN_FREE) return 7
   if (normalized === PLAN_CADERNOS_500) return 30
   if (normalized === PLAN_CADERNOS_QUESTOES) return 90
   if (normalized === PLAN_FULL) return 365
