@@ -19,11 +19,15 @@ export default function EsqueciSenhaPage() {
   const [sent, setSent] = useState(false)
   const [emailSent, setEmailSent] = useState<boolean | null>(null)
   const [message, setMessage] = useState('')
+  const [emailId, setEmailId] = useState('')
+  const [debugResetUrl, setDebugResetUrl] = useState('')
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({ resolver: zodResolver(schema) })
 
   async function onSubmit(data: Form) {
     setLoading(true)
     setMessage('')
+    setEmailId('')
+    setDebugResetUrl('')
     try {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
@@ -35,6 +39,8 @@ export default function EsqueciSenhaPage() {
       setSent(true)
       setEmailSent(json.emailSent === true)
       setMessage(json.message || 'Solicitação registrada.')
+      setEmailId(json.emailId || '')
+      setDebugResetUrl(json.debugResetUrl || '')
       toast.success(json.message || 'Solicitação registrada.')
     } finally {
       setLoading(false)
@@ -67,8 +73,10 @@ export default function EsqueciSenhaPage() {
           ) : (
             <div className="space-y-4">
               {emailSent ? (
-                <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-100">
-                  {message || 'Link enviado. Verifique seu e-mail e a caixa de spam.'}
+                <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-100 leading-relaxed">
+                  <div className="font-semibold mb-1">Solicitação enviada ao provedor de e-mail.</div>
+                  <div>{message || 'Verifique sua caixa de entrada, spam e promoções.'}</div>
+                  {emailId && <div className="mt-3 text-xs text-green-200 break-all">ID do envio: {emailId}</div>}
                 </div>
               ) : (
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100 leading-relaxed">
@@ -77,7 +85,16 @@ export default function EsqueciSenhaPage() {
                   <div className="mt-3 text-xs text-amber-200">Entre em contato com o suporte para receber ajuda na redefinição da senha.</div>
                 </div>
               )}
-              <button type="button" onClick={() => { setSent(false); setEmailSent(null); setMessage('') }} className="btn-secondary w-full h-11">Tentar outro e-mail</button>
+
+              {debugResetUrl && (
+                <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 text-xs text-blue-100 leading-relaxed">
+                  <div className="font-semibold mb-1">Modo diagnóstico ativo</div>
+                  <div>Use este link manualmente apenas para teste. Desative PASSWORD_RESET_DEBUG_LINK depois.</div>
+                  <a href={debugResetUrl} className="block mt-2 underline break-all text-blue-200">{debugResetUrl}</a>
+                </div>
+              )}
+
+              <button type="button" onClick={() => { setSent(false); setEmailSent(null); setMessage(''); setEmailId(''); setDebugResetUrl('') }} className="btn-secondary w-full h-11">Tentar outro e-mail</button>
             </div>
           )}
 
