@@ -17,16 +17,29 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#039;')
 }
 
+async function findUserByEmail(email: string) {
+  const normalized = email.trim().toLowerCase()
+  const rows = await prisma.$queryRawUnsafe<any[]>(`
+    SELECT id, email
+    FROM users
+    WHERE lower(email) = lower($1)
+    LIMIT 1;
+  `, normalized).catch(() => [])
+  return rows?.[0] || null
+}
+
 async function sendResetEmail(to: string, url: string) {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) return { sent: false, reason: 'missing_resend_key' }
 
   const from = process.env.ACCESS_EMAIL_FROM || 'GabaritoIA <onboarding@resend.dev>'
   const html = `
-    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827;max-width:560px;margin:0 auto">
       <h2>Redefinir senha do GabaritoIA</h2>
       <p>Recebemos uma solicitação para redefinir sua senha.</p>
       <p><a href="${escapeHtml(url)}" style="display:inline-block;background:#7c3aed;color:#fff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Criar nova senha</a></p>
+      <p>Se o botão não abrir, copie e cole este link no navegador:</p>
+      <p style="word-break:break-all;font-size:12px;color:#4b5563">${escapeHtml(url)}</p>
       <p>Este link expira em 2 horas.</p>
       <p>Se você não solicitou isso, ignore este e-mail.</p>
     </div>
@@ -49,10 +62,10 @@ async function sendResetEmail(to: string, url: string) {
   if (!response.ok) {
     const error = await response.text().catch(() => '')
     console.warn('[forgot password email not sent]', error)
-    return { sent: false, reason: 'email_error' }
+    return { sent: false, reason: 'email_error', details: error.slice(0, 300) }
   }
 
-  return { sent: true }
+  return { sent: true, reason: 'sent' }
 }
 
 export async function POST(req: NextRequest) {
@@ -74,7 +87,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Muitas tentativas. Tente novamente em ${minutes} min.` }, { status: 429 })
     }
 
-    const user = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true, email: true } })
+    const user = await findUserByEmail(normalizedEmail)
 
     if (user) {
       const reset = await createPasswordResetToken(user.id, user.email)
@@ -82,13 +95,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         emailSent: emailResult.sent,
+        reason: emailResult.reason,
         message: emailResult.sent
-          ? 'Enviamos um link para redefinir sua senha.'
-          : 'Solicitação registrada. O envio automático de e-mail ainda precisa ser configurado no Resend.',
+          ? 'Enviamos um link para redefinir sua senha. Verifique sua caixa de entrada e spam.'
+          : 'A solicitação foi registrada, mas o envio automático de e-mail não está funcionando. Avise o suporte para configurar o envio de e-mails.',
       })
     }
 
-    return NextResponse.json({ ok: true, emailSent: true, message: 'Se este e-mail existir, enviaremos um link para redefinir a senha.' })
+    return NextResponse.json({
+      ok: true,
+      emailSent: true,
+      message: 'Se este e-mail existir, enviaremos um link para redefinir a senha.',
+    })
   } catch (e) {
     if (e instanceof z.ZodError) return NextResponse.json({ error: 'Informe um e-mail válido.' }, { status: 400 })
     console.error('[forgot password]', e)
