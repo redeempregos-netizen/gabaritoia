@@ -17,6 +17,10 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#039;')
 }
 
+function shouldExposeDebugLink() {
+  return process.env.PASSWORD_RESET_DEBUG_LINK === 'true'
+}
+
 async function findUserByEmail(email: string) {
   const normalized = email.trim().toLowerCase()
   const rows = await prisma.$queryRawUnsafe<any[]>(`
@@ -59,13 +63,15 @@ async function sendResetEmail(to: string, url: string) {
     }),
   })
 
+  const body = await response.text().catch(() => '')
   if (!response.ok) {
-    const error = await response.text().catch(() => '')
-    console.warn('[forgot password email not sent]', error)
-    return { sent: false, reason: 'email_error', details: error.slice(0, 300) }
+    console.warn('[forgot password email not sent]', body)
+    return { sent: false, reason: 'email_error', details: body.slice(0, 300) }
   }
 
-  return { sent: true, reason: 'sent' }
+  let emailId = ''
+  try { emailId = JSON.parse(body)?.id || '' } catch {}
+  return { sent: true, reason: 'accepted_by_resend', emailId }
 }
 
 export async function POST(req: NextRequest) {
@@ -96,8 +102,10 @@ export async function POST(req: NextRequest) {
         ok: true,
         emailSent: emailResult.sent,
         reason: emailResult.reason,
+        emailId: emailResult.emailId || undefined,
+        debugResetUrl: shouldExposeDebugLink() ? reset.url : undefined,
         message: emailResult.sent
-          ? 'Enviamos um link para redefinir sua senha. Verifique sua caixa de entrada e spam.'
+          ? 'O envio foi aceito pelo provedor de e-mail. Verifique caixa de entrada, spam e promoções. Se não chegar, confira os logs do Resend e o domínio remetente.'
           : 'A solicitação foi registrada, mas o envio automático de e-mail não está funcionando. Avise o suporte para configurar o envio de e-mails.',
       })
     }
