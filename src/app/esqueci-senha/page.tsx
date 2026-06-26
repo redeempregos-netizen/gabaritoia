@@ -18,10 +18,12 @@ export default function EsqueciSenhaPage() {
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [emailSent, setEmailSent] = useState<boolean | null>(null)
+  const [message, setMessage] = useState('')
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({ resolver: zodResolver(schema) })
 
   async function onSubmit(data: Form) {
     setLoading(true)
+    setMessage('')
     try {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
@@ -32,6 +34,7 @@ export default function EsqueciSenhaPage() {
       if (!res.ok) { toast.error(json.error || 'Não foi possível solicitar recuperação.'); return }
       setSent(true)
       setEmailSent(json.emailSent === true)
+      setMessage(json.message || 'Solicitação registrada.')
       toast.success(json.message || 'Solicitação registrada.')
     } finally {
       setLoading(false)
@@ -63,14 +66,18 @@ export default function EsqueciSenhaPage() {
             </form>
           ) : (
             <div className="space-y-4">
-              <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-100">
-                Solicitação registrada. Verifique seu e-mail para criar uma nova senha.
-              </div>
-              {emailSent === false && (
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs text-amber-100 leading-relaxed">
-                  O envio automático de e-mail ainda precisa estar configurado no Resend com domínio verificado. Enquanto isso, peça suporte para gerar um novo acesso.
+              {emailSent ? (
+                <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-100">
+                  {message || 'Link enviado. Verifique seu e-mail e a caixa de spam.'}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100 leading-relaxed">
+                  <div className="font-semibold mb-1">Não foi possível enviar o e-mail automaticamente.</div>
+                  <div>{message || 'A solicitação foi registrada, mas o envio automático de e-mail precisa ser configurado.'}</div>
+                  <div className="mt-3 text-xs text-amber-200">Entre em contato com o suporte para receber ajuda na redefinição da senha.</div>
                 </div>
               )}
+              <button type="button" onClick={() => { setSent(false); setEmailSent(null); setMessage('') }} className="btn-secondary w-full h-11">Tentar outro e-mail</button>
             </div>
           )}
 
