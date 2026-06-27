@@ -14,7 +14,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   })
   if (!user) redirect('/login')
 
-  const userMobileNav = [
+  const commonMobileNav = [
     { href: '/dashboard', label: 'Painel', emoji: '⊞' },
     { href: '/conta', label: 'Minha Conta', emoji: '👤' },
     { href: '/gerar', label: 'Gerar Questão', emoji: '✦' },
@@ -22,31 +22,26 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/prova-real', label: 'Prova Real', emoji: '📝' },
     { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
     { href: '/leitor-pdf', label: 'Leitor PDF', emoji: '📖' },
-    { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
-    { href: '/suporte', label: 'Suporte', emoji: '🆘' },
-  ]
-
-  const adminMobileNav = [
-    { href: '/dashboard', label: 'Painel', emoji: '⊞' },
-    { href: '/conta', label: 'Minha Conta', emoji: '👤' },
-    { href: '/gerar', label: 'Gerar Questão', emoji: '✦' },
-    { href: '/cadernos', label: 'Cadernos PDF', emoji: '📚' },
-    { href: '/leitor-pdf', label: 'Leitor PDF', emoji: '📖' },
-    { href: '/plano-questoes', label: 'Plano de Questões', emoji: '🎯' },
-    { href: '/prova-real', label: 'Prova Real', emoji: '📝' },
-    { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
-    { href: '/suporte', label: 'Suporte', emoji: '🆘' },
-    { href: '/admin/suporte', label: 'Admin Suporte', emoji: '📬' },
-    { href: '/historico', label: 'Histórico', emoji: '🕘' },
     { href: '/mapas', label: 'Mapas Mentais', emoji: '🧠' },
     { href: '/edital', label: 'Edital Verticalizado', emoji: '📄' },
     { href: '/edital-pro', label: 'Edital Pro', emoji: '🚀' },
-    { href: '/admin', label: 'Administração', emoji: '⚙️' },
-    { href: '/admin/usuarios', label: 'Usuários', emoji: '👥' },
-    { href: '/admin/custos', label: 'Custos IA', emoji: '💰' },
+    { href: '/gerados', label: 'Meus Gerados', emoji: '📁' },
+    { href: '/historico', label: 'Histórico', emoji: '🕘' },
+    { href: '/suporte', label: 'Suporte', emoji: '🆘' },
   ]
 
-  const mobileNav = user.role === 'ADMIN' ? adminMobileNav : userMobileNav
+  const adminExtraMobileNav = [
+    { href: '/admin', label: 'Administração', emoji: '⚙️' },
+    { href: '/admin/usuarios', label: 'Usuários', emoji: '👥' },
+    { href: '/admin/creditos', label: 'Créditos', emoji: '⚡' },
+    { href: '/admin/custos', label: 'Custos IA', emoji: '💰' },
+    { href: '/admin/acessos', label: 'Acessos', emoji: '🔑' },
+    { href: '/admin/reports', label: 'Relatórios', emoji: '📊' },
+    { href: '/admin/suporte', label: 'Admin Suporte', emoji: '📬' },
+    { href: '/admin/ia-recursos', label: 'IA Recursos', emoji: '🤖' },
+  ]
+
+  const mobileNav = user.role === 'ADMIN' ? [...commonMobileNav, ...adminExtraMobileNav] : commonMobileNav
 
   return (
     <div className="flex h-screen overflow-hidden">
