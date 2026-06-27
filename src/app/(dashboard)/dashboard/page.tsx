@@ -6,37 +6,79 @@ import Link from 'next/link'
 import { ResetDashboardButton } from '@/components/dashboard/ResetDashboardButton'
 import { canAccessRoute } from '@/lib/plans'
 
+type SummaryRow = {
+  total: number
+  correct: number
+  today: number
+}
+
+type AreaRow = {
+  area: string
+  total: number
+  correct: number
+}
+
+type RecentRow = {
+  id: string
+  isCorrect: boolean
+  createdAt: Date
+  area: string
+  banca: string
+}
+
 export default async function DashboardPage() {
   const session = await getSession()
   if (!session) redirect('/login')
 
-  const [user, answers] = await Promise.all([
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+  const startOfToday = new Date(`${today}T00:00:00-03:00`)
+
+  const [user, summaryRows, areaRows, recentAnswers] = await Promise.all([
     prisma.user.findUnique({ where: { id: session.userId } }),
-    prisma.answer.findMany({
-      where: { userId: session.userId },
-      include: { question: { select: { area: true, banca: true, difficulty: true } } },
-      orderBy: { createdAt: 'desc' },
-    }),
+    prisma.$queryRawUnsafe<SummaryRow[]>(`
+      SELECT
+        COUNT(*)::int AS total,
+        COALESCE(SUM(CASE WHEN "isCorrect" = true THEN 1 ELSE 0 END), 0)::int AS correct,
+        COALESCE(SUM(CASE WHEN "createdAt" >= $2 THEN 1 ELSE 0 END), 0)::int AS today
+      FROM answers
+      WHERE "userId" = $1
+    `, session.userId, startOfToday),
+    prisma.$queryRawUnsafe<AreaRow[]>(`
+      SELECT q.area AS area,
+             COUNT(a.id)::int AS total,
+             COALESCE(SUM(CASE WHEN a."isCorrect" = true THEN 1 ELSE 0 END), 0)::int AS correct
+      FROM answers a
+      JOIN questions q ON q.id = a."questionId"
+      WHERE a."userId" = $1
+      GROUP BY q.area
+      ORDER BY correct DESC, total DESC
+      LIMIT 5
+    `, session.userId),
+    prisma.$queryRawUnsafe<RecentRow[]>(`
+      SELECT a.id,
+             a."isCorrect",
+             a."createdAt",
+             q.area,
+             q.banca
+      FROM answers a
+      JOIN questions q ON q.id = a."questionId"
+      WHERE a."userId" = $1
+      ORDER BY a."createdAt" DESC
+      LIMIT 6
+    `, session.userId),
   ])
   if (!user) redirect('/login')
 
-  const total = answers.length
-  const correct = answers.filter(a => a.isCorrect).length
+  const summary = summaryRows[0] || { total: 0, correct: 0, today: 0 }
+  const total = Number(summary.total || 0)
+  const correct = Number(summary.correct || 0)
   const pct = total ? Math.round(correct / total * 100) : 0
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
-  const todayAns = answers.filter(a => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(a.createdAt) === today).length
+  const todayAns = Number(summary.today || 0)
 
-  const areaMap: Record<string, { total: number; correct: number }> = {}
-  answers.forEach(a => {
-    const area = a.question.area
-    if (!areaMap[area]) areaMap[area] = { total: 0, correct: 0 }
-    areaMap[area].total++
-    if (a.isCorrect) areaMap[area].correct++
-  })
-  const topAreas = Object.entries(areaMap)
-    .map(([area, d]) => ({ area, pct: Math.round(d.correct / d.total * 100) }))
-    .sort((a, b) => b.pct - a.pct)
-    .slice(0, 5)
+  const topAreas = areaRows.map(a => ({
+    area: a.area || 'Geral',
+    pct: a.total ? Math.round(Number(a.correct || 0) / Number(a.total || 1) * 100) : 0,
+  }))
 
   const hour = Number(new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }).format(new Date()))
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
@@ -103,17 +145,17 @@ export default async function DashboardPage() {
 
         <div className="card p-5">
           <h2 className="font-heading text-sm font-semibold text-brand-300 mb-4">Últimas questões</h2>
-          {answers.length === 0 ? (
+          {recentAnswers.length === 0 ? (
             <div className="text-center py-6">
               <p className="text-sm text-zinc-500 mb-3">Nenhuma questão respondida ainda.</p>
               <Link href="/gerar" className="btn-primary text-sm px-4 py-2 inline-flex">Gerar primeira questão</Link>
             </div>
-          ) : answers.slice(0, 6).map(a => (
+          ) : recentAnswers.map(a => (
             <div key={a.id} className="flex items-center gap-3 py-2 border-b border-white/[0.05] last:border-0">
               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${a.isCorrect ? 'bg-green-500' : 'bg-red-500'}`} />
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium truncate">{a.question.area}</div>
-                <div className="text-[10px] text-zinc-500">{a.question.banca} · {a.createdAt.toLocaleDateString('pt-BR')}</div>
+                <div className="text-xs font-medium truncate">{a.area}</div>
+                <div className="text-[10px] text-zinc-500">{a.banca} · {new Date(a.createdAt).toLocaleDateString('pt-BR')}</div>
               </div>
               <span className={`text-[10px] px-2 py-0.5 rounded-full ${a.isCorrect ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
                 {a.isCorrect ? 'Certa' : 'Errada'}
