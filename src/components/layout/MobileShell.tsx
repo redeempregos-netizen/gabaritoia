@@ -3,29 +3,15 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronRight, Lock, LogOut, Menu, X, Zap, Download } from 'lucide-react'
+import { ChevronRight, Lock, LogOut, Menu, X, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canAccessRoute, getPlanLabel } from '@/lib/plans'
 
-type MobileItem = {
-  href: string
-  label: string
-  emoji: string
-}
+type MobileItem = { href: string; label: string; emoji: string }
 
 type MobileShellProps = {
-  user: {
-    name: string
-    email: string
-    role: string
-    plan: string
-  }
+  user: { name: string; email: string; role: string; plan: string }
   nav: MobileItem[]
-}
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
 }
 
 function isMobileViewport() {
@@ -39,9 +25,11 @@ export function MobileShell({ user, nav }: MobileShellProps) {
   const [open, setOpen] = useState(false)
   const [credits, setCredits] = useState<number | null>(null)
   const [claiming, setClaiming] = useState(false)
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
 
-  const navWithLock = useMemo(() => nav.map(item => ({ ...item, locked: user.role !== 'ADMIN' && !canAccessRoute(user.plan, item.href) })), [nav, user.plan, user.role])
+  const navWithLock = useMemo(
+    () => nav.map(item => ({ ...item, locked: user.role !== 'ADMIN' && !canAccessRoute(user.plan, item.href) })),
+    [nav, user.plan, user.role]
+  )
   const bottomNav = useMemo(() => navWithLock.filter(item => !item.locked).slice(0, 4), [navWithLock])
 
   useEffect(() => {
@@ -52,28 +40,7 @@ export function MobileShell({ user, nav }: MobileShellProps) {
       .catch(() => {})
   }, [])
 
-  useEffect(() => {
-    const onBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault()
-      setInstallPrompt(event as BeforeInstallPromptEvent)
-    }
-    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
-    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
-  }, [])
-
-  useEffect(() => {
-    setOpen(false)
-  }, [pathname])
-
-  async function installApp() {
-    if (!installPrompt) {
-      alert('No Android/Chrome: toque no menu ⋮ e escolha “Adicionar à tela inicial”. No iPhone/Safari: toque em Compartilhar e depois “Adicionar à Tela de Início”.')
-      return
-    }
-    await installPrompt.prompt()
-    await installPrompt.userChoice.catch(() => null)
-    setInstallPrompt(null)
-  }
+  useEffect(() => { setOpen(false) }, [pathname])
 
   async function claimBonus() {
     setClaiming(true)
@@ -86,7 +53,7 @@ export function MobileShell({ user, nav }: MobileShellProps) {
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setCredits(typeof data.credits === 'number' ? data.credits : credits)
-        alert(`+${data.amount || 20} créditos! Bônus diário resgatado 🎉`)
+        alert(`+${data.amount || 20} créditos! Bônus diário resgatado`)
       } else {
         alert(data.error || 'Não foi possível resgatar os créditos agora.')
       }
@@ -144,19 +111,8 @@ export function MobileShell({ user, nav }: MobileShellProps) {
                   <div className="rounded-xl bg-black/20 border border-white/10 p-2"><div className="text-zinc-500 text-[10px] mb-0.5">Créditos</div><div className="font-semibold text-amber-300">{credits ?? '-'}</div></div>
                 </div>
                 <button onClick={claimBonus} disabled={claiming} className="mt-3 w-full rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-300 active:scale-[0.99] disabled:opacity-50">
-                  {claiming ? 'Resgatando...' : '🎁 Resgatar 20 créditos'}
+                  {claiming ? 'Resgatando...' : 'Resgatar 20 créditos'}
                 </button>
-              </div>
-
-              <div className="mt-3 rounded-2xl border border-brand-500/20 bg-brand-500/10 p-3">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 rounded-xl bg-brand-500/20 p-2 text-brand-200"><Download size={16} /></div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-brand-100">Instalar aplicativo</div>
-                    <div className="text-xs text-brand-100/70 mt-1">Crie um atalho do GabaritoIA na tela inicial do celular.</div>
-                    <button onClick={installApp} className="mt-3 w-full rounded-xl bg-brand-600 px-3 py-2 text-xs font-bold text-white active:scale-[0.99]">Instalar / Ver instruções</button>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -165,7 +121,7 @@ export function MobileShell({ user, nav }: MobileShellProps) {
               {navWithLock.map(item => {
                 const active = !item.locked && (pathname === item.href || pathname.startsWith(item.href + '/'))
                 return (
-                  <Link key={item.href} href={item.locked ? '/conta' : item.href} className={cn('flex items-center gap-3 rounded-2xl px-3 py-3 text-sm transition-colors border', active ? 'bg-brand-500/10 border-brand-500/20 text-brand-200' : item.locked ? 'bg-amber-500/5 border-amber-500/15 text-zinc-300 active:bg-amber-500/10' : 'bg-zinc-900/40 border-white/[0.06] text-zinc-300 active:bg-zinc-800')}>
+                  <Link prefetch={false} key={item.href} href={item.locked ? '/conta' : item.href} className={cn('flex items-center gap-3 rounded-2xl px-3 py-3 text-sm transition-colors border', active ? 'bg-brand-500/10 border-brand-500/20 text-brand-200' : item.locked ? 'bg-amber-500/5 border-amber-500/15 text-zinc-300 active:bg-amber-500/10' : 'bg-zinc-900/40 border-white/[0.06] text-zinc-300 active:bg-zinc-800')}>
                     <span className="text-lg w-6 text-center">{item.emoji}</span><span className="flex-1 font-medium">{item.label}</span>{item.locked ? <Lock size={15} className="text-amber-400" /> : <ChevronRight size={15} className="text-zinc-600" />}
                   </Link>
                 )
@@ -181,7 +137,7 @@ export function MobileShell({ user, nav }: MobileShellProps) {
         <div className="flex">
           {bottomNav.map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
-            return <Link key={item.href} href={item.href} className={cn('flex-1 flex flex-col items-center justify-center py-2.5 transition-colors rounded-xl my-1 min-w-0', active ? 'text-brand-300 bg-brand-500/10' : 'text-zinc-500 active:text-brand-400')}><span className="text-lg leading-none">{item.emoji}</span><span className="text-[9px] mt-0.5 font-medium leading-none truncate max-w-full px-0.5">{item.label}</span></Link>
+            return <Link prefetch={false} key={item.href} href={item.href} className={cn('flex-1 flex flex-col items-center justify-center py-2.5 transition-colors rounded-xl my-1 min-w-0', active ? 'text-brand-300 bg-brand-500/10' : 'text-zinc-500 active:text-brand-400')}><span className="text-lg leading-none">{item.emoji}</span><span className="text-[9px] mt-0.5 font-medium leading-none truncate max-w-full px-0.5">{item.label}</span></Link>
           })}
           <button onClick={() => setOpen(true)} className="flex-1 flex flex-col items-center justify-center py-2.5 rounded-xl my-1 text-zinc-500 active:text-brand-400"><span className="text-lg leading-none">☰</span><span className="text-[9px] mt-0.5 font-medium leading-none">Menu</span></button>
         </div>
