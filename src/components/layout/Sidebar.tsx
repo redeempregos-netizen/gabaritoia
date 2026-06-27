@@ -18,6 +18,11 @@ type NavItem = {
   badge?: string
 }
 
+function isDesktopViewport() {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia('(min-width: 768px)').matches
+}
+
 const COMMON_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/conta',      label: 'Minha Conta',         icon: UserCircle },
@@ -61,6 +66,7 @@ export function Sidebar({ user }: SidebarProps) {
   const nav: NavItem[] = user.role === 'ADMIN' ? ADMIN_NAV : USER_NAV
 
   useEffect(() => {
+    if (!isDesktopViewport()) return
     fetch('/api/credits')
       .then(r => r.json())
       .then(d => setCredits(d.credits))
