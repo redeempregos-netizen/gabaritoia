@@ -6,7 +6,7 @@ import { canAccessRoute, getPlanLabel } from '@/lib/plans'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
   History, Settings, LogOut, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target, UserCircle, Lock, HelpCircle,
-  Users, KeyRound, BarChart3, Bot,
+  Users, KeyRound, BarChart3, Bot, CreditCard,
   type LucideIcon
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -39,6 +39,7 @@ const ADMIN_EXTRA_NAV: NavItem[] = [
   { href: '/admin/usuarios', label: 'Usuários', icon: Users },
   { href: '/admin/creditos', label: 'Créditos', icon: Zap },
   { href: '/admin/custos', label: 'Custos IA', icon: DollarSign },
+  { href: '/admin/assinaturas', label: 'Assinaturas', icon: CreditCard },
   { href: '/admin/acessos', label: 'Acessos', icon: KeyRound },
   { href: '/admin/reports', label: 'Relatórios', icon: BarChart3 },
   { href: '/admin/suporte', label: 'Admin Suporte', icon: HelpCircle },
