@@ -3,7 +3,10 @@ import { createHash } from 'crypto'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const PARSER_VERSION = 'question-book-parser-v5-no-cache-strict-options'
+const PARSER_VERSION = 'question-book-parser-v6-fast-batch-import'
+const MAX_IMPORT_CHARS = 2_500_000
+const MAX_IMPORTED_QUESTIONS = 1200
+const INSERT_CHUNK_SIZE = 100
 
 async function ensureTables() {
   await prisma.$executeRawUnsafe(`
@@ -19,6 +22,7 @@ async function ensureTables() {
   `)
   await prisma.$executeRawUnsafe(`ALTER TABLE imported_question_books ADD COLUMN IF NOT EXISTS source_hash TEXT;`)
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_question_books_user_hash_idx ON imported_question_books(user_id, source_hash);`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_question_books_user_created_idx ON imported_question_books(user_id, created_at DESC);`)
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS imported_questions (
       id TEXT PRIMARY KEY,
@@ -37,6 +41,8 @@ async function ensureTables() {
       created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_questions_book_user_idx ON imported_questions(book_id, user_id);`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_questions_user_book_number_idx ON imported_questions(user_id, book_id, number);`)
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS imported_question_answers (
       id TEXT PRIMARY KEY,
@@ -47,6 +53,7 @@ async function ensureTables() {
       created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_question_answers_user_question_idx ON imported_question_answers(user_id, question_id);`)
 }
 
 function cleanText(s: string) {
@@ -216,11 +223,12 @@ function isValidParsedQuestion(q: any) {
 }
 
 function extractQuestions(fullText: string) {
-  const text = cleanText(fullText)
+  const text = cleanText(fullText.slice(0, MAX_IMPORT_CHARS))
   const pageChunks = text.split(/---\s*P[ÁA]GINA\s+\d+\s*---/i).map(cleanText).filter(Boolean)
   const questions: any[] = []
 
   for (let i = 0; i < pageChunks.length; i++) {
+    if (questions.length >= MAX_IMPORTED_QUESTIONS) break
     const current = pageChunks[i]
     if (!/ID:\s*/i.test(current) || !/Alternativas/i.test(current)) continue
     const next = pageChunks[i + 1] || ''
@@ -231,6 +239,7 @@ function extractQuestions(fullText: string) {
   if (!questions.length) {
     const blocks = text.split(/(?=\s*ID:\s*)/i)
     for (const block of blocks) {
+      if (questions.length >= MAX_IMPORTED_QUESTIONS) break
       if (!/ID:\s*/i.test(block)) continue
       const parsed = parseQuestionBlock(block, '')
       if (isValidParsedQuestion(parsed)) questions.push(parsed)
@@ -246,21 +255,53 @@ function extractQuestions(fullText: string) {
   })
 }
 
+function chunk<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
+  return chunks
+}
+
 async function createBookFromParsed(userId: string, title: string, parsed: any[], hash: string) {
   const bookId = crypto.randomUUID()
   const area = parsed[0]?.topic?.split(' ')[0] || 'Questões'
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO imported_question_books (id, user_id, title, area, total_questions, source_hash) VALUES ($1, $2, $3, $4, $5, $6)`,
-    bookId, userId, title, area, parsed.length, hash
-  )
-  for (const q of parsed) {
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO imported_questions (id, book_id, user_id, number, external_id, topic, exam, banca, statement, options_json, correct_answer, correct_index, comment)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13)`,
-      crypto.randomUUID(), bookId, userId, q.number, q.externalId, q.topic, q.exam, q.banca, q.statement,
-      JSON.stringify(q.options), q.correctAnswer, q.correctIndex, q.comment
+
+  await prisma.$transaction(async tx => {
+    await tx.$executeRawUnsafe(
+      `INSERT INTO imported_question_books (id, user_id, title, area, total_questions, source_hash) VALUES ($1, $2, $3, $4, $5, $6)`,
+      bookId, userId, title, area, parsed.length, hash
     )
-  }
+
+    for (const group of chunk(parsed, INSERT_CHUNK_SIZE)) {
+      const values: string[] = []
+      const params: any[] = []
+
+      group.forEach(q => {
+        const base = params.length
+        values.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10}::jsonb,$${base + 11},$${base + 12},$${base + 13})`)
+        params.push(
+          crypto.randomUUID(),
+          bookId,
+          userId,
+          q.number,
+          q.externalId,
+          q.topic,
+          q.exam,
+          q.banca,
+          q.statement,
+          JSON.stringify(q.options),
+          q.correctAnswer,
+          q.correctIndex,
+          q.comment
+        )
+      })
+
+      await tx.$executeRawUnsafe(
+        `INSERT INTO imported_questions (id, book_id, user_id, number, external_id, topic, exam, banca, statement, options_json, correct_answer, correct_index, comment) VALUES ${values.join(',')}`,
+        ...params
+      )
+    }
+  }, { timeout: 60000 })
+
   return { id: bookId, title, totalQuestions: parsed.length }
 }
 
@@ -270,19 +311,25 @@ export async function GET() {
   await ensureTables()
   const books = await prisma.$queryRawUnsafe<any[]>(`
     SELECT b.id, b.title, b.area, b.total_questions AS "totalQuestions", b.created_at AS "createdAt",
-      COALESCE(SUM(CASE WHEN a.is_correct = true THEN 1 ELSE 0 END), 0)::int AS correct,
-      COUNT(a.id)::int AS answered
+      COALESCE(stats.correct, 0)::int AS correct,
+      COALESCE(stats.answered, 0)::int AS answered
     FROM imported_question_books b
-    LEFT JOIN imported_questions q ON q.book_id = b.id
-    LEFT JOIN imported_question_answers a ON a.question_id = q.id AND a.user_id = $1
+    LEFT JOIN LATERAL (
+      SELECT
+        SUM(CASE WHEN a.is_correct = true THEN 1 ELSE 0 END)::int AS correct,
+        COUNT(a.id)::int AS answered
+      FROM imported_questions q
+      LEFT JOIN imported_question_answers a ON a.question_id = q.id AND a.user_id = $1
+      WHERE q.book_id = b.id AND q.user_id = $1
+    ) stats ON true
     WHERE b.user_id = $1
-    GROUP BY b.id
     ORDER BY b.created_at DESC
   `, session.userId)
   return NextResponse.json({ ok: true, books })
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now()
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
   await ensureTables()
@@ -291,13 +338,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
 
     if (body?.action === 'import') {
-      const title = String(body.title || 'Caderno de questões importado')
+      const title = String(body.title || 'Caderno de questões importado').slice(0, 180)
       const extractedText = String(body.text || '')
       if (extractedText.length < 50) return NextResponse.json({ error: 'Texto insuficiente para importar.' }, { status: 400 })
+      if (extractedText.length > MAX_IMPORT_CHARS) {
+        console.warn('[question-books] texto muito grande, cortando importacao', { userId: session.userId, chars: extractedText.length })
+      }
 
+      const limitedText = extractedText.slice(0, MAX_IMPORT_CHARS)
       const fileHash = normalizeHash(body.fileHash)
-      const hash = fileHash || sourceHash(extractedText)
-      const textHash = sourceHash(extractedText)
+      const hash = fileHash || sourceHash(limitedText)
+      const textHash = sourceHash(limitedText)
       const possibleHashes = Array.from(new Set([hash, textHash].filter(Boolean)))
       const existingPlaceholders = possibleHashes.map((_, i) => `$${i + 2}`).join(', ')
 
@@ -310,11 +361,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, alreadyImported: true, book: { ...existing[0] } })
       }
 
-      const parsed = extractQuestions(extractedText)
+      const parsed = extractQuestions(limitedText)
       if (!parsed.length) return NextResponse.json({ error: 'Não encontrei questões válidas com alternativas e gabarito neste PDF.' }, { status: 400 })
 
       const book = await createBookFromParsed(session.userId, title, parsed, hash)
-      return NextResponse.json({ ok: true, book })
+      console.info('[question-books] importacao concluida', { userId: session.userId, questions: parsed.length, ms: Date.now() - startedAt })
+      return NextResponse.json({ ok: true, book, limited: extractedText.length > MAX_IMPORT_CHARS })
     }
 
     if (body?.action === 'delete') {
