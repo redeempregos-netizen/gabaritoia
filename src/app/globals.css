@@ -9,20 +9,41 @@
     --border: 255 255 255 / 0.07;
     --accent: 124 106 247;
   }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
 @layer components {
   .btn-primary {
     @apply bg-gradient-to-r from-brand-600 to-purple-600 text-white font-semibold rounded-xl px-6 py-3 transition-all hover:opacity-90 hover:-translate-y-0.5 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none;
+    min-height: 44px;
   }
   .btn-secondary {
     @apply bg-zinc-800 border border-zinc-700 text-zinc-200 font-medium rounded-xl px-4 py-2.5 text-sm transition-all hover:bg-zinc-700 hover:border-zinc-600 active:scale-95;
+    min-height: 42px;
   }
   .card {
     @apply bg-zinc-900 border border-white/[0.07] rounded-2xl;
   }
   .input {
     @apply w-full bg-zinc-800/80 border border-white/10 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-brand-500 transition-colors;
+    min-height: 44px;
   }
   .label {
     @apply block text-xs font-medium text-zinc-400 mb-1.5;
@@ -35,9 +56,14 @@
   }
   .sidebar-item {
     @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-zinc-400 text-sm font-medium cursor-pointer transition-all hover:bg-zinc-800 hover:text-zinc-100;
+    min-height: 42px;
   }
   .sidebar-item-active {
     @apply bg-brand-500/15 text-brand-300;
+  }
+
+  .mobile-scroll-safe {
+    padding-bottom: 10rem;
   }
 }
 
@@ -55,6 +81,14 @@
 
 /* Edital verticalizado: tabela vira cards no mobile */
 @media (max-width: 768px) {
+  main {
+    padding-bottom: 10rem !important;
+  }
+
+  body {
+    overscroll-behavior-y: contain;
+  }
+
   table.min-w-\[920px\] {
     min-width: 0 !important;
     width: 100% !important;
