@@ -35,6 +35,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { href: '/admin/usuarios', label: 'Usuários', emoji: '👥' },
     { href: '/admin/creditos', label: 'Créditos', emoji: '⚡' },
     { href: '/admin/custos', label: 'Custos IA', emoji: '💰' },
+    { href: '/admin/assinaturas', label: 'Assinaturas', emoji: '💳' },
     { href: '/admin/acessos', label: 'Acessos', emoji: '🔑' },
     { href: '/admin/reports', label: 'Relatórios', emoji: '📊' },
     { href: '/admin/suporte', label: 'Admin Suporte', emoji: '📬' },
