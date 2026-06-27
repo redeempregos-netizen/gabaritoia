@@ -28,6 +28,11 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
 }
 
+function isMobileViewport() {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia('(max-width: 767px)').matches
+}
+
 export function MobileShell({ user, nav }: MobileShellProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -40,6 +45,7 @@ export function MobileShell({ user, nav }: MobileShellProps) {
   const bottomNav = useMemo(() => navWithLock.filter(item => !item.locked).slice(0, 4), [navWithLock])
 
   useEffect(() => {
+    if (!isMobileViewport()) return
     fetch('/api/credits')
       .then(r => r.json())
       .then(d => setCredits(typeof d.credits === 'number' ? d.credits : null))
