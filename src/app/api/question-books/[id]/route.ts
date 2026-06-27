@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+const DEFAULT_LIMIT = 80
+const MAX_LIMIT = 150
+
 async function ensureTables() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS imported_question_books (
@@ -42,6 +45,9 @@ async function ensureTables() {
       created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_questions_book_user_idx ON imported_questions(book_id, user_id);`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_questions_user_book_number_idx ON imported_questions(user_id, book_id, number);`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_question_answers_user_question_idx ON imported_question_answers(user_id, question_id);`)
 }
 
 const KNOWN_BANCAS = [
@@ -102,10 +108,26 @@ function normalizeCorrectIndex(row: any) {
   return Number.isFinite(stored) ? stored : -1
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+function getLimit(req: NextRequest) {
+  const raw = Number(req.nextUrl.searchParams.get('limit') || DEFAULT_LIMIT)
+  if (!Number.isFinite(raw)) return DEFAULT_LIMIT
+  return Math.max(1, Math.min(MAX_LIMIT, Math.floor(raw)))
+}
+
+function getOffset(req: NextRequest) {
+  const raw = Number(req.nextUrl.searchParams.get('offset') || 0)
+  if (!Number.isFinite(raw)) return 0
+  return Math.max(0, Math.floor(raw))
+}
+
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const startedAt = Date.now()
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
   await ensureTables()
+
+  const limit = getLimit(req)
+  const offset = getOffset(req)
 
   const books = await prisma.$queryRawUnsafe<any[]>(`
     SELECT id, title, area, total_questions AS "totalQuestions", created_at AS "createdAt"
@@ -116,27 +138,53 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const book = books[0]
   if (!book) return NextResponse.json({ error: 'Caderno não encontrado.' }, { status: 404 })
 
-  const questions = await prisma.$queryRawUnsafe<any[]>(`
-    SELECT q.id, q.number, q.external_id AS "externalId", q.topic, q.exam, q.banca, q.statement,
-      q.options_json AS options, q.correct_answer AS "correctAnswer", q.correct_index AS "correctIndex", q.comment,
-      a.selected_index AS "selectedIndex", a.is_correct AS "isCorrect", a.created_at AS "answeredAt"
-    FROM imported_questions q
-    LEFT JOIN LATERAL (
-      SELECT selected_index, is_correct, created_at
-      FROM imported_question_answers
-      WHERE user_id = $2 AND question_id = q.id
-      ORDER BY created_at DESC
-      LIMIT 1
-    ) a ON true
-    WHERE q.book_id = $1 AND q.user_id = $2
-    ORDER BY q.number ASC
-  `, params.id, session.userId)
+  const [statRows, questions] = await Promise.all([
+    prisma.$queryRawUnsafe<any[]>(`
+      SELECT
+        COUNT(q.id)::int AS total,
+        COUNT(a.question_id)::int AS answered,
+        COALESCE(SUM(CASE WHEN a.is_correct = true THEN 1 ELSE 0 END), 0)::int AS correct
+      FROM imported_questions q
+      LEFT JOIN LATERAL (
+        SELECT question_id, is_correct
+        FROM imported_question_answers
+        WHERE user_id = $2 AND question_id = q.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) a ON true
+      WHERE q.book_id = $1 AND q.user_id = $2
+    `, params.id, session.userId),
+    prisma.$queryRawUnsafe<any[]>(`
+      SELECT q.id, q.number, q.external_id AS "externalId", q.topic, q.exam, q.banca, q.statement,
+        q.options_json AS options, q.correct_answer AS "correctAnswer", q.correct_index AS "correctIndex", q.comment,
+        a.selected_index AS "selectedIndex", a.is_correct AS "isCorrect", a.created_at AS "answeredAt"
+      FROM imported_questions q
+      LEFT JOIN LATERAL (
+        SELECT selected_index, is_correct, created_at
+        FROM imported_question_answers
+        WHERE user_id = $2 AND question_id = q.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) a ON true
+      WHERE q.book_id = $1 AND q.user_id = $2
+      ORDER BY q.number ASC
+      LIMIT $3 OFFSET $4
+    `, params.id, session.userId, limit, offset),
+  ])
 
   const normalizedQuestions = questions.map(q => ({ ...q, banca: normalizeBanca(q), correctIndex: normalizeCorrectIndex(q) }))
-  const answered = normalizedQuestions.filter(q => q.selectedIndex !== null && q.selectedIndex !== undefined).length
-  const correct = normalizedQuestions.filter(q => q.isCorrect === true).length
+  const stats = statRows[0] || { answered: 0, correct: 0, total: book.totalQuestions || 0 }
+  const total = Number(stats.total || book.totalQuestions || 0)
 
-  return NextResponse.json({ ok: true, book, questions: normalizedQuestions, stats: { answered, correct, total: normalizedQuestions.length } })
+  console.info('[question-book-open]', { userId: session.userId, bookId: params.id, limit, offset, returned: normalizedQuestions.length, ms: Date.now() - startedAt })
+
+  return NextResponse.json({
+    ok: true,
+    book: { ...book, totalQuestions: total || book.totalQuestions },
+    questions: normalizedQuestions,
+    stats: { answered: Number(stats.answered || 0), correct: Number(stats.correct || 0), total },
+    page: { limit, offset, returned: normalizedQuestions.length, hasMore: offset + normalizedQuestions.length < total },
+  })
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
