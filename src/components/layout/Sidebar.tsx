@@ -84,7 +84,7 @@ export function Sidebar({ user }: SidebarProps) {
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setCredits(data.credits)
-        alert(`+${data.amount || 20} créditos! Bônus diário resgatado 🎉`)
+        alert(`+${data.amount || 20} créditos! Bônus diário resgatado`)
       } else {
         alert(data.error || 'Não foi possível resgatar os créditos agora.')
       }
@@ -133,7 +133,7 @@ export function Sidebar({ user }: SidebarProps) {
               <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all" style={{ width: `${Math.min(credits / 1000 * 100, 100)}%` }} />
             </div>
             <button onClick={claimBonus} disabled={claiming} className="w-full py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50">
-              {claiming ? 'Resgatando...' : '🎁 Resgatar 20 créditos'}
+              {claiming ? 'Resgatando...' : 'Resgatar 20 créditos'}
             </button>
           </div>
         </div>
@@ -146,7 +146,7 @@ export function Sidebar({ user }: SidebarProps) {
           const locked = user.role !== 'ADMIN' && !canAccessRoute(user.plan, item.href)
           const active = !locked && (pathname === item.href || pathname.startsWith(item.href + '/'))
           return (
-            <Link key={`${item.href}-${item.label}-${idx}`} href={locked ? '/conta' : item.href} className={cn('sidebar-item', active && 'sidebar-item-active', locked && 'opacity-70 hover:text-amber-300')}>
+            <Link prefetch={false} key={`${item.href}-${item.label}-${idx}`} href={locked ? '/conta' : item.href} className={cn('sidebar-item', active && 'sidebar-item-active', locked && 'opacity-70 hover:text-amber-300')}>
               <Icon size={15} />
               <span className="flex-1 text-xs">{item.label}</span>
               {locked ? <Lock size={12} className="text-amber-400" /> : item.badge && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/20">{item.badge}</span>}
@@ -157,7 +157,7 @@ export function Sidebar({ user }: SidebarProps) {
 
       <div className="px-3 py-3 border-t border-white/[0.07] space-y-1">
         {user.role === 'ADMIN' && (
-          <Link href="/admin/settings" className="sidebar-item"><Settings size={15} /><span className="text-xs">Configurações</span></Link>
+          <Link prefetch={false} href="/admin/settings" className="sidebar-item"><Settings size={15} /><span className="text-xs">Configurações</span></Link>
         )}
         <button onClick={handleLogout} className="sidebar-item w-full text-red-400 hover:bg-red-500/10 hover:text-red-300">
           <LogOut size={15} /><span className="text-xs">Sair</span>
