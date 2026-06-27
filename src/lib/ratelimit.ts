@@ -9,14 +9,14 @@ interface RateLimitConfig {
 export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   generate:     { limit: 20,  windowMs: 60 * 60 * 1000 },
   generate_ip:  { limit: 10,  windowMs: 60 * 60 * 1000 },
-  login:        { limit: 10,  windowMs: 15 * 60 * 1000 },
-  register:     { limit: 5,   windowMs: 60 * 60 * 1000 },
+  login:        { limit: 50,  windowMs: 15 * 60 * 1000 },
+  register:     { limit: 20,  windowMs: 60 * 60 * 1000 },
   plan:         { limit: 3,   windowMs: 60 * 60 * 1000 },
-  forgot_password: { limit: 5, windowMs: 15 * 60 * 1000 },
+  forgot_password: { limit: 10, windowMs: 15 * 60 * 1000 },
   api_global:   { limit: 100, windowMs: 60 * 1000 },
 }
 
-const FAIL_CLOSED_ACTIONS = new Set(['generate', 'generate_ip', 'login', 'register'])
+const FAIL_CLOSED_ACTIONS = new Set(['generate', 'generate_ip'])
 
 export async function checkRateLimit(
   key: string,
