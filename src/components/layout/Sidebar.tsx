@@ -6,6 +6,7 @@ import { canAccessRoute, getPlanLabel } from '@/lib/plans'
 import {
   LayoutDashboard, Sparkles, FileText, Rocket,
   History, Settings, LogOut, Zap, DollarSign, FolderOpen, Brain, BookOpen, Target, UserCircle, Lock, HelpCircle,
+  Users, KeyRound, BarChart3, Bot,
   type LucideIcon
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -17,7 +18,7 @@ type NavItem = {
   badge?: string
 }
 
-const ADMIN_NAV: NavItem[] = [
+const COMMON_NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
   { href: '/conta',      label: 'Minha Conta',         icon: UserCircle },
   { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
@@ -33,20 +34,19 @@ const ADMIN_NAV: NavItem[] = [
   { href: '/suporte',    label: 'Suporte',              icon: HelpCircle },
 ]
 
-const USER_NAV: NavItem[] = [
-  { href: '/dashboard',  label: 'Painel',              icon: LayoutDashboard },
-  { href: '/conta',      label: 'Minha Conta',         icon: UserCircle },
-  { href: '/gerar',      label: 'Gerar Questão',       icon: Sparkles },
-  { href: '/plano-questoes', label: 'Plano de Questões', icon: Target },
-  { href: '/prova-real', label: 'Plano por Prova Real', icon: FileText, badge: 'Novo' },
-  { href: '/cadernos',   label: 'Cadernos PDF',        icon: BookOpen },
-  { href: '/leitor-pdf', label: 'Leitor PDF',          icon: FileText },
-  { href: '/edital',     label: 'Edital Verticalizado', icon: FileText, badge: 'Beta' },
-  { href: '/edital-pro', label: 'Edital Pro',           icon: Rocket, badge: 'Beta' },
-  { href: '/mapas',      label: 'Mapas Mentais',        icon: Brain, badge: 'Beta' },
-  { href: '/gerados',    label: 'Meus Gerados',         icon: FolderOpen },
-  { href: '/suporte',    label: 'Suporte',              icon: HelpCircle },
+const ADMIN_EXTRA_NAV: NavItem[] = [
+  { href: '/admin', label: 'Administração', icon: Settings },
+  { href: '/admin/usuarios', label: 'Usuários', icon: Users },
+  { href: '/admin/creditos', label: 'Créditos', icon: Zap },
+  { href: '/admin/custos', label: 'Custos IA', icon: DollarSign },
+  { href: '/admin/acessos', label: 'Acessos', icon: KeyRound },
+  { href: '/admin/reports', label: 'Relatórios', icon: BarChart3 },
+  { href: '/admin/suporte', label: 'Admin Suporte', icon: HelpCircle },
+  { href: '/admin/ia-recursos', label: 'IA Recursos', icon: Bot },
 ]
+
+const ADMIN_NAV: NavItem[] = [...COMMON_NAV, ...ADMIN_EXTRA_NAV]
+const USER_NAV: NavItem[] = COMMON_NAV
 
 interface SidebarProps {
   user: { name: string; email: string; role: string; plan: string }
@@ -74,12 +74,12 @@ export function Sidebar({ user }: SidebarProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'daily_bonus' }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setCredits(data.credits)
-        alert(`+${data.amount} créditos! Bônus diário resgatado 🎉`)
+        alert(`+${data.amount || 20} créditos! Bônus diário resgatado 🎉`)
       } else {
-        alert(data.error)
+        alert(data.error || 'Não foi possível resgatar os créditos agora.')
       }
     } finally {
       setClaiming(false)
@@ -150,11 +150,7 @@ export function Sidebar({ user }: SidebarProps) {
 
       <div className="px-3 py-3 border-t border-white/[0.07] space-y-1">
         {user.role === 'ADMIN' && (
-          <>
-            <Link href="/admin/assinaturas" className="sidebar-item"><DollarSign size={15} /><span className="text-xs">Assinaturas</span></Link>
-            <Link href="/admin/suporte" className="sidebar-item"><HelpCircle size={15} /><span className="text-xs">Admin Suporte</span></Link>
-            <Link href="/admin/settings" className="sidebar-item"><Settings size={15} /><span className="text-xs">Admin</span></Link>
-          </>
+          <Link href="/admin/settings" className="sidebar-item"><Settings size={15} /><span className="text-xs">Configurações</span></Link>
         )}
         <button onClick={handleLogout} className="sidebar-item w-full text-red-400 hover:bg-red-500/10 hover:text-red-300">
           <LogOut size={15} /><span className="text-xs">Sair</span>
