@@ -48,7 +48,7 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
   }
 }
 
-async function ensureUserPlanColumns() {
+export async function ensureUserPlanColumns() {
   const prisma = await getPrisma()
   await prisma.$executeRawUnsafe(`DO $$ BEGIN ALTER TYPE "Plan" ADD VALUE IF NOT EXISTS 'PACK'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`).catch(() => null)
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_renewed_at TIMESTAMP(3);`).catch(() => null)
@@ -56,9 +56,8 @@ async function ensureUserPlanColumns() {
   await prisma.$executeRawUnsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMP(3);`).catch(() => null)
 }
 
-async function renewMonthlyCreditsIfNeeded(userId: string) {
+export async function renewMonthlyCreditsIfNeeded(userId: string) {
   const prisma = await getPrisma()
-  await ensureUserPlanColumns()
 
   const rows = await prisma.$queryRawUnsafe<any[]>(`
     SELECT credits_renewed_at AS "creditsRenewedAt"
@@ -86,7 +85,6 @@ async function renewMonthlyCreditsIfNeeded(userId: string) {
 
 async function getFreshUserWithPlanStatus(userId: string) {
   const prisma = await getPrisma()
-  await ensureUserPlanColumns()
 
   const rows = await prisma.$queryRawUnsafe<any[]>(`
     SELECT id, email, role, plan, plan_expires_at AS "planExpiresAt"
@@ -103,6 +101,7 @@ async function getFreshUserWithPlanStatus(userId: string) {
   const expired = expiresAt && expiresAt.getTime() < Date.now()
 
   if (expired && normalizedPlan !== PLAN_FREE) {
+    const prisma = await getPrisma()
     await prisma.$executeRawUnsafe(`
       UPDATE users
       SET plan = $1,
@@ -131,8 +130,6 @@ export async function getSession(): Promise<SessionPayload | null> {
   const session = await verifySession(token)
   if (!session?.userId) return null
 
-  await renewMonthlyCreditsIfNeeded(session.userId)
-
   const user = await getFreshUserWithPlanStatus(session.userId)
   if (!user) return null
 
@@ -143,6 +140,11 @@ export async function getSession(): Promise<SessionPayload | null> {
     role: user.role,
     plan: user.plan,
   }
+}
+
+export async function runAccountMaintenance(userId: string) {
+  await ensureUserPlanColumns()
+  await renewMonthlyCreditsIfNeeded(userId)
 }
 
 export async function deleteSession(token: string) {
