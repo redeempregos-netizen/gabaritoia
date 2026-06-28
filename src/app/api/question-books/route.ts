@@ -3,9 +3,9 @@ import { createHash } from 'crypto'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const PARSER_VERSION = 'question-book-parser-v7-caderno-comentado-pareado'
-const MAX_IMPORT_CHARS = 4_500_000
-const MAX_IMPORTED_QUESTIONS = 2000
+const PARSER_VERSION = 'question-book-parser-v8-answer-map-large-books'
+const MAX_IMPORT_CHARS = 12_000_000
+const MAX_IMPORTED_QUESTIONS = 3000
 const INSERT_CHUNK_SIZE = 100
 
 async function ensureTables() {
@@ -59,12 +59,7 @@ async function ensureTables() {
 }
 
 function cleanText(s: string) {
-  return String(s || '')
-    .replace(/\u0000/g, ' ')
-    .replace(/\r/g, '\n')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  return String(s || '').replace(/\u0000/g, ' ').replace(/\r/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 function makeHash(version: string, value: string) {
@@ -88,7 +83,7 @@ function letterToIndex(letter?: string | null) {
 
 function inferBanca(exam: string) {
   const known = ['CEBRASPE', 'CESPE', 'FGV', 'FCC', 'CESGRANRIO', 'VUNESP', 'QUADRIX', 'IBFC', 'IDECAN', 'FUNDATEC', 'UNESC', 'OBJETIVA', 'AMEOSC', 'Avança SP', 'IDHTEC', 'FEPESE', 'IGEDUC', 'ADVISE', 'FUNATEC', 'Itame', 'FACET Concursos', 'IVIN', 'ISET', 'IBADE', 'FAU', 'Instituto Access', 'AOCP', 'Instituto AOCP', 'CONSULPLAN', 'FAFIPA', 'LEGALLE']
-  const lower = exam.toLowerCase()
+  const lower = String(exam || '').toLowerCase()
   const banca = known.find(k => lower.includes(k.toLowerCase()))
   if (banca) return banca
   const first = String(exam || '').split(/[–—-]/)[0]?.trim()
@@ -98,7 +93,7 @@ function inferBanca(exam: string) {
 function extractNumber(q: string, externalId?: string) {
   const patterns = [
     /(?:^|\n)\s*(\d{1,4})\s*\n/,
-    /(?:^|\s)(\d{1,4})\s+(?:A|O|As|Os|Em|No|Na|Nos|Nas|Qual|Quais|São|Sobre|Durante|Considerando|Assinale|Julgue|Avalie|De acordo|Acerca|Leia|Relacione|Um|Uma|João|Maria|Para|Utilizando|Dentre|Como|Principais|Segurança)\b/i,
+    /(?:^|\s)(\d{1,4})\s+(?:A|O|As|Os|Em|No|Na|Nos|Nas|Qual|Quais|São|Sobre|Durante|Considerando|Assinale|Julgue|Avalie|De acordo|Acerca|Leia|Relacione|Um|Uma|João|Maria|Para|Utilizando|Dentre|Como|Principais|Segurança|Atualidades|Brasil|Mundo)\b/i,
     /Quest[ãa]o\s+(\d{1,4})\b/i,
   ]
   for (const p of patterns) {
@@ -110,11 +105,7 @@ function extractNumber(q: string, externalId?: string) {
 }
 
 function normalizeHeaderSpaces(s: string) {
-  return String(s || '')
-    .replace(/\s*\|\s*/g, ' | ')
-    .replace(/ID:\s*/i, 'ID: ')
-    .replace(/T[ÓO]PICO:\s*/i, 'TÓPICO: ')
-    .replace(/PROVA:\s*/i, 'PROVA: ')
+  return String(s || '').replace(/\s*\|\s*/g, ' | ').replace(/ID:\s*/i, 'ID: ').replace(/T[ÓO]PICO:\s*/i, 'TÓPICO: ').replace(/PROVA:\s*/i, 'PROVA: ')
 }
 
 function parseHeader(q: string) {
@@ -128,8 +119,7 @@ function parseHeader(q: string) {
 
 function removeFooter(s: string) {
   return String(s || '')
-    .replace(/Caderno de Questões Comentadas de Segurança e Transporte para Concursos\s*-\s*500 Questões/gi, ' ')
-    .replace(/Caderno de Questões Comentadas[\s\S]*?(?:Questões|Questions)/gi, ' ')
+    .replace(/Caderno de Questões Comentadas[^\n]*(?:Questões)?/gi, ' ')
     .replace(/Caderno de Questões\s*-?\s*[^\n]*/gi, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim()
@@ -139,7 +129,7 @@ function cutOptionNoise(s: string) {
   return String(s || '')
     .split(/Caderno de Questões Comentadas/i)[0]
     .split(/Caderno de Questões\s*-/i)[0]
-    .replace(/\s+\d{1,4}\s+(?:A|O|As|Os|Em|No|Na|Nos|Nas|Qual|Quais|São|Sobre|Durante|Considerando|Assinale|Julgue|Avalie|De acordo|Acerca|Leia|Relacione|Um|Uma|João|Maria|Para|Utilizando|Dentre|Como|Principais|Segurança)\b[\s\S]*$/i, '')
+    .replace(/\s+\d{1,4}\s+(?:A|O|As|Os|Em|No|Na|Nos|Nas|Qual|Quais|São|Sobre|Durante|Considerando|Assinale|Julgue|Avalie|De acordo|Acerca|Leia|Relacione|Um|Uma|João|Maria|Para|Utilizando|Dentre|Como|Principais|Segurança|Atualidades|Brasil|Mundo)\b[\s\S]*$/i, '')
 }
 
 function cleanOptionText(s: string) {
@@ -161,26 +151,22 @@ function parseOptionsPreservingLetters(raw: string) {
 
   const letters = Object.keys(byLetter).sort()
   const isTrueFalseCE = letters.length === 2 && letters.includes('C') && letters.includes('E') && !letters.includes('A') && !letters.includes('B')
-  if (isTrueFalseCE) {
-    return { options: ['Certo', 'Errado'], mapAnswer: (answer: string) => answer === 'C' ? 0 : answer === 'E' ? 1 : -1 }
-  }
+  if (isTrueFalseCE) return { options: ['Certo', 'Errado'], mapAnswer: (answer: string) => answer === 'C' ? 0 : answer === 'E' ? 1 : -1 }
 
   const options: string[] = []
-  for (const letter of ['A', 'B', 'C', 'D', 'E']) {
-    if (byLetter[letter]) options.push(byLetter[letter])
-  }
+  for (const letter of ['A', 'B', 'C', 'D', 'E']) if (byLetter[letter]) options.push(byLetter[letter])
   return { options, mapAnswer: (answer: string) => letterToIndex(answer) }
 }
 
 function cleanStatement(q: string, number: number) {
   let s = q
   const explicit = number
-    ? s.match(new RegExp(`(?:Caderno de Questões Comentadas[\\s\\S]*?500 Questões|Caderno de Questões Comentadas[\\s\\S]*?Questões)\\s+${number}\\s+([\\s\\S]*)`, 'i'))?.[1]
+    ? s.match(new RegExp(`(?:Caderno de Questões Comentadas[\\s\\S]*?Questões)\\s+${number}\\s+([\\s\\S]*)`, 'i'))?.[1]
     : ''
   if (explicit) return cleanText(explicit)
 
   const afterNumber = number
-    ? s.match(new RegExp(`(?:^|\\s)${number}\\s+(A|O|As|Os|Em|No|Na|Nos|Nas|Qual|Quais|São|Sobre|Durante|Considerando|Assinale|Julgue|Avalie|De acordo|Acerca|Leia|Relacione|Um|Uma|João|Maria|Para|Utilizando|Dentre|Como|Principais|Segurança)[\\s\\S]*$`, 'i'))?.[0]
+    ? s.match(new RegExp(`(?:^|\\s)${number}\\s+(A|O|As|Os|Em|No|Na|Nos|Nas|Qual|Quais|São|Sobre|Durante|Considerando|Assinale|Julgue|Avalie|De acordo|Acerca|Leia|Relacione|Um|Uma|João|Maria|Para|Utilizando|Dentre|Como|Principais|Segurança|Atualidades|Brasil|Mundo)[\\s\\S]*$`, 'i'))?.[0]
     : ''
   if (afterNumber) return cleanText(afterNumber.replace(new RegExp(`^\\s*${number}\\s+`), ''))
 
@@ -191,6 +177,10 @@ function cleanStatement(q: string, number: number) {
   return cleanText(s)
 }
 
+function normalizeAnswerLetter(value?: string | null) {
+  return String(value || '').trim().toUpperCase().replace('CERTO', 'C').replace('ERRADO', 'E')
+}
+
 function parseQuestionBlock(questionText: string, answerText?: string) {
   const q = cleanText(questionText)
   const a = cleanText(answerText || '')
@@ -199,25 +189,14 @@ function parseQuestionBlock(questionText: string, answerText?: string) {
   const parsedOptions = parseOptionsPreservingLetters(q)
   const statement = cleanStatement(q, number)
   const answerMatch = a.match(/Resposta:\s*([A-E]|Certo|Errado|C|E)/i)
-  const answer = answerMatch ? answerMatch[1].toUpperCase().replace('CERTO', 'C').replace('ERRADO', 'E') : ''
+  const answer = answerMatch ? normalizeAnswerLetter(answerMatch[1]) : ''
   const commentMatch = a.match(/Coment[áa]rio\s*([\s\S]*)/i)
   let comment = commentMatch ? cleanText(commentMatch[1]) : ''
   comment = removeFooter(comment)
   const options = parsedOptions.options
   const correctIndex = answer ? parsedOptions.mapAnswer(answer) : -1
 
-  return {
-    number,
-    externalId: header.externalId,
-    topic: header.topic,
-    exam: header.exam,
-    banca: inferBanca(header.exam),
-    statement,
-    options,
-    correctAnswer: answer,
-    correctIndex,
-    comment,
-  }
+  return { number, externalId: header.externalId, topic: header.topic, exam: header.exam, banca: inferBanca(header.exam), statement, options, correctAnswer: answer, correctIndex, comment }
 }
 
 function isValidParsedQuestion(q: any) {
@@ -240,27 +219,99 @@ function splitPages(text: string) {
   return pages
 }
 
-function extractQuestions(fullText: string) {
-  const text = cleanText(fullText.slice(0, MAX_IMPORT_CHARS))
-  const pages = splitPages(text)
-  const pageChunks = pages.length ? pages.map(p => p.text) : text.split(/---\s*P[ÁA]GINA\s+\d+\s*---/i).map(cleanText).filter(Boolean)
+function isQuestionPage(text: string) {
+  return /ID:\s*/i.test(text) && /Alternativas/i.test(text)
+}
+
+function isAnswerPage(text: string) {
+  return /Gabarito Comentado/i.test(text) || /Resposta:\s*([A-E]|Certo|Errado|C|E)/i.test(text)
+}
+
+function extractAnswerMap(text: string) {
+  const map = new Map<number, string>()
+  const normalized = cleanText(text)
+  const blockRegex = /(?:Gabarito Comentado\s*)?Quest[ãa]o\s+(\d{1,4})\b[\s\S]*?(?=(?:Gabarito Comentado\s*)?Quest[ãa]o\s+\d{1,4}\b|\s*ID:\s*\d+\s*\||$)/gi
+  for (const match of normalized.matchAll(blockRegex)) {
+    const n = Number(match[1])
+    const block = cleanText(match[0])
+    if (n && /Resposta:\s*([A-E]|Certo|Errado|C|E)/i.test(block)) map.set(n, block)
+  }
+
+  const compactRegex = /(?:^|\s)(\d{1,4})\s+Resposta:\s*([A-E]|Certo|Errado|C|E)[\s\S]*?(?=(?:^|\s)\d{1,4}\s+Resposta:\s*([A-E]|Certo|Errado|C|E)|$)/gi
+  for (const match of normalized.matchAll(compactRegex)) {
+    const n = Number(match[1])
+    const block = cleanText(match[0])
+    if (n && !map.has(n)) map.set(n, block)
+  }
+  return map
+}
+
+function findNearbyAnswer(pages: { page: number; text: string }[], startIndex: number, questionNumber: number) {
+  const max = Math.min(pages.length, startIndex + 12)
+  const chunks: string[] = []
+  let found = false
+
+  for (let i = startIndex + 1; i < max; i++) {
+    const t = pages[i].text
+    if (isQuestionPage(t) && !found) break
+    if (isAnswerPage(t) || found) {
+      found = true
+      chunks.push(t)
+      if (questionNumber && new RegExp(`Quest[ãa]o\\s+${questionNumber}\\b`, 'i').test(t) && /Resposta:/i.test(t)) break
+      if (i + 1 < pages.length && isQuestionPage(pages[i + 1].text)) break
+    }
+  }
+
+  return cleanText(chunks.join('\n\n'))
+}
+
+function buildQuestionText(pages: { page: number; text: string }[], startIndex: number) {
+  const chunks = [pages[startIndex].text]
+  const max = Math.min(pages.length, startIndex + 5)
+  for (let i = startIndex + 1; i < max; i++) {
+    const t = pages[i].text
+    if (isQuestionPage(t) || isAnswerPage(t)) break
+    chunks.push(t)
+  }
+  return cleanText(chunks.join('\n\n'))
+}
+
+function extractQuestionsFromPages(pages: { page: number; text: string }[]) {
+  const allText = pages.map(p => p.text).join('\n\n')
+  const answerMap = extractAnswerMap(allText)
   const questions: any[] = []
 
-  for (let i = 0; i < pageChunks.length; i++) {
+  for (let i = 0; i < pages.length; i++) {
     if (questions.length >= MAX_IMPORTED_QUESTIONS) break
-    const current = pageChunks[i]
-    if (!/ID:\s*/i.test(current) || !/Alternativas/i.test(current)) continue
-    const next = pageChunks[i + 1] || ''
-    const parsed = parseQuestionBlock(current, /Gabarito Comentado/i.test(next) ? next : '')
+    if (!isQuestionPage(pages[i].text)) continue
+    const questionText = buildQuestionText(pages, i)
+    const header = parseHeader(questionText)
+    const number = extractNumber(questionText, header.externalId)
+    const nearbyAnswer = findNearbyAnswer(pages, i, number)
+    const mappedAnswer = number ? answerMap.get(number) || '' : ''
+    const parsed = parseQuestionBlock(questionText, nearbyAnswer || mappedAnswer)
     if (isValidParsedQuestion(parsed)) questions.push(parsed)
   }
 
+  return questions
+}
+
+function extractQuestions(fullText: string) {
+  const text = cleanText(fullText.slice(0, MAX_IMPORT_CHARS))
+  const pages = splitPages(text)
+  let questions: any[] = []
+
+  if (pages.length) questions = extractQuestionsFromPages(pages)
+
   if (!questions.length) {
     const blocks = text.split(/(?=\s*ID:\s*)/i)
+    const answerMap = extractAnswerMap(text)
     for (const block of blocks) {
       if (questions.length >= MAX_IMPORTED_QUESTIONS) break
       if (!/ID:\s*/i.test(block)) continue
-      const parsed = parseQuestionBlock(block, '')
+      const header = parseHeader(block)
+      const number = extractNumber(block, header.externalId)
+      const parsed = parseQuestionBlock(block, number ? answerMap.get(number) || '' : '')
       if (isValidParsedQuestion(parsed)) questions.push(parsed)
     }
   }
@@ -285,39 +336,17 @@ async function createBookFromParsed(userId: string, title: string, parsed: any[]
   const area = parsed[0]?.topic || 'Questões'
 
   await prisma.$transaction(async tx => {
-    await tx.$executeRawUnsafe(
-      `INSERT INTO imported_question_books (id, user_id, title, area, total_questions, source_hash) VALUES ($1, $2, $3, $4, $5, $6)`,
-      bookId, userId, title, area, parsed.length, hash
-    )
+    await tx.$executeRawUnsafe(`INSERT INTO imported_question_books (id, user_id, title, area, total_questions, source_hash) VALUES ($1, $2, $3, $4, $5, $6)`, bookId, userId, title, area, parsed.length, hash)
 
     for (const group of chunk(parsed, INSERT_CHUNK_SIZE)) {
       const values: string[] = []
       const params: any[] = []
-
       group.forEach(q => {
         const base = params.length
         values.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10}::jsonb,$${base + 11},$${base + 12},$${base + 13})`)
-        params.push(
-          crypto.randomUUID(),
-          bookId,
-          userId,
-          q.number,
-          q.externalId,
-          q.topic,
-          q.exam,
-          q.banca,
-          q.statement,
-          JSON.stringify(q.options),
-          q.correctAnswer,
-          q.correctIndex,
-          q.comment
-        )
+        params.push(crypto.randomUUID(), bookId, userId, q.number, q.externalId, q.topic, q.exam, q.banca, q.statement, JSON.stringify(q.options), q.correctAnswer, q.correctIndex, q.comment)
       })
-
-      await tx.$executeRawUnsafe(
-        `INSERT INTO imported_questions (id, book_id, user_id, number, external_id, topic, exam, banca, statement, options_json, correct_answer, correct_index, comment) VALUES ${values.join(',')}`,
-        ...params
-      )
+      await tx.$executeRawUnsafe(`INSERT INTO imported_questions (id, book_id, user_id, number, external_id, topic, exam, banca, statement, options_json, correct_answer, correct_index, comment) VALUES ${values.join(',')}`, ...params)
     }
   }, { timeout: 60000 })
 
@@ -328,11 +357,7 @@ async function findExistingByHashes(userId: string, hashes: string[]) {
   const validHashes = hashes.filter(Boolean)
   if (!validHashes.length) return null
   const placeholders = validHashes.map((_, i) => `$${i + 2}`).join(', ')
-  const rows = await prisma.$queryRawUnsafe<any[]>(
-    `SELECT id, title, total_questions AS "totalQuestions" FROM imported_question_books WHERE user_id = $1 AND source_hash IN (${placeholders}) LIMIT 1`,
-    userId,
-    ...validHashes
-  )
+  const rows = await prisma.$queryRawUnsafe<any[]>(`SELECT id, title, total_questions AS "totalQuestions" FROM imported_question_books WHERE user_id = $1 AND source_hash IN (${placeholders}) LIMIT 1`, userId, ...validHashes)
   return rows[0] || null
 }
 
@@ -346,9 +371,7 @@ export async function GET() {
       COALESCE(stats.answered, 0)::int AS answered
     FROM imported_question_books b
     LEFT JOIN LATERAL (
-      SELECT
-        SUM(CASE WHEN a.is_correct = true THEN 1 ELSE 0 END)::int AS correct,
-        COUNT(a.id)::int AS answered
+      SELECT SUM(CASE WHEN a.is_correct = true THEN 1 ELSE 0 END)::int AS correct, COUNT(a.id)::int AS answered
       FROM imported_questions q
       LEFT JOIN imported_question_answers a ON a.question_id = q.id AND a.user_id = $1
       WHERE q.book_id = b.id AND q.user_id = $1
@@ -378,9 +401,7 @@ export async function POST(req: NextRequest) {
       const title = String(body.title || 'Caderno de questões importado').slice(0, 180)
       const extractedText = String(body.text || '')
       if (extractedText.length < 50) return NextResponse.json({ error: 'Texto insuficiente para importar.' }, { status: 400 })
-      if (extractedText.length > MAX_IMPORT_CHARS) {
-        console.warn('[question-books] texto muito grande, cortando importacao', { userId: session.userId, chars: extractedText.length })
-      }
+      if (extractedText.length > MAX_IMPORT_CHARS) console.warn('[question-books] texto muito grande, cortando importacao', { userId: session.userId, chars: extractedText.length, limit: MAX_IMPORT_CHARS })
 
       const limitedText = extractedText.slice(0, MAX_IMPORT_CHARS)
       const fileHash = normalizeHash(body.fileHash)
