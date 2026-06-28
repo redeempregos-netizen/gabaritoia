@@ -3,9 +3,9 @@ import { createHash } from 'crypto'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const PARSER_VERSION = 'question-book-parser-v6-fast-batch-import'
-const MAX_IMPORT_CHARS = 2_500_000
-const MAX_IMPORTED_QUESTIONS = 1200
+const PARSER_VERSION = 'question-book-parser-v7-caderno-comentado-pareado'
+const MAX_IMPORT_CHARS = 4_500_000
+const MAX_IMPORTED_QUESTIONS = 2000
 const INSERT_CHUNK_SIZE = 100
 
 async function ensureTables() {
@@ -43,6 +43,7 @@ async function ensureTables() {
   `)
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_questions_book_user_idx ON imported_questions(book_id, user_id);`)
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_questions_user_book_number_idx ON imported_questions(user_id, book_id, number);`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_questions_book_user_number_idx ON imported_questions(book_id, user_id, number ASC);`)
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS imported_question_answers (
       id TEXT PRIMARY KEY,
@@ -54,6 +55,7 @@ async function ensureTables() {
     );
   `)
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_question_answers_user_question_idx ON imported_question_answers(user_id, question_id);`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS imported_question_answers_user_question_created_idx ON imported_question_answers(user_id, question_id, created_at DESC);`)
 }
 
 function cleanText(s: string) {
@@ -65,14 +67,18 @@ function cleanText(s: string) {
     .trim()
 }
 
+function makeHash(version: string, value: string) {
+  return createHash('sha256').update(`${version}::${value}`).digest('hex')
+}
+
 function sourceHash(text: string) {
-  return createHash('sha256').update(`${PARSER_VERSION}::${cleanText(text).replace(/\s+/g, ' ')}`).digest('hex')
+  return makeHash(PARSER_VERSION, cleanText(text).replace(/\s+/g, ' '))
 }
 
 function normalizeHash(value: unknown) {
   const h = String(value || '').trim().toLowerCase()
   if (!/^[a-f0-9]{64}$/.test(h)) return ''
-  return createHash('sha256').update(`${PARSER_VERSION}::${h}`).digest('hex')
+  return makeHash(PARSER_VERSION, h)
 }
 
 function letterToIndex(letter?: string | null) {
@@ -81,17 +87,19 @@ function letterToIndex(letter?: string | null) {
 }
 
 function inferBanca(exam: string) {
-  const known = ['CEBRASPE', 'CESPE', 'FGV', 'FCC', 'CESGRANRIO', 'VUNESP', 'QUADRIX', 'IBFC', 'IDECAN', 'FUNDATEC', 'UNESC', 'OBJETIVA', 'AMEOSC', 'Avança SP', 'IDHTEC', 'FEPESE', 'IGEDUC', 'ADVISE', 'FUNATEC', 'Itame', 'FACET Concursos', 'IVIN']
+  const known = ['CEBRASPE', 'CESPE', 'FGV', 'FCC', 'CESGRANRIO', 'VUNESP', 'QUADRIX', 'IBFC', 'IDECAN', 'FUNDATEC', 'UNESC', 'OBJETIVA', 'AMEOSC', 'Avança SP', 'IDHTEC', 'FEPESE', 'IGEDUC', 'ADVISE', 'FUNATEC', 'Itame', 'FACET Concursos', 'IVIN', 'ISET', 'IBADE', 'FAU', 'Instituto Access', 'AOCP', 'Instituto AOCP', 'CONSULPLAN', 'FAFIPA', 'LEGALLE']
   const lower = exam.toLowerCase()
-  return known.find(k => lower.includes(k.toLowerCase())) || ''
+  const banca = known.find(k => lower.includes(k.toLowerCase()))
+  if (banca) return banca
+  const first = String(exam || '').split(/[–—-]/)[0]?.trim()
+  return first && first.length <= 40 ? first : ''
 }
 
 function extractNumber(q: string, externalId?: string) {
   const patterns = [
     /(?:^|\n)\s*(\d{1,4})\s*\n/,
-    /Questões\s+(\d{1,4})\s+/i,
+    /(?:^|\s)(\d{1,4})\s+(?:A|O|As|Os|Em|No|Na|Nos|Nas|Qual|Quais|São|Sobre|Durante|Considerando|Assinale|Julgue|Avalie|De acordo|Acerca|Leia|Relacione|Um|Uma|João|Maria|Para|Utilizando|Dentre|Como|Principais|Segurança)\b/i,
     /Quest[ãa]o\s+(\d{1,4})\b/i,
-    /(?:^|\s)(\d{1,4})\s+(?:Assinale|Julgue|Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Usando|Qualquer|O artista|A respeito|Em\s+\d{4}|“|")/i,
   ]
   for (const p of patterns) {
     const m = q.match(p)
@@ -120,6 +128,7 @@ function parseHeader(q: string) {
 
 function removeFooter(s: string) {
   return String(s || '')
+    .replace(/Caderno de Questões Comentadas de Segurança e Transporte para Concursos\s*-\s*500 Questões/gi, ' ')
     .replace(/Caderno de Questões Comentadas[\s\S]*?(?:Questões|Questions)/gi, ' ')
     .replace(/Caderno de Questões\s*-?\s*[^\n]*/gi, ' ')
     .replace(/\s{2,}/g, ' ')
@@ -130,13 +139,11 @@ function cutOptionNoise(s: string) {
   return String(s || '')
     .split(/Caderno de Questões Comentadas/i)[0]
     .split(/Caderno de Questões\s*-/i)[0]
-    .replace(/\s+\d{1,4}\s+(?:Assinale|Julgue|Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Em relação|No ensino|Na abordagem|Marque|Preencha|Existem|Segundo|Para|Dentro|Como|Sobre o|Dos seguintes|Numa|O seguinte|Assinale a opção)\b[\s\S]*$/i, '')
+    .replace(/\s+\d{1,4}\s+(?:A|O|As|Os|Em|No|Na|Nos|Nas|Qual|Quais|São|Sobre|Durante|Considerando|Assinale|Julgue|Avalie|De acordo|Acerca|Leia|Relacione|Um|Uma|João|Maria|Para|Utilizando|Dentre|Como|Principais|Segurança)\b[\s\S]*$/i, '')
 }
 
 function cleanOptionText(s: string) {
-  let out = cutOptionNoise(s)
-  out = removeFooter(out)
-  return cleanText(out)
+  return cleanText(removeFooter(cutOptionNoise(s)))
 }
 
 function parseOptionsPreservingLetters(raw: string) {
@@ -149,7 +156,7 @@ function parseOptionsPreservingLetters(raw: string) {
     const start = (markers[i].index || 0) + markers[i][0].length
     const end = i + 1 < markers.length ? (markers[i + 1].index || alternativesText.length) : alternativesText.length
     const value = cleanOptionText(alternativesText.slice(start, end))
-    if (value && value.length >= 2) byLetter[letter] = value
+    if (value && value.length >= 1) byLetter[letter] = value
   }
 
   const letters = Object.keys(byLetter).sort()
@@ -167,13 +174,13 @@ function parseOptionsPreservingLetters(raw: string) {
 
 function cleanStatement(q: string, number: number) {
   let s = q
-  const afterFooter = number
-    ? s.match(new RegExp(`Caderno de Questões Comentadas[\\s\\S]*?Questões\\s+${number}\\s+([\\s\\S]*)`, 'i'))?.[1]
+  const explicit = number
+    ? s.match(new RegExp(`(?:Caderno de Questões Comentadas[\\s\\S]*?500 Questões|Caderno de Questões Comentadas[\\s\\S]*?Questões)\\s+${number}\\s+([\\s\\S]*)`, 'i'))?.[1]
     : ''
-  if (afterFooter) return cleanText(afterFooter)
+  if (explicit) return cleanText(explicit)
 
   const afterNumber = number
-    ? s.match(new RegExp(`(?:^|\\s)${number}\\s+(Assinale|Julgue|Avalie|De acordo|Considerando|Acerca|Sobre|Leia|Relacione|No que|Em relação|No ensino|Na abordagem|Marque|Preencha|Existem|Segundo|Para|Dentro|Como|Dos seguintes|Numa|O seguinte)[\\s\\S]*$`, 'i'))?.[0]
+    ? s.match(new RegExp(`(?:^|\\s)${number}\\s+(A|O|As|Os|Em|No|Na|Nos|Nas|Qual|Quais|São|Sobre|Durante|Considerando|Assinale|Julgue|Avalie|De acordo|Acerca|Leia|Relacione|Um|Uma|João|Maria|Para|Utilizando|Dentre|Como|Principais|Segurança)[\\s\\S]*$`, 'i'))?.[0]
     : ''
   if (afterNumber) return cleanText(afterNumber.replace(new RegExp(`^\\s*${number}\\s+`), ''))
 
@@ -216,15 +223,27 @@ function parseQuestionBlock(questionText: string, answerText?: string) {
 function isValidParsedQuestion(q: any) {
   if (!q?.statement || !q?.number) return false
   if (!Array.isArray(q.options) || q.options.length < 2) return false
-  if (q.options.some((option: unknown) => String(option || '').trim().length < 2)) return false
+  if (q.options.some((option: unknown) => String(option || '').trim().length < 1)) return false
   if (!q.correctAnswer) return false
   if (q.correctIndex < 0 || q.correctIndex >= q.options.length) return false
   return true
 }
 
+function splitPages(text: string) {
+  const parts = String(text || '').split(/---\s*P[ÁA]GINA\s+(\d+)\s*---/i)
+  const pages: { page: number; text: string }[] = []
+  for (let i = 1; i < parts.length; i += 2) {
+    const page = Number(parts[i])
+    const pageText = cleanText(parts[i + 1] || '')
+    if (pageText) pages.push({ page, text: pageText })
+  }
+  return pages
+}
+
 function extractQuestions(fullText: string) {
   const text = cleanText(fullText.slice(0, MAX_IMPORT_CHARS))
-  const pageChunks = text.split(/---\s*P[ÁA]GINA\s+\d+\s*---/i).map(cleanText).filter(Boolean)
+  const pages = splitPages(text)
+  const pageChunks = pages.length ? pages.map(p => p.text) : text.split(/---\s*P[ÁA]GINA\s+\d+\s*---/i).map(cleanText).filter(Boolean)
   const questions: any[] = []
 
   for (let i = 0; i < pageChunks.length; i++) {
@@ -263,7 +282,7 @@ function chunk<T>(items: T[], size: number) {
 
 async function createBookFromParsed(userId: string, title: string, parsed: any[], hash: string) {
   const bookId = crypto.randomUUID()
-  const area = parsed[0]?.topic?.split(' ')[0] || 'Questões'
+  const area = parsed[0]?.topic || 'Questões'
 
   await prisma.$transaction(async tx => {
     await tx.$executeRawUnsafe(
@@ -305,6 +324,18 @@ async function createBookFromParsed(userId: string, title: string, parsed: any[]
   return { id: bookId, title, totalQuestions: parsed.length }
 }
 
+async function findExistingByHashes(userId: string, hashes: string[]) {
+  const validHashes = hashes.filter(Boolean)
+  if (!validHashes.length) return null
+  const placeholders = validHashes.map((_, i) => `$${i + 2}`).join(', ')
+  const rows = await prisma.$queryRawUnsafe<any[]>(
+    `SELECT id, title, total_questions AS "totalQuestions" FROM imported_question_books WHERE user_id = $1 AND source_hash IN (${placeholders}) LIMIT 1`,
+    userId,
+    ...validHashes
+  )
+  return rows[0] || null
+}
+
 export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
@@ -337,6 +368,12 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
+    if (body?.action === 'check') {
+      const fileHash = normalizeHash(body.fileHash)
+      const existing = await findExistingByHashes(session.userId, [fileHash])
+      return NextResponse.json({ ok: true, exists: Boolean(existing), book: existing })
+    }
+
     if (body?.action === 'import') {
       const title = String(body.title || 'Caderno de questões importado').slice(0, 180)
       const extractedText = String(body.text || '')
@@ -349,24 +386,15 @@ export async function POST(req: NextRequest) {
       const fileHash = normalizeHash(body.fileHash)
       const hash = fileHash || sourceHash(limitedText)
       const textHash = sourceHash(limitedText)
-      const possibleHashes = Array.from(new Set([hash, textHash].filter(Boolean)))
-      const existingPlaceholders = possibleHashes.map((_, i) => `$${i + 2}`).join(', ')
-
-      const existing = await prisma.$queryRawUnsafe<any[]>(
-        `SELECT id, title, total_questions AS "totalQuestions" FROM imported_question_books WHERE user_id = $1 AND source_hash IN (${existingPlaceholders}) LIMIT 1`,
-        session.userId,
-        ...possibleHashes
-      )
-      if (existing[0]) {
-        return NextResponse.json({ ok: true, alreadyImported: true, book: { ...existing[0] } })
-      }
+      const existing = await findExistingByHashes(session.userId, Array.from(new Set([hash, textHash].filter(Boolean))))
+      if (existing) return NextResponse.json({ ok: true, alreadyImported: true, book: existing })
 
       const parsed = extractQuestions(limitedText)
       if (!parsed.length) return NextResponse.json({ error: 'Não encontrei questões válidas com alternativas e gabarito neste PDF.' }, { status: 400 })
 
       const book = await createBookFromParsed(session.userId, title, parsed, hash)
-      console.info('[question-books] importacao concluida', { userId: session.userId, questions: parsed.length, ms: Date.now() - startedAt })
-      return NextResponse.json({ ok: true, book, limited: extractedText.length > MAX_IMPORT_CHARS })
+      console.info('[question-books] importacao concluida', { userId: session.userId, questions: parsed.length, ms: Date.now() - startedAt, parser: PARSER_VERSION })
+      return NextResponse.json({ ok: true, book, limited: extractedText.length > MAX_IMPORT_CHARS, parser: PARSER_VERSION })
     }
 
     if (body?.action === 'delete') {
