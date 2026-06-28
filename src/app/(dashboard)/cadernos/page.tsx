@@ -11,7 +11,7 @@ type PageInfo = { limit: number; offset: number; returned: number; hasMore: bool
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 const PAGE_SIZE = 80
-const MAX_PDF_PAGES = 1200
+const MAX_PDF_PAGES = 3000
 
 function cleanExtractedText(s: string) {
   return String(s || '')
@@ -188,12 +188,7 @@ export default function CadernosPage() {
     if (!fileHash) return false
     const { res, data } = await postJson('/api/question-books', { action: 'check', fileHash })
     if (res.ok && data?.exists && data?.book) {
-      const summary: ImportSummary = {
-        title: data.book.title || fileName.replace(/\.pdf$/i, ''),
-        totalQuestions: Number(data.book.totalQuestions || 0),
-        expectedQuestions: inferExpectedQuestions(fileName),
-        alreadyImported: true,
-      }
+      const summary: ImportSummary = { title: data.book.title || fileName.replace(/\.pdf$/i, ''), totalQuestions: Number(data.book.totalQuestions || 0), expectedQuestions: inferExpectedQuestions(fileName), alreadyImported: true }
       setLastImport(summary)
       toast.info(`Este caderno já foi importado. ${importCountLabel(summary)}.`)
       await loadBooks()
@@ -212,7 +207,7 @@ export default function CadernosPage() {
     const totalPages = Math.min(pdf.numPages, MAX_PDF_PAGES)
 
     if (pdf.numPages > MAX_PDF_PAGES) toast.info(`PDF muito grande. Serão lidas as primeiras ${MAX_PDF_PAGES} páginas.`)
-    if (pdf.numPages > 900) toast.info('Modelo com muitas páginas detectado. Vou ler tudo, mas a primeira importação pode demorar no celular.')
+    if (pdf.numPages > 1200) toast.info('Caderno grande detectado. Vou ler mais páginas para tentar reconhecer todas as questões.')
 
     for (let i = 1; i <= totalPages; i++) {
       setImportStage(`Lendo página ${i} de ${totalPages}...`)
@@ -269,13 +264,7 @@ export default function CadernosPage() {
       setImportProgress(prev => Math.max(96, prev))
       if (!res.ok) { toast.error(data.error || 'Erro ao importar'); return }
 
-      const summary: ImportSummary = {
-        title: data.book?.title || file.name.replace(/\.pdf$/i, ''),
-        totalQuestions: Number(data.book?.totalQuestions || 0),
-        expectedQuestions: inferExpectedQuestions(data.book?.title || file.name),
-        alreadyImported: Boolean(data.alreadyImported),
-        parser: data.parser,
-      }
+      const summary: ImportSummary = { title: data.book?.title || file.name.replace(/\.pdf$/i, ''), totalQuestions: Number(data.book?.totalQuestions || 0), expectedQuestions: inferExpectedQuestions(data.book?.title || file.name), alreadyImported: Boolean(data.alreadyImported), parser: data.parser }
       setLastImport(summary)
       setImportStage('Importação concluída.')
       setImportProgress(100)
@@ -344,7 +333,7 @@ export default function CadernosPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-xs text-brand-200 mb-3"><BookOpen size={13} /> Caderno PDF</div>
             <h1 className="font-heading text-2xl md:text-3xl font-bold">Cadernos de Questões PDF</h1>
-            <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Importe PDFs comentados. Este importador foi ajustado para o modelo com questão em uma página e gabarito comentado na página seguinte.</p>
+            <p className="text-zinc-400 text-sm mt-2 max-w-2xl">Importe PDFs comentados. Este importador foi ajustado para cadernos grandes de até 1.000 questões.</p>
           </div>
           <button type="button" disabled={importing} onClick={() => document.getElementById('book-file')?.click()} className="btn-primary flex items-center justify-center gap-2">
             {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} {importing ? 'Importando...' : 'Importar PDF'}
@@ -355,13 +344,7 @@ export default function CadernosPage() {
 
       {importing && <ImportProgressBox percent={Math.round(importProgress)} stage={importStage} seconds={importSeconds} />}
 
-      {!importing && lastImport && (
-        <div className="mb-6 rounded-3xl border border-green-500/20 bg-green-500/10 p-5 text-sm text-green-100">
-          <div className="font-semibold mb-1">Caderno carregado</div>
-          <div>{lastImport.title} · {importCountLabel(lastImport)}.</div>
-          {lastImport.expectedQuestions && lastImport.expectedQuestions > lastImport.totalQuestions && <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">O PDF informa {lastImport.expectedQuestions} questões, mas o sistema reconheceu {lastImport.totalQuestions}. As demais podem estar em formato diferente, imagem ou sem padrão de gabarito.</div>}
-        </div>
-      )}
+      {!importing && lastImport && <div className="mb-6 rounded-3xl border border-green-500/20 bg-green-500/10 p-5 text-sm text-green-100"><div className="font-semibold mb-1">Caderno carregado</div><div>{lastImport.title} · {importCountLabel(lastImport)}.</div>{lastImport.expectedQuestions && lastImport.expectedQuestions > lastImport.totalQuestions && <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">O PDF informa {lastImport.expectedQuestions} questões, mas o sistema reconheceu {lastImport.totalQuestions}. As demais podem estar em formato diferente, imagem ou sem padrão de gabarito.</div>}</div>}
 
       {loading ? <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-brand-400" /></div> : (
         <div className="grid lg:grid-cols-[340px_1fr] gap-6">
@@ -371,11 +354,7 @@ export default function CadernosPage() {
             {books.map(book => {
               const p = book.totalQuestions ? Math.round((book.answered / book.totalQuestions) * 100) : 0
               return <div key={book.id} className={`rounded-2xl border p-4 transition-all ${activeBook?.id === book.id ? 'border-brand-500/40 bg-brand-500/10' : 'border-white/10 bg-zinc-900 hover:border-white/20'}`}>
-                <button type="button" onClick={() => openBook(book)} className="w-full text-left active:scale-[0.99]">
-                  <div className="font-semibold text-sm text-zinc-100 leading-snug">{book.title}</div>
-                  <div className="text-xs text-zinc-500 mt-1">{book.totalQuestions} questões · {book.answered} respondidas</div>
-                  <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden mt-3"><div className="h-full bg-brand-500" style={{ width: `${p}%` }} /></div>
-                </button>
+                <button type="button" onClick={() => openBook(book)} className="w-full text-left active:scale-[0.99]"><div className="font-semibold text-sm text-zinc-100 leading-snug">{book.title}</div><div className="text-xs text-zinc-500 mt-1">{book.totalQuestions} questões · {book.answered} respondidas</div><div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden mt-3"><div className="h-full bg-brand-500" style={{ width: `${p}%` }} /></div></button>
                 <button type="button" onClick={() => deleteBook(book)} className="mt-3 text-[11px] text-red-300 border border-red-500/20 bg-red-500/10 rounded-lg px-2 py-1 flex items-center gap-1"><Trash2 size={12} /> Excluir</button>
               </div>
             })}
@@ -383,61 +362,12 @@ export default function CadernosPage() {
 
           <div>
             {!activeBook ? <div className="card p-12 text-center text-zinc-500">Selecione um caderno importado ou envie um PDF para começar.</div> : <div className="space-y-5">
-              {loadingBook ? <div className="card p-12 flex items-center justify-center gap-3 text-zinc-400"><Loader2 className="animate-spin text-brand-400" /> Carregando primeiras questões...</div> : (
-                <>
-                  <div className="rounded-2xl border border-white/10 bg-zinc-900 p-4">
-                    <div className="flex items-center gap-2 text-xs font-bold text-brand-300 uppercase tracking-wider mb-3"><Filter size={13} /> Filtros</div>
-                    <div className="grid md:grid-cols-4 gap-3">
-                      <select className="input" value={filterBanca} onChange={e => setFilterBanca(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Todas as bancas</option>{bancos.map(b => <option key={b} value={b}>{b}</option>)}</select>
-                      <select className="input" value={filterYear} onChange={e => setFilterYear(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Todos os anos</option>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
-                      <select className="input" value={filterUf} onChange={e => setFilterUf(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Todos os estados</option>{ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}</select>
-                      <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar nas questões carregadas" />
-                    </div>
-                    <div className="text-xs text-zinc-500 mt-3">Mostrando {filteredQuestions.length} de {questions.length} carregadas. Total do caderno: {stats.total}.{pageInfo.hasMore && ' Use “Carregar mais” para trazer novas questões.'}</div>
-                  </div>
-
-                  <div className="grid md:grid-cols-3 gap-3">
-                    <div className="card p-4"><div className="text-xs text-zinc-500">Progresso</div><div className="font-heading text-2xl font-bold text-white">{percent}%</div></div>
-                    <div className="card p-4"><div className="text-xs text-zinc-500">Respondidas</div><div className="font-heading text-2xl font-bold text-brand-300">{stats.answered}/{stats.total}</div></div>
-                    <div className="card p-4"><div className="text-xs text-zinc-500">Acertos</div><div className="font-heading text-2xl font-bold text-green-300">{score}%</div></div>
-                  </div>
-
-                  {!q ? <div className="card p-8 text-center text-zinc-500">Nenhuma questão encontrada com os filtros atuais.</div> : <div className="card p-5 md:p-6">
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                      <div>
-                        <div className="text-xs text-zinc-500">Questão carregada {current + 1} de {filteredQuestions.length}</div>
-                        <div className="font-heading font-bold text-lg text-white">{safe(q.topic, 'Questão importada')}</div>
-                        <div className="text-xs text-zinc-500 mt-1">{safe(q.banca)} · {safe(q.exam)} · ID {safe(q.externalId, q.number ? String(q.number) : '—')}</div>
-                      </div>
-                      <div className="text-xs text-zinc-400">Progresso: {percent}% · Acertos: {score}%</div>
-                    </div>
-
-                    <div className="prose prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap">{q.statement}</div>
-
-                    <div className="space-y-2 mt-5">
-                      {q.options.map((op, idx) => {
-                        const selected = q.selectedIndex === idx
-                        const isCorrect = q.correctIndex === idx
-                        return <button type="button" key={idx} disabled={answering === q.id} onClick={() => answer(q, idx)} className={`w-full text-left rounded-2xl border px-4 py-3 text-sm transition active:scale-[0.99] ${answered && isCorrect ? 'border-green-500/40 bg-green-500/10 text-green-100' : answered && selected && !isCorrect ? 'border-red-500/40 bg-red-500/10 text-red-100' : 'border-white/10 bg-zinc-900 hover:border-brand-500/30'}`}>
-                          <span className="font-bold mr-2">{'ABCDE'[idx]}.</span>{op}
-                        </button>
-                      })}
-                    </div>
-
-                    {answered && <div className="mt-5 rounded-2xl border border-white/10 bg-zinc-900 p-4">
-                      <div className="flex items-center gap-2 font-bold text-sm mb-2">{q.isCorrect ? <CheckCircle2 className="text-green-400" size={17} /> : <XCircle className="text-red-400" size={17} />} Gabarito: {correctLetter}</div>
-                      {q.comment && <div className="text-sm text-zinc-300 whitespace-pre-wrap">{q.comment}</div>}
-                    </div>}
-
-                    <div className="flex justify-between gap-3 mt-6">
-                      <button type="button" className="btn-secondary" disabled={current <= 0} onClick={() => setCurrent(c => Math.max(0, c - 1))}>Anterior</button>
-                      <button type="button" className="btn-primary" disabled={current >= filteredQuestions.length - 1} onClick={() => setCurrent(c => Math.min(filteredQuestions.length - 1, c + 1))}>Próxima</button>
-                    </div>
-                  </div>}
-
-                  {pageInfo.hasMore && <button type="button" onClick={loadMoreQuestions} disabled={loadingMore} className="btn-secondary w-full flex items-center justify-center gap-2">{loadingMore && <Loader2 size={16} className="animate-spin" />}{loadingMore ? 'Carregando...' : `Carregar mais ${PAGE_SIZE} questões`}</button>}
-                </>
-              )}
+              {loadingBook ? <div className="card p-12 flex items-center justify-center gap-3 text-zinc-400"><Loader2 className="animate-spin text-brand-400" /> Carregando primeiras questões...</div> : <>
+                <div className="rounded-2xl border border-white/10 bg-zinc-900 p-4"><div className="flex items-center gap-2 text-xs font-bold text-brand-300 uppercase tracking-wider mb-3"><Filter size={13} /> Filtros</div><div className="grid md:grid-cols-4 gap-3"><select className="input" value={filterBanca} onChange={e => setFilterBanca(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Todas as bancas</option>{bancos.map(b => <option key={b} value={b}>{b}</option>)}</select><select className="input" value={filterYear} onChange={e => setFilterYear(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Todos os anos</option>{years.map(y => <option key={y} value={y}>{y}</option>)}</select><select className="input" value={filterUf} onChange={e => setFilterUf(e.target.value)} style={{ colorScheme: 'dark' }}><option value="">Todos os estados</option>{ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}</select><input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar nas questões carregadas" /></div><div className="text-xs text-zinc-500 mt-3">Mostrando {filteredQuestions.length} de {questions.length} carregadas. Total do caderno: {stats.total}.{pageInfo.hasMore && ' Use “Carregar mais” para trazer novas questões.'}</div></div>
+                <div className="grid md:grid-cols-3 gap-3"><div className="card p-4"><div className="text-xs text-zinc-500">Progresso</div><div className="font-heading text-2xl font-bold text-white">{percent}%</div></div><div className="card p-4"><div className="text-xs text-zinc-500">Respondidas</div><div className="font-heading text-2xl font-bold text-brand-300">{stats.answered}/{stats.total}</div></div><div className="card p-4"><div className="text-xs text-zinc-500">Acertos</div><div className="font-heading text-2xl font-bold text-green-300">{score}%</div></div></div>
+                {!q ? <div className="card p-8 text-center text-zinc-500">Nenhuma questão encontrada com os filtros atuais.</div> : <div className="card p-5 md:p-6"><div className="flex flex-wrap items-center justify-between gap-3 mb-4"><div><div className="text-xs text-zinc-500">Questão carregada {current + 1} de {filteredQuestions.length}</div><div className="font-heading font-bold text-lg text-white">{safe(q.topic, 'Questão importada')}</div><div className="text-xs text-zinc-500 mt-1">{safe(q.banca)} · {safe(q.exam)} · ID {safe(q.externalId, q.number ? String(q.number) : '—')}</div></div><div className="text-xs text-zinc-400">Progresso: {percent}% · Acertos: {score}%</div></div><div className="prose prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap">{q.statement}</div><div className="space-y-2 mt-5">{q.options.map((op, idx) => { const selected = q.selectedIndex === idx; const isCorrect = q.correctIndex === idx; return <button type="button" key={idx} disabled={answering === q.id} onClick={() => answer(q, idx)} className={`w-full text-left rounded-2xl border px-4 py-3 text-sm transition active:scale-[0.99] ${answered && isCorrect ? 'border-green-500/40 bg-green-500/10 text-green-100' : answered && selected && !isCorrect ? 'border-red-500/40 bg-red-500/10 text-red-100' : 'border-white/10 bg-zinc-900 hover:border-brand-500/30'}`}><span className="font-bold mr-2">{'ABCDE'[idx]}.</span>{op}</button> })}</div>{answered && <div className="mt-5 rounded-2xl border border-white/10 bg-zinc-900 p-4"><div className="flex items-center gap-2 font-bold text-sm mb-2">{q.isCorrect ? <CheckCircle2 className="text-green-400" size={17} /> : <XCircle className="text-red-400" size={17} />} Gabarito: {correctLetter}</div>{q.comment && <div className="text-sm text-zinc-300 whitespace-pre-wrap">{q.comment}</div>}</div>}<div className="flex justify-between gap-3 mt-6"><button type="button" className="btn-secondary" disabled={current <= 0} onClick={() => setCurrent(c => Math.max(0, c - 1))}>Anterior</button><button type="button" className="btn-primary" disabled={current >= filteredQuestions.length - 1} onClick={() => setCurrent(c => Math.min(filteredQuestions.length - 1, c + 1))}>Próxima</button></div></div>}
+                {pageInfo.hasMore && <button type="button" onClick={loadMoreQuestions} disabled={loadingMore} className="btn-secondary w-full flex items-center justify-center gap-2">{loadingMore && <Loader2 size={16} className="animate-spin" />}{loadingMore ? 'Carregando...' : `Carregar mais ${PAGE_SIZE} questões`}</button>}
+              </>}
             </div>}
           </div>
         </div>
